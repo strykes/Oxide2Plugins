@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-deathmessages"
 PLUGIN.Title = "Death Messages"
-PLUGIN.Version = V(0, 2, 7)
+PLUGIN.Version = V(0, 2, 8)
 PLUGIN.Description = "Death Messages"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -50,6 +50,13 @@ end
 local function getWeapon(hitinfo)
 	if(hitinfo.Weapon and hitinfo.Weapon.holdType) then
 		holdtype = tostring(hitinfo.Weapon.holdType)
+		return string.sub(holdtype,0,string.find(holdtype,":")-1)
+	end
+	return "Unknown"
+end
+local function getDamageType(damagetype)
+	if(damagetype) then
+		holdtype = tostring(damagetype)
 		return string.sub(holdtype,0,string.find(holdtype,":")-1)
 	end
 	return "Unknown"
@@ -127,25 +134,33 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 		if(self.Config.SuicideDeaths) then
 			tags.killed = victim.displayName
 			tags.killedid = rust.UserIDFromPlayer(victim)
-			tags.killer = victim.displayName
-			tags.type = "suicide"
+			tags.killer = "Suicide"
+			tags.type = "naturalcause"
 			self:BuildDeathMessage(tags,self.Config.SuicideDeathsMessage)
 		end
 	elseif(hitinfo.Initiator:ToPlayer()) then
 		if(self.Config.Settings.players) then
 			local attacker = hitinfo.Initiator:ToPlayer()
-			tags.killer = attacker.displayName
-			tags.killerid = rust.UserIDFromPlayer(attacker)
-			tags.killed = victim.displayName
-			tags.killedid = rust.UserIDFromPlayer(victim)
-			tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
-			tags.type = "pvp"
-			tags.weapon = getWeapon(hitinfo)
-			tags.distance = math.floor(self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position) + 0.5)
-			if(victim:IsSleeping()) then
-				self:BuildDeathMessage(tags,self.Config.playerDeathWhileSleepingMessage)
+			if(attacker == victim) then
+				tags.killed = victim.displayName
+				tags.killedid = rust.UserIDFromPlayer(victim)
+				tags.killer = getDamageType(victim.lastDamage)
+				tags.type = "naturalcause"
+				self:BuildDeathMessage(tags,self.Config.naturalcausesdeathmessages[tags.killer])
 			else
-				self:BuildDeathMessage(tags,self.Config.playerDeathMessage)
+				tags.killer = attacker.displayName
+				tags.killerid = rust.UserIDFromPlayer(attacker)
+				tags.killed = victim.displayName
+				tags.killedid = rust.UserIDFromPlayer(victim)
+				tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
+				tags.type = "pvp"
+				tags.weapon = getWeapon(hitinfo)
+				tags.distance = math.floor(self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position) + 0.5)
+				if(victim:IsSleeping()) then
+					self:BuildDeathMessage(tags,self.Config.playerDeathWhileSleepingMessage)
+				else
+					self:BuildDeathMessage(tags,self.Config.playerDeathMessage)
+				end
 			end
 		end
 	elseif(hitinfo.Initiator:GetComponentInParent(global.BaseAnimal._type)) then
@@ -172,6 +187,7 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 	end
 end
 function PLUGIN:BuildDeathMessage(tags, str)
+	if(not str) then print("Error while making Death message for " .. tags.killer) return end
 	local customMessage = str
 	for k, v in pairs(tags) do
 		customMessage = string.gsub(customMessage, "@{".. k .. "-}", v )
