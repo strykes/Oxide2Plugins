@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-AntiCheat"
 PLUGIN.Title = "r-AntiCheat"
-PLUGIN.Version = V(0, 0, 9)
+PLUGIN.Version = V(0, 0, 10)
 PLUGIN.Description = "Anti-Cheat system for Rust 2.0"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -20,9 +20,9 @@ function PLUGIN:Init()
 	self:LoadSavedData()
 	--------------------------------------------------------------------
 	
-	--command.AddChatCommand( "ac_check", self.Object, "cmdCheck" )
-	--command.AddChatCommand( "ac_checkall", self.Object, "cmdCheckAll" )
-	--command.AddChatCommand( "ac_reset", self.Object, "cmdReset" )
+	command.AddChatCommand( "ac_check", self.Object, "cmdCheck" )
+	command.AddChatCommand( "ac_checkall", self.Object, "cmdCheckAll" )
+	command.AddChatCommand( "ac_reset", self.Object, "cmdReset" )
 	
 	--------------------------------------------------------------------
 	-- Get EBS --
@@ -115,6 +115,30 @@ local function hasAtLeastOneData(data)
 	end
 	return false
 end
+function PLUGIN:checkAllPlayers()
+	PlayerCheck = {}
+	for k,v in pairs(mainTimers) do
+		if(v) then
+			v:Destroy()
+		end
+	end
+	it = global.BasePlayer.activePlayerList:GetEnumerator()
+	while it:MoveNext() do
+		PlayerData[rust.UserIDFromPlayer(it.Current)] = {
+			timeLeft = self.Config.AntiCheat.timeToCheck
+		}
+		PlayerCheck[it.Current] = {}
+		PlayerCheck[it.Current].lastPos=arg.connection.player.transform.position
+		PlayerCheck[it.Current].lastTick=time.GetUnixTimestamp()
+		PlayerCheck[it.Current].jumpHack = {}
+		PlayerCheck[it.Current].jumpHack.lastDetection = 0
+		PlayerCheck[it.Current].jumpHack.detectionAmount = 0
+		PlayerCheck[it.Current].speedHack = {}
+		PlayerCheck[it.Current].speedHack.lastDetection = 0
+		PlayerCheck[it.Current].speedHack.detectionAmount = 0
+		mainTimers[it.Current] = timer.Repeat(2, 0, function() self:checkPlayer(it.Current) end)
+    end
+end 
 --------------------------------------------------------------------
 
 --------------------------------------------------------------------
@@ -122,7 +146,6 @@ end
 --------------------------------------------------------------------
 function PLUGIN:Unload()
 	self:SaveData()
-	TempCheck = {}
 	PlayerCheck = {}
 	for k,v in pairs(mainTimers) do
 		if(v) then
@@ -221,6 +244,10 @@ function PLUGIN:LoadDefaultConfig()
 	self.Config.ignoreAdmins = true 
 	self.Config.debug = false
 	
+	self.Config.Messages = {}
+	self.Config.Messages.NoPrivilegeMessage = "You don't have enough privileges to use this command"
+	self.Config.Messages.DatafileReset = "The datafile was successfully resetted" 
+	
 	self.Config.Commands = {}
 	self.Config.Commands.checkAuthLevel = 1
 	self.Config.Commands.checkAllAuthLevel = 2
@@ -281,19 +308,50 @@ function PLUGIN:LoadDefaultConfig()
 end
 --------------------------------------------------------------------
 function PLUGIN:cmdCheck(player,cmd,args)
-	if(player:GetComponent("BaseNetworkable").net.connection.authLevel > self.Config.Commands.checkAuthLevel) then
-	
+	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.checkAuthLevel) then
+		rust.SendChatMessage(player,self.Config.NoPrivilegeMessage)
+		return
 	end
+	if(args.Length ==0) then return false end
+	success, err = self:FindPlayer( args[0] )
+	if(not success) then rust.SendChatMessage(player,err) return end
+	
+	if(mainTimers[success]) then mainTimers[success]:Destroy() end
+	
+	PlayerData[rust.UserIDFromPlayer(success)] = {
+			timeLeft = self.Config.AntiCheat.timeToCheck
+	}
+	PlayerCheck[success] = {}
+	PlayerCheck[success].lastPos=arg.connection.player.transform.position
+	PlayerCheck[success].lastTick=time.GetUnixTimestamp()
+	PlayerCheck[success].jumpHack = {}
+	PlayerCheck[success].jumpHack.lastDetection = 0
+	PlayerCheck[success].jumpHack.detectionAmount = 0
+	PlayerCheck[success].speedHack = {}
+	PlayerCheck[success].speedHack.lastDetection = 0
+	PlayerCheck[success].speedHack.detectionAmount = 0
+	mainTimers[success] = timer.Repeat(2, 0, function() self:checkPlayer(success) end)
+	
+	rust.SendChatMessage(player,success.displayName .. " is being checked for hacks")
 end
 function PLUGIN:cmdCheckAll(player,cmd,args)
-	if(player:GetComponent("BaseNetworkable").net.connection.authLevel > self.Config.Commands.checkAllAuthLevel) then
-	
+	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.checkAllAuthLevel) then
+		rust.SendChatMessage(player,self.Config.NoPrivilegeMessage)
+		return
 	end
+	self:checkAllPlayers()
+	rust.SendChatMessage(player,self.Config.Messages.DatafileReset)
 end
 function PLUGIN:cmdReset(player,cmd,args)
-	if(player:GetComponent("BaseNetworkable").net.connection.authLevel > self.Config.Commands.resetAuthLevel) then
-	
+	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.resetAuthLevel) then
+		rust.SendChatMessage(player,self.Config.NoPrivilegeMessage)
+		return
 	end
+	PlayerData = {}
+	self:SaveData()
+	self:LoadSavedData()
+	self:checkAllPlayers()
+	rust.SendChatMessage(player,self.Config.Messages.DatafileReset)
 end
 
 	
@@ -329,12 +387,12 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 		if(self.Config.AntiCheat.antiSpeedHack.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.banMessage,player,distY,dist2d)
 			self:SendBan(player,acType,dist2d,distY)
-			ebs:Ban(false, player, "r-Speedhack", false)
+			ebs:Ban(false, player, "r-Speedhack ("..dist2d.."m/s)", false)
 			
 		elseif(self.Config.AntiCheat.antiSpeedHack.punish.byKick) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.kickMessage,player,distY,dist2d)
 			self:SendKick(player,acType,dist2d,distY)
-			ebs:Kick(false, player, "r-Speedhack")
+			ebs:Kick(false, player, "r-Speedhack ("..dist2d.."m/s)")
 			
 		end
 		PlayerCheck[player] = {}
@@ -342,12 +400,12 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 		if(self.Config.AntiCheat.antiSuperJump.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.banMessage,player,distY,dist2d)
 			self:SendBan(player,acType,dist2d,distY)
-			ebs:Ban(false, player, "r-Superjump", false)
+			ebs:Ban(false, player, "r-Superjump ("..distY.."m/s)", false)
 			
 		elseif(self.Config.AntiCheat.antiSuperJump.punish.byKick) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.kickMessage,player,distY,dist2d)
 			self:SendKick(player,acType,dist2d,distY)
-			ebs:Kick(false, player, "r-Superjump")
+			ebs:Kick(false, player, "r-Superjump ("..distY.."m/s)")
 			
 		end
 		PlayerCheck[player] = {}
@@ -416,7 +474,7 @@ function PLUGIN:checkPlayer(player)
 	if( canCheck(player) ) then
 		deltaTime = newTime - PlayerCheck[player].lastTick 
 		-- Using deltaTime as a workaround lags as deltatime will be greater when lags occur
-		-- Get the 2D distance with x and z
+		-- Get the 2D distance with x and z 
 		dist2d = Distance2D(PlayerCheck[player].lastPos,player.transform.position)/deltaTime
 		-- Get the 3D distance with x y and z
 		dist3d = Distance3D(PlayerCheck[player].lastPos,player.transform.position)/deltaTime
@@ -459,4 +517,32 @@ function PLUGIN:checkPlayer(player)
 			PlayerCheck[player].lastPos=player.transform.position
 		end
 	end
+end
+
+function PLUGIN:FindPlayer( target )
+	local steamid = false
+	if(tonumber(target) ~= nil and string.len(target) == 17) then
+		steamid = target
+	end
+	local targetplayer = false
+	local allBasePlayer = UnityEngine.Object.FindObjectsOfTypeAll(global.BasePlayer._type)
+	for i = 0, tonumber(allBasePlayer.Length - 1) do
+		local currentplayer = allBasePlayer[ i ];
+		if(steamid) then
+			if(steamid == rust.UserIDFromPlayer(currentplayer)) then
+				return currentplayer
+			end
+		else
+			if(currentplayer.displayName == target) then
+				return currentplayer
+			elseif(string.find(currentplayer.displayName,target)) then
+				if(targetplayer) then
+					return false, "Multiple Players Found"
+				end
+				targetplayer = currentplayer
+			end
+		end
+	end
+	if(not targetplayer) then return false, "No players found" end
+	return targetplayer
 end
