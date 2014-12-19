@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-deathmessages"
 PLUGIN.Title = "Death Messages"
-PLUGIN.Version = V(0, 2, 8)
+PLUGIN.Version = V(0, 2, 9)
 PLUGIN.Description = "Death Messages"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -156,7 +156,7 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 				tags.type = "pvp"
 				tags.weapon = getWeapon(hitinfo)
 				tags.distance = math.floor(self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position) + 0.5)
-				if(victim:IsSleeping()) then
+				if(not victim:IsConnected()) then
 					self:BuildDeathMessage(tags,self.Config.playerDeathWhileSleepingMessage)
 				else
 					self:BuildDeathMessage(tags,self.Config.playerDeathMessage)
@@ -178,7 +178,7 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 			tags.type = "pve"
 			tags.weapon = getWeapon(hitinfo)
 			tags.distance = self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position)
-			if(victim:IsSleeping()) then
+			if(not victim:IsConnected()) then
 				self:BuildDeathMessage(tags,self.Config.deathByEntityWhileSleepingMessage)
 			else
 				self:BuildDeathMessage(tags,self.Config.deathByEntityMessage)
