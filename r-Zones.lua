@@ -1,12 +1,12 @@
 PLUGIN.Name = "r-Zones"
 PLUGIN.Title = "r-Zones"
-PLUGIN.Version = V(1, 0, 4)
+PLUGIN.Version = V(1, 0, 6)
 PLUGIN.Description = "Manage zones"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
 
 local DataFile = "rzones"
-local Data = {}
+local ZonesData = {}
 
 function PLUGIN:Init()
 
@@ -88,10 +88,11 @@ local function hasAtLeastOneData(data)
 	return false
 end
 function PLUGIN:LoadDataFile()
+	
     local data = datafile.GetDataTable(DataFile)
-    Data = data or {}
+    ZonesData = data or {}
 end
-function PLUGIN:SaveData()  
+function PLUGIN:SaveData()
     datafile.SaveDataTable(DataFile)
 end
 function PLUGIN:GetFreeID()
@@ -113,18 +114,18 @@ function PLUGIN:refreshPlayers()
 		PlayersZones[player] = {}
 		self:UpdatesPlayerFlags(player)
 	end
-	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
-	for i=0, allRadiationZone.Length-1 do
-		if(RadiationZones[allRadiationZone[i]]) then
-			if(allRadiationZone[i].entityContents.Count > 0) then
-				for o=0, allRadiationZone[i].entityContents.Count-1 do
-					if( allRadiationZone[i].entityContents[o]:GetComponent(global.BasePlayer._type) ) then
-						self:addPlayerZone(allRadiationZone[i].entityContents[o]:GetComponent(global.BasePlayer._type),allRadiationZone[i])
+		allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+		for i=0, allRadiationZone.Length-1 do
+			if(RadiationZones[allRadiationZone[i]]) then
+				if(allRadiationZone[i].entityContents.Count > 0) then
+					for o=0, allRadiationZone[i].entityContents.Count-1 do
+						if( allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type) ) then
+							self:addPlayerZone(allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type),allRadiationZone[i])
+						end
 					end
 				end
 			end
 		end
-	end
 end
 
 
@@ -348,8 +349,10 @@ function PLUGIN:cmdZoneReset(player,cmd,args)
 	resetZones()
 	PlayersZones = {}
 	PlayersFlags = {}
-	ZonesData = {}
-	datafile.SaveDataTable( "rzones" )
+	for k,v in pairs(ZonesData) do
+		ZonesData[k] = nil
+	end
+	self:SaveData()
 	rust.SendChatMessage(player,"SERVER","All zones were deleted")
 end
 function PLUGIN:cmdZoneDelete(player,cmd,args)
@@ -370,14 +373,8 @@ function PLUGIN:cmdZoneDelete(player,cmd,args)
 		return
 	end
 	self:DeleteZone(args[0])
-	TempData = {}
-	for k,v in pairs(ZonesData) do
-		if(k ~= tostring(args[0])) then
-			TempData[k] = ZonesData[k]
-		end
-	end
-	ZonesData = TempData
-	datafile.SaveDataTable( "rzones" )
+	ZonesData[tostring(args[0])] = nil
+	self:SaveData()
 	rust.SendChatMessage(player,"SERVER","Zone n°" .. args[0] .. " deleted")
 end
 function PLUGIN:cmdZoneAdd(player,cmd,args)
@@ -423,7 +420,7 @@ function PLUGIN:cmdZoneAdd(player,cmd,args)
 			return
 		end
 		rust.SendChatMessage(player,"SERVER","You have successfully added zone: " .. args[0])
-		datafile.SaveDataTable( "rzones" )
+		self:SaveData()
 		NewZone = nil
 	end
 end
