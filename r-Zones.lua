@@ -1,10 +1,12 @@
 PLUGIN.Name = "r-Zones"
 PLUGIN.Title = "r-Zones"
-PLUGIN.Version = V(1, 0, 3)
+PLUGIN.Version = V(1, 0, 4)
 PLUGIN.Description = "Manage zones"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
 
+local DataFile = "rzones"
+local Data = {}
 
 function PLUGIN:Init()
 
@@ -14,14 +16,14 @@ function PLUGIN:Init()
 	--command.AddChatCommand( "zone", self.Object, "cmdZone" )
 	command.AddChatCommand( "zone_add", self.Object, "cmdZoneAdd" )
 	command.AddChatCommand( "zone_list", self.Object, "cmdZoneList" )
-	command.AddChatCommand( "zone_del", self.Object, "cmdZoneDelete" )
+	command.AddChatCommand( "zone_delete", self.Object, "cmdZoneDelete" )
 	command.AddChatCommand( "zone_reset", self.Object, "cmdZoneReset" )
 	------------------------------------------------------------------------
 	
 	------------------------------------------------------------------------
 	-- Prepare the Plugin
 	------------------------------------------------------------------------
-	ZonesData = datafile.GetDataTable( "rzones" ) or {}
+	self:LoadDataFile()
 	self:LoadZonesConfig()
 	
 	RadiationZones = {}
@@ -85,8 +87,12 @@ local function hasAtLeastOneData(data)
 	end
 	return false
 end
+function PLUGIN:LoadDataFile()
+    local data = datafile.GetDataTable(DataFile)
+    Data = data or {}
+end
 function PLUGIN:SaveData()  
-    datafile.SaveDataTable( "rzones" )
+    datafile.SaveDataTable(DataFile)
 end
 function PLUGIN:GetFreeID()
 	if(ZonesData == nil) then ZonesData = {} return 1 end
@@ -99,6 +105,27 @@ function PLUGIN:GetFreeID()
 end
 
 ------------------------------------------------------------------------
+--------------------------------------------------------------------
+-- refreshPlayers() => refresh players in a zone
+--------------------------------------------------------------------
+function PLUGIN:refreshPlayers()
+	for player,zones in pairs(PlayersZones) do
+		PlayersZones[player] = {}
+		self:UpdatesPlayerFlags(player)
+	end
+	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+	for i=0, allRadiationZone.Length-1 do
+		if(RadiationZones[allRadiationZone[i]]) then
+			if(allRadiationZone[i].entityContents.Count > 0) then
+				for o=0, allRadiationZone[i].entityContents.Count-1 do
+					if( allRadiationZone[i].entityContents[o]:GetComponent(global.BasePlayer._type) ) then
+						self:addPlayerZone(allRadiationZone[i].entityContents[o]:GetComponent(global.BasePlayer._type),allRadiationZone[i])
+					end
+				end
+			end
+		end
+	end
+end
 
 
 --------------------------------------------------------------------
@@ -129,10 +156,11 @@ function PLUGIN:DeleteZone(zonenum)
 	for i=0, allRadiationZone.Length-1 do
 		if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type)) then
 			if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.x == newpos.x and allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.z == newpos.z) then
-				print(tostring(allRadiationZone[i]:RemoveObject(allRadiationZone[i].gameObject)))
+				allRadiationZone[i]:RemoveObject(allRadiationZone[i].gameObject)
 			end
 		end
 	end
+	self:refreshPlayers()
 end
 --------------------------------------------------------------------
 
