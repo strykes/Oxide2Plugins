@@ -24,6 +24,19 @@ function PLUGIN:Init()
 	command.AddChatCommand( "ac_checkall", self.Object, "cmdCheckAll" )
 	command.AddChatCommand( "ac_reset", self.Object, "cmdReset" )
 	
+	
+	timer.Once(0.1, function() self:OnServerInitialized() end)
+	--------------------------------------------------------------------
+	-- Debug Config --
+	--------------------------------------------------------------------
+	--self.Config = {}
+	--self:LoadDefaultConfig()
+	--------------------------------------------------------------------
+	
+	self:checkAllPlayers()
+end
+
+function PLUGIN:OnServerInitialized()
 	--------------------------------------------------------------------
 	-- Get EBS --
 	--------------------------------------------------------------------
@@ -41,17 +54,17 @@ function PLUGIN:Init()
     	return false
     end
 	--------------------------------------------------------------------
-	
-	--------------------------------------------------------------------
-	-- Debug Config --
-	--------------------------------------------------------------------
-	--self.Config = {}
-	--self:LoadDefaultConfig()
-	--------------------------------------------------------------------
 end
 --------------------------------------------------------------------
 -- Local Functions --
 --------------------------------------------------------------------
+function PLUGIN:resetTimers()
+	for k,v in pairs(mainTimers) do
+		if(v) then
+			v:Destroy()
+		end
+	end  
+end
 local function logWarning(message)
 	arrr =  util.TableToArray( { message } )
 	util.ConvertAndSetOnArray(arrr, 0, message, UnityEngine.Object._type)
@@ -90,10 +103,13 @@ local function RemovePlayerCheck(player)
 	if(not mainTimers[player]) then checkAllTimers() return end
 	mainTimers[player]:Destroy()
 	mainTimers[player] = false
-	PlayerCheck[player] = {}
+	PlayerCheck[player].jumpHack = nil
+	PlayerCheck[player].speedHack = nil
+	PlayerCheck[player].hitHack = nil
+	PlayerCheck[player] = nil
 end
 local function RemoveFromAdminList(player)
-	AdminList[player] = false
+	AdminList[player] = nil
 end
 local function canCheck(player)
 	if(not player or player == nil) then checkAllTimers() return false end
@@ -103,10 +119,17 @@ local function canCheck(player)
 	if(PlayerData[rust.UserIDFromPlayer(player)].timeLeft < 2) then RemovePlayerCheck(player) return false end
 	return true
 end
-local function replaceMessage(msg,player,height,speed)
+local function replaceMessage(msg,player,height,speed,hits)
 	msg = string.gsub(msg, "{player}", tostring(player.displayName) )
-	msg = string.gsub(msg, "{height}", tostring(math.ceil(height*100)/100) )
-	msg = string.gsub(msg, "{speed}", tostring(math.ceil(speed*100)/100) )
+	if(tonumber(height) ~= nil) then
+		msg = string.gsub(msg, "{height}", tostring(math.ceil(height*100)/100) )
+	end
+	if(tonumber(speed) ~= nil) then
+		msg = string.gsub(msg, "{speed}", tostring(math.ceil(speed*100)/100) )
+	end
+	if(tonumber(hits) ~= nil) then
+		msg = string.gsub(msg, "{hits}", tostring(math.ceil(hits*100)/100) )
+	end
 	return msg
 end
 local function hasAtLeastOneData(data)
@@ -115,28 +138,36 @@ local function hasAtLeastOneData(data)
 	end
 	return false
 end
+
 function PLUGIN:checkAllPlayers()
-	PlayerCheck = {}
-	for k,v in pairs(mainTimers) do
-		if(v) then
-			v:Destroy()
+	for k,v in pairs(PlayerCheck) do
+		for u,i in pairs(v) do
+			PlayerCheck[k][u] = nil
 		end
+		PlayerCheck[k] = nil
 	end
-	it = global.BasePlayer.activePlayerList:GetEnumerator()
-	while it:MoveNext() do
-		PlayerData[rust.UserIDFromPlayer(it.Current)] = {
+	PlayerCheck = nil
+	PlayerCheck = {}
+	
+	local it = global.BasePlayer.activePlayerList
+	for i=0, it.Count-1 do
+		PlayerData[rust.UserIDFromPlayer(it[i])] = {
 			timeLeft = self.Config.AntiCheat.timeToCheck
-		}
-		PlayerCheck[it.Current] = {}
-		PlayerCheck[it.Current].lastPos=arg.connection.player.transform.position
-		PlayerCheck[it.Current].lastTick=time.GetUnixTimestamp()
-		PlayerCheck[it.Current].jumpHack = {}
-		PlayerCheck[it.Current].jumpHack.lastDetection = 0
-		PlayerCheck[it.Current].jumpHack.detectionAmount = 0
-		PlayerCheck[it.Current].speedHack = {}
-		PlayerCheck[it.Current].speedHack.lastDetection = 0
-		PlayerCheck[it.Current].speedHack.detectionAmount = 0
-		mainTimers[it.Current] = timer.Repeat(2, 0, function() self:checkPlayer(it.Current) end)
+		}  
+		PlayerCheck[it[i]] = {}
+		PlayerCheck[it[i]].lastPos= it[i].transform.position
+		PlayerCheck[it[i]].lastTick= time.GetUnixTimestamp()
+		PlayerCheck[it[i]].jumpHack = {}
+		PlayerCheck[it[i]].jumpHack.lastDetection = 0
+		PlayerCheck[it[i]].jumpHack.detectionAmount = 0
+		PlayerCheck[it[i]].speedHack = {}
+		PlayerCheck[it[i]].speedHack.lastDetection = 0
+		PlayerCheck[it[i]].speedHack.detectionAmount = 0 
+		PlayerCheck[it[i]].hitHack = {}
+		PlayerCheck[it[i]].hitHack.lastDetection = time.GetUnixTimestamp()
+		PlayerCheck[it[i]].hitHack.hitsLastSecond = 0
+		PlayerCheck[it[i]].hitHack.detectionAmount = 0
+		mainTimers[it[i]] = timer.Repeat(2, 0, function() self:checkPlayer(it[i]) end)  
     end
 end 
 --------------------------------------------------------------------
@@ -162,12 +193,7 @@ function PLUGIN:LoadSavedData()
     PlayerData = datafile.GetDataTable( "ranticheat" )
     PlayerData = PlayerData or {}
 end
-function PLUGIN:SaveData()  
-    if( PlayerData ) then
-        if ( not hasAtLeastOneData(PlayerData) ) then
-            PlayerData = nil 
-        end
-    end 
+function PLUGIN:SaveData() 
     datafile.SaveDataTable( "ranticheat" )
     LastSave = time.GetUnixTimestamp()
 end
@@ -205,6 +231,10 @@ function PLUGIN:OnRunCommand(arg, wantsfeedback)
 		PlayerCheck[arg.connection.player].speedHack = {}
 		PlayerCheck[arg.connection.player].speedHack.lastDetection = 0
 		PlayerCheck[arg.connection.player].speedHack.detectionAmount = 0
+		PlayerCheck[arg.connection.player].hitHack = {}
+		PlayerCheck[arg.connection.player].hitHack.lastDetection = time.GetUnixTimestamp()
+		PlayerCheck[arg.connection.player].hitHack.hitsLastSecond = 0
+		PlayerCheck[arg.connection.player].hitHack.detectionAmount = 0
 		mainTimers[arg.connection.player] = timer.Repeat(2, 0, function() self:checkPlayer(arg.connection.player) end)
 	else
 		if(PlayerCheck[arg.connection.player]) then
@@ -241,7 +271,7 @@ end
 --------------------------------------------------------------------
 function PLUGIN:LoadDefaultConfig()
 	self.Config.chatName = "r-AntiCheat"
-	self.Config.ignoreAdmins = true 
+	self.Config.ignoreAdmins = false 
 	self.Config.debug = false
 	
 	self.Config.Messages = {}
@@ -302,6 +332,16 @@ function PLUGIN:LoadDefaultConfig()
 	self.Config.AntiCheat.antiSuperJump.punish.kickMessage = "{player} was kicked for super Jumping ({height}m)"
 	self.Config.AntiCheat.antiSuperJump.punish.banMessage = "{player} was banned for super Jumping ({height}m)"
 
+	self.Config.AntiCheat.antiSpeedHit = {}
+	self.Config.AntiCheat.antiSpeedHit.activated = true
+	self.Config.AntiCheat.antiSpeedHit.hitsPerSecond = 3
+	self.Config.AntiCheat.antiSpeedHit.dectectionsBeforePunish = 3
+	self.Config.AntiCheat.antiSpeedHit.DetectionMessage = "{player} is hitting very fast ({hits} hits/s)"
+	self.Config.AntiCheat.antiSpeedHit.punish = {}
+	self.Config.AntiCheat.antiSpeedHit.punish.byBan = true
+	self.Config.AntiCheat.antiSpeedHit.punish.byKick = true
+	self.Config.AntiCheat.antiSpeedHit.punish.kickMessage = "{player} was kicked for Super Speed Attack ({hits}m/s)"
+	self.Config.AntiCheat.antiSpeedHit.punish.banMessage = "{player} was banned for Super Speed Attack ({hits}m/s)"
 	
 	--self.Config.AntiCheat.antiFlyHack = {}
 	--self.Config.AntiCheat.antiFlyHack.activated = true
@@ -327,9 +367,16 @@ function PLUGIN:cmdCheck(player,cmd,args)
 	PlayerCheck[success].jumpHack = {}
 	PlayerCheck[success].jumpHack.lastDetection = 0
 	PlayerCheck[success].jumpHack.detectionAmount = 0
+	
 	PlayerCheck[success].speedHack = {}
 	PlayerCheck[success].speedHack.lastDetection = 0
 	PlayerCheck[success].speedHack.detectionAmount = 0
+	
+	PlayerCheck[success].hitHack = {}
+	PlayerCheck[success].hitHack.lastDetection = time.GetUnixTimestamp()
+	PlayerCheck[success].hitHack.hitsLastSecond = 0
+	PlayerCheck[success].hitHack.detectionAmount = 0
+	
 	mainTimers[success] = timer.Repeat(2, 0, function() self:checkPlayer(success) end)
 	
 	rust.SendChatMessage(player,success.displayName .. " is being checked for hacks")
@@ -338,7 +385,8 @@ function PLUGIN:cmdCheckAll(player,cmd,args)
 	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.checkAllAuthLevel) then
 		rust.SendChatMessage(player,self.Config.NoPrivilegeMessage)
 		return
-	end
+	end 
+	self:resetTimers()
 	self:checkAllPlayers()
 	rust.SendChatMessage(player,self.Config.Messages.DatafileReset)
 end
@@ -347,9 +395,16 @@ function PLUGIN:cmdReset(player,cmd,args)
 		rust.SendChatMessage(player,self.Config.NoPrivilegeMessage)
 		return
 	end
+	for k,v in pairs(PlayerData) do
+		for u,i in pairs(v) do
+			PlayerData[k][u] = nil
+		end
+		PlayerData[k] = nil
+	end
+	PlayerData = nil
 	PlayerData = {}
 	self:SaveData()
-	self:LoadSavedData()
+	self:resetTimers()
 	self:checkAllPlayers()
 	rust.SendChatMessage(player,self.Config.Messages.DatafileReset)
 end
@@ -379,6 +434,14 @@ function PLUGIN:DetectedPlayer(player,acType,dist2d,dist3d,distY,newTick)
 		if(PlayerCheck[player].jumpHack.detectionAmount >= self.Config.AntiCheat.antiSuperJump.detectionsBeforePunish) then
 			self:punishPlayer(player,acType,dist2d,distY)
 		end
+	elseif(acType == 3) then
+		PlayerCheck[player].hitHack.detectionAmount = PlayerCheck[player].hitHack.detectionAmount + 1
+		PlayerCheck[player].hitHack.lastDetection = PlayerCheck[player].hitHack.lastDetection + 1
+		self:SendDetection(player,acType,dist2d,distY)
+		if(PlayerCheck[player].hitHack.detectionAmount >=  self.Config.AntiCheat.antiSpeedHit.dectectionsBeforePunish) then
+			self:punishPlayer(player,acType,dist2d,distY)
+		end
+		PlayerCheck[player].hitHack.hitsLastSecond = 0
 	end
 end
 
@@ -395,7 +458,7 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 			ebs:Kick(false, player, "r-Speedhack ("..dist2d.."m/s)")
 			
 		end
-		PlayerCheck[player] = {}
+		RemovePlayerCheck(player)
 	elseif(acType == 2) then
 		if(self.Config.AntiCheat.antiSuperJump.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.banMessage,player,distY,dist2d)
@@ -408,7 +471,19 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 			ebs:Kick(false, player, "r-Superjump ("..distY.."m/s)")
 			
 		end
-		PlayerCheck[player] = {}
+		RemovePlayerCheck(player)
+	elseif(acType == 3) then
+		if(self.Config.AntiCheat.antiSpeedHit.punish.byBan) then
+			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.banMessage,player,distY,dist2d,PlayerCheck[player].hitHack.hitsLastSecond)
+			self:SendBan(player,acType,dist2d,distY)
+			ebs:Ban(false, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)", false)
+			
+		elseif(self.Config.AntiCheat.antiSpeedHit.punish.byKick) then
+			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.kickMessage,player,distY,dist2d,PlayerCheck[player].hitHack.hitsLastSecond)
+			self:SendKick(player,acType,dist2d,distY)
+			ebs:Kick(false, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)")
+		end
+		RemovePlayerCheck(player)
 	end
 end
 function PLUGIN:BroadcastAdmins(msg)
@@ -421,9 +496,11 @@ end
 function PLUGIN:SendDetection(player,acType,dist,height)
 	msg = ""
 	if(acType == 1) then
-		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.DetectionMessage,player,height,dist)
+		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.DetectionMessage,player,height,dist,nil)
 	elseif(acType == 2) then
-		msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.DetectionMessage,player,height,dist)
+		msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.DetectionMessage,player,height,dist,nil)
+	elseif(acType == 3) then
+		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.DetectionMessage,player,height,dist,PlayerCheck[player].hitHack.hitsLastSecond)
 	end
 	if(self.Config.BroadcastDetections.toPlayers) then
 		rust.BroadcastChat(self.Config.chatName,msg)
@@ -440,6 +517,8 @@ function PLUGIN:SendBan(player,acType,dist,height)
 		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.banMessage,player,height,dist)
 	elseif(acType == 2) then
 		msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.banMessage,player,height,dist)
+	elseif(acType == 3) then
+		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.banMessage,player,height,dist,PlayerCheck[player].hitHack.hitsLastSecond)
 	end
 	if(self.Config.BroadcastBans.toPlayers) then
 		rust.BroadcastChat(self.Config.chatName,msg)
@@ -457,6 +536,8 @@ function PLUGIN:SendKick(player,acType,dist,height)
 		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.kickMessage,player,height,dist)
 	elseif(acType == 2) then
 		msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.kickMessage,player,height,dist)
+	elseif(acType == 3) then
+		msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.kickMessage,player,height,dist,PlayerCheck[player].hitHack.hitsLastSecond)
 	end
 	if(self.Config.BroadcastKicks.toPlayers) then
 		rust.BroadcastChat(self.Config.chatName,msg)
@@ -518,6 +599,28 @@ function PLUGIN:checkPlayer(player)
 		end
 	end
 end
+function PLUGIN:OnPlayerAttack(player,hitinfo)
+	if(not ebs) then return end
+	if(not PlayerCheck[player]) then return end
+	if(hitinfo.HitEntity and hitinfo.HitEntity:GetComponentInParent(global.BuildingBlock._type)) then
+		--if(hitinfo.Weapon and hitinfo.Weapon:GetComponent(global.BaseMelee._type)) then
+			if(PlayerCheck[player].hitHack.lastDetection >= time.GetUnixTimestamp()) then
+				PlayerCheck[player].hitHack.hitsLastSecond = PlayerCheck[player].hitHack.hitsLastSecond + 1
+				if(PlayerCheck[player].hitHack.hitsLastSecond >= self.Config.AntiCheat.antiSpeedHit.hitsPerSecond) then
+					self:DetectedPlayer(player,3,nil,nil,nil,nil)
+					
+					return
+				end
+				PlayerCheck[player].hitHack.lastDetection = time.GetUnixTimestamp()
+			else
+				PlayerCheck[player].hitHack.hitsLastSecond = 0
+				PlayerCheck[player].hitHack.lastDetection = time.GetUnixTimestamp()
+				PlayerCheck[player].hitHack.detectionAmount = 0
+			end
+		--end
+	end
+end
+
 
 function PLUGIN:FindPlayer( target )
 	local steamid = false
