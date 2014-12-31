@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-remover"
 PLUGIN.Title = "R-Remover Tool"
-PLUGIN.Version = V(1, 4, 5)
+PLUGIN.Version = V(1, 4, 7)
 PLUGIN.Description = "Remove tool for admins only"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -10,6 +10,16 @@ function PLUGIN:Init()
 	if(self.Config.RemoveForPlayers and not plugins.Exists("buildingowners")) then
 		print("Error in R-Remover, you may want to have the \"Building Owners\" plugin installed to give ownership of buildings to certain players. Else it will only use ToolCupboard") 
 	end
+	
+	command.AddChatCommand( "remove", self.Object, "cmdRemove" )
+	self.isRemoving = {}
+	self.Removetimers = {}	
+ 
+end
+function PLUGIN:OnServerInitialized()
+	status, err = pcall( new, UnityEngine.Vector3._type, nil)
+    nulVector3 = new( UnityEngine.Vector3._type, nil )
+	
 	local pluginList = plugins.GetAll()
     for i = 0, pluginList.Length - 1 do
         local pluginTitle = pluginList[i].Object.Title
@@ -18,12 +28,6 @@ function PLUGIN:Init()
             break
         end
     end
-	command.AddChatCommand( "remove", self.Object, "cmdRemove" )
-	self.isRemoving = {}
-	self.Removetimers = {}	
-	timer.Once(0.1, function() 
-		nulVector3 = new(UnityEngine.Vector3._type,nil) 
-	end )
 end
 function PLUGIN:Unload()
 	for k,v in pairs(self.Removetimers) do
