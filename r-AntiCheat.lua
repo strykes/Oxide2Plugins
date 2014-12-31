@@ -1,10 +1,10 @@
 PLUGIN.Name = "r-AntiCheat"
 PLUGIN.Title = "r-AntiCheat"
-PLUGIN.Version = V(0, 0, 10)
+PLUGIN.Version = V(0, 0, 13)
 PLUGIN.Description = "Anti-Cheat system for Rust 2.0"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
-
+ 
 
 
 function PLUGIN:Init()
@@ -25,7 +25,6 @@ function PLUGIN:Init()
 	command.AddChatCommand( "ac_reset", self.Object, "cmdReset" )
 	
 	
-	timer.Once(0.1, function() self:OnServerInitialized() end)
 	--------------------------------------------------------------------
 	-- Debug Config --
 	--------------------------------------------------------------------
@@ -102,7 +101,7 @@ local function RemovePlayerCheck(player)
 	if(player == nil or not player) then checkAllTimers() return end
 	if(not mainTimers[player]) then checkAllTimers() return end
 	mainTimers[player]:Destroy()
-	mainTimers[player] = false
+	mainTimers[player] = nil
 	PlayerCheck[player].jumpHack = nil
 	PlayerCheck[player].speedHack = nil
 	PlayerCheck[player].hitHack = nil
@@ -258,7 +257,14 @@ function PLUGIN:OnPlayerDisconnected(player,connection)
 		RemoveFromAdminList(player)
 	end
 	if(PlayerCheck[player]) then
-		RemovePlayerCheck(player)
+		if(mainTimers[player]) then
+			mainTimers[player]:Destroy()
+			mainTimers[player] = nil
+		end
+		PlayerCheck[player].jumpHack = nil
+		PlayerCheck[player].speedHack = nil
+		PlayerCheck[player].hitHack = nil
+		PlayerCheck[player] = nil
 	end
 	if( (time.GetUnixTimestamp() - LastSave) > 300) then
 		self:SaveData()
@@ -271,12 +277,14 @@ end
 --------------------------------------------------------------------
 function PLUGIN:LoadDefaultConfig()
 	self.Config.chatName = "r-AntiCheat"
-	self.Config.ignoreAdmins = false 
+	self.Config.ignoreAdmins = true 
 	self.Config.debug = false
 	
 	self.Config.Messages = {}
 	self.Config.Messages.NoPrivilegeMessage = "You don't have enough privileges to use this command"
 	self.Config.Messages.DatafileReset = "The datafile was successfully resetted" 
+	self.Config.Messages.CheckAllPlayers = "Checking all players" 
+	self.Config.Messages.CheckPlayer = "{player} is being checked for hacks" 
 	
 	self.Config.Commands = {}
 	self.Config.Commands.checkAuthLevel = 1
@@ -379,7 +387,7 @@ function PLUGIN:cmdCheck(player,cmd,args)
 	
 	mainTimers[success] = timer.Repeat(2, 0, function() self:checkPlayer(success) end)
 	
-	rust.SendChatMessage(player,success.displayName .. " is being checked for hacks")
+	rust.SendChatMessage(player,replaceMessage(self.Config.Messages.CheckPlayer,success,nil,nil,nil))
 end
 function PLUGIN:cmdCheckAll(player,cmd,args)
 	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.checkAllAuthLevel) then
@@ -388,7 +396,7 @@ function PLUGIN:cmdCheckAll(player,cmd,args)
 	end 
 	self:resetTimers()
 	self:checkAllPlayers()
-	rust.SendChatMessage(player,self.Config.Messages.DatafileReset)
+	rust.SendChatMessage(player,self.Config.Messages.CheckAllPlayers)
 end
 function PLUGIN:cmdReset(player,cmd,args)
 	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Commands.resetAuthLevel) then
@@ -600,10 +608,11 @@ function PLUGIN:checkPlayer(player)
 	end
 end
 function PLUGIN:OnPlayerAttack(player,hitinfo)
+	if(not self.Config.AntiCheat.antiSpeedHit.activated) then return end
 	if(not ebs) then return end
 	if(not PlayerCheck[player]) then return end
 	if(hitinfo.HitEntity and hitinfo.HitEntity:GetComponentInParent(global.BuildingBlock._type)) then
-		--if(hitinfo.Weapon and hitinfo.Weapon:GetComponent(global.BaseMelee._type)) then
+		if(hitinfo.Weapon and hitinfo.Weapon:GetComponent(global.BaseMelee._type)) then
 			if(PlayerCheck[player].hitHack.lastDetection >= time.GetUnixTimestamp()) then
 				PlayerCheck[player].hitHack.hitsLastSecond = PlayerCheck[player].hitHack.hitsLastSecond + 1
 				if(PlayerCheck[player].hitHack.hitsLastSecond >= self.Config.AntiCheat.antiSpeedHit.hitsPerSecond) then
@@ -617,7 +626,7 @@ function PLUGIN:OnPlayerAttack(player,hitinfo)
 				PlayerCheck[player].hitHack.lastDetection = time.GetUnixTimestamp()
 				PlayerCheck[player].hitHack.detectionAmount = 0
 			end
-		--end
+		end
 	end
 end
 
