@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-Zones"
 PLUGIN.Title = "r-Zones"
-PLUGIN.Version = V(1, 0, 6)
+PLUGIN.Version = V(1, 0, 11)
 PLUGIN.Description = "Manage zones"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -29,12 +29,6 @@ function PLUGIN:Init()
 	RadiationZones = {}
 	PlayersZones = {}
 	PlayersFlags = {}
-	
-	timer.Once(0.1, function() 
-		self:InitZones()
-		nulVector3 = new(UnityEngine.Vector3._type,nil) 
-	end)
-	
 	------------------------------------------------------------------------
 	-- Debug Config
 	------------------------------------------------------------------------
@@ -42,6 +36,7 @@ function PLUGIN:Init()
 	--self:LoadDefaultConfig()
 	------------------------------------------------------------------------
 end
+
 
 ------------------------------------------------------------------------
 -- InitZones => initialize the zones.
@@ -53,6 +48,12 @@ function PLUGIN:InitZones()
 		end
 	end
 end
+ 
+function PLUGIN:OnServerInitialized()
+	status, err = pcall( new, UnityEngine.Vector3._type, nil)
+    nulVector3 = new( UnityEngine.Vector3._type, nil )
+    status, err = pcall(function () self:InitZones() end)
+end 
 ------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
@@ -60,7 +61,8 @@ end
 ------------------------------------------------------------------------
 function PLUGIN:LoadZonesConfig()
 	ArgZones = {}
-	ArgZones["-god"] = true
+	ArgZones["-pvpgod"] = true
+	ArgZones["-pvegod"] = true
 	ArgZones["-sleepgod"] = true
 	ArgZones["-undestr"] = true
 	ArgZones["-nobuild"] = true
@@ -88,7 +90,6 @@ local function hasAtLeastOneData(data)
 	return false
 end
 function PLUGIN:LoadDataFile()
-	
     local data = datafile.GetDataTable(DataFile)
     ZonesData = data or {}
 end
@@ -178,7 +179,6 @@ function PLUGIN:Unload()
     end
 	PlayersFlags = {}
 	PlayersZones = {}
-	
 end
 --------------------------------------------------------------------
 
@@ -386,7 +386,8 @@ function PLUGIN:cmdZoneAdd(player,cmd,args)
 		rust.SendChatMessage(player,"SERVER","Please select the type of the zone that you want to add: (/zone_add \"NAME\" \"RADIUS\" \"ENTER MSG\" \"LEAVE MSG\" OPTIONS)")
 		rust.SendChatMessage(player,"SERVER","MSG can be: \"default\" meaning no message will be displayed")
 		rust.SendChatMessage(player,"SERVER","Options:")
-		rust.SendChatMessage(player,"SERVER","-god => will prevent players from hurting each other")
+		rust.SendChatMessage(player,"SERVER","-pvpgod => will prevent players from hurting each other")
+		rust.SendChatMessage(player,"SERVER","-pvegod => will prevent animals from hurting players")
 		rust.SendChatMessage(player,"SERVER","-sleepgod => will prevent players from hurting sleepers")
 		rust.SendChatMessage(player,"SERVER","-undestr => will prevent players from hurting buildings")
 		rust.SendChatMessage(player,"SERVER","-nobuild => will prevent players from building")
@@ -452,15 +453,32 @@ end
 function PLUGIN:OnEntityAttacked(entity,hitinfo)
 	if(entity:ToPlayer()) then
 		if( (entity:ToPlayer():IsSleeping()) and hasFlag(entity:ToPlayer(),"-sleepgod") ) then
-			return false
-		elseif(not entity:ToPlayer():IsSleeping() and hasFlag(entity:ToPlayer(),"-god")) then
-			return false
+			hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+			hitinfo.DoHitEffects = false
+			hitinfo.HitMaterial = 0
+			return
+		elseif(not entity:ToPlayer():IsSleeping() and hitinfo.Initiator) then
+			if(hitinfo.Initiator:ToPlayer()) then
+				if(hasFlag(entity:ToPlayer(),"-pvpgod")) then
+					hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+					hitinfo.DoHitEffects = false
+					hitinfo.HitMaterial = 0
+					return
+				end
+			elseif(hasFlag(entity:ToPlayer(),"-pvegod")) then
+				hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+				hitinfo.DoHitEffects = false
+				hitinfo.HitMaterial = 0
+				return
+			end
 		end
 	elseif(entity:GetComponent("BuildingBlock") or entity:GetComponent("WorldItem")) then
 		if(hitinfo ~= nil and hitinfo.Initiator and hitinfo.Initiator:ToPlayer()) then
 			if(hasFlag(hitinfo.Initiator:ToPlayer(),"-undestr")) then
-				--rust.SendChatMessage(hitinfo.Initiator:ToPlayer(),"SERVER","This building can't be attacked")
-				return false
+				hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+				hitinfo.DoHitEffects = false
+				hitinfo.HitMaterial = 0
+				return
 			end
 		end
 	end
