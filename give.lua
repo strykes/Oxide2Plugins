@@ -1,6 +1,6 @@
 PLUGIN.Name = "give"
 PLUGIN.Title = "Give Plugin"
-PLUGIN.Version = V(1, 0, 0)
+PLUGIN.Version = V(1, 1, 0)
 PLUGIN.Description = "Allow admins to give to players"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -12,9 +12,18 @@ function PLUGIN:Init()
 	command.AddConsoleCommand("inv.giveplayer", self.Object, "ccmdGive")
 	command.AddConsoleCommand("inventory.giveplayer", self.Object, "ccmdGive")
 	command.AddConsoleCommand("inv.giveall", self.Object, "ccmdGive")
-	timer.Once(0.1, function()
-		self:InitializeTable()
-	end)
+
+end
+
+local function getItem(iname)
+	if(string.sub(string.lower(iname),-3) == " bp") then
+		return string.sub(string.lower(iname),0,-4), true
+	end
+	return iname, false
+end
+
+function PLUGIN:OnServerInitialized()
+	self:InitializeTable()
 end
 
 function PLUGIN:InitializeTable()
@@ -63,7 +72,8 @@ function PLUGIN:ccmdGive(arg)
                 arg:ReplyWith("Wrong Number amount, needs to be a number: inv.giveplayer \"ITEM\" \"AMOUNT\"")
                 return
             end
-			descname, err = self:GiveItemToInv(player,arg.Args[0],tonumber(arg.Args[1]),player.inventory.containerMain)
+            itemname, isBlueprint = getItem(arg.Args[0])
+			descname, err = self:GiveItemToInv(player,itemname,tonumber(arg.Args[1]),player.inventory.containerMain,isBlueprint)
 			if(not descname) then arg:ReplyWith(err) return end
 			arg:ReplyWith(tostring(arg.Args[1]) .. "x " .. descname .. " was given to " ..  tostring(player.displayName))
 			rust.SendChatMessage(player,"You have received " .. tostring(arg.Args[1]) .. "x " .. descname)
@@ -82,7 +92,8 @@ function PLUGIN:ccmdGive(arg)
                 arg:ReplyWith("Wrong Number amount, needs to be a number: inv.giveplayer \"ITEM\" \"AMOUNT\"")
                 return
             end
-			descname, err = self:GiveItemToInv(targetplayer,arg.Args[1],tonumber(arg.Args[2]),targetplayer.inventory.containerMain)
+            itemname, isBlueprint = getItem(arg.Args[1])
+			descname, err = self:GiveItemToInv(targetplayer,itemname,tonumber(arg.Args[2]),targetplayer.inventory.containerMain,isBlueprint)
 			if(not descname) then arg:ReplyWith(err) return end
 			rust.SendChatMessage(targetplayer,"You have received " .. tostring(arg.Args[2]) .. " x " .. descname)
 			arg:ReplyWith(tostring(arg.Args[2]) .. " x " .. descname .. " was given to " ..  tostring(targetplayer.displayName));
@@ -98,9 +109,10 @@ function PLUGIN:ccmdGive(arg)
             end
 			allBasePlayer = UnityEngine.Object.FindObjectsOfTypeAll(global.BasePlayer._type)
 			count = 0
+			itemname, isBlueprint = getItem(arg.Args[0])
 			for i = 0, tonumber(allBasePlayer.Length - 1) do
 				if(allBasePlayer[ i ]:IsConnected()) then
-					descname, err = self:GiveItemToInv(allBasePlayer[ i ],arg.Args[0],tonumber(arg.Args[1]),allBasePlayer[ i ].inventory.containerMain)
+					descname, err = self:GiveItemToInv(allBasePlayer[ i ],itemname,tonumber(arg.Args[1]),allBasePlayer[ i ].inventory.containerMain,isBlueprint)
 					if(not descname) then arg:ReplyWith(err) return end
 					rust.SendChatMessage(allBasePlayer[ i ],"You have received " .. tostring(arg.Args[1]) .. "x " .. descname)
 					count = count + 1
@@ -126,7 +138,8 @@ function PLUGIN:cmdGive( player, com, args )
 				rust.SendChatMessage(player,self.Config.Messages.WrongArguments)
 				return
 			end
-			descname, err = self:GiveItemToInv(targetplayer,args[1],tonumber(args[2]),targetplayer.inventory.containerMain)
+			itemname, isBlueprint = getItem(args[1])
+			descname, err = self:GiveItemToInv(targetplayer,itemname,tonumber(args[2]),targetplayer.inventory.containerMainm,isBlueprint)
 			if(not descname) then rust.SendChatMessage(player,err) return end
 			
 			rust.SendChatMessage(player,tostring(args[2]) .. "x " .. descname .. " was given to " ..  tostring(targetplayer.displayName))
@@ -136,7 +149,8 @@ function PLUGIN:cmdGive( player, com, args )
 				rust.SendChatMessage(player,self.Config.Messages.WrongArguments)
 				return
 			end
-			descname, err = self:GiveItemToInv(player,args[0],tonumber(args[1]),player.inventory.containerMain)
+			itemname, isBlueprint = getItem(args[0])
+			descname, err = self:GiveItemToInv(player,itemname,tonumber(args[1]),player.inventory.containerMain,isBlueprint)
 			if(not descname) then rust.SendChatMessage(player,err) return end
 			rust.SendChatMessage(player,"You have received " .. tostring(args[1]) .. "x " .. descname)
 		else
@@ -146,7 +160,7 @@ function PLUGIN:cmdGive( player, com, args )
 		rust.SendChatMessage(player,self.Config.Messages.NotAllowed)
 	end
 end
-function PLUGIN:GiveItemToInv(player,itemname,amount,pref)
+function PLUGIN:GiveItemToInv(player,itemname,amount,pref,isBP)
 	if(self.Table[string.lower(itemname)]) then
 		itemname = self.Table[string.lower(itemname)]
 	end
@@ -155,12 +169,12 @@ function PLUGIN:GiveItemToInv(player,itemname,amount,pref)
 	if(not definition) then
 		return false, self:BuildMSG(self.Config.Messages.InvalidItem,tostring(itemname))
 	end
-	if(definition.stackable <= 1 and amount > 1) then
+	if(isBP or (definition.stackable <= 1 and amount > 1)) then
 		for i=1, amount do
-			player.inventory:GiveItem(global.ItemManager.CreateByName(definition.shortname,1),pref);
+			player.inventory:GiveItem(global.ItemManager.CreateByItemID(definition.itemid,1,isBP),pref);
 		end
 	else
-		player.inventory:GiveItem(global.ItemManager.CreateByName(definition.shortname,amount),pref)
+		player.inventory:GiveItem(global.ItemManager.CreateByItemID(definition.itemid,amount,isBP),pref)
 	end
 	return definition.displayname
 end
