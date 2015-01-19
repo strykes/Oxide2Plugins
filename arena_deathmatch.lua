@@ -1,12 +1,16 @@
 PLUGIN.Name = "Arena: Deathmatch"
-PLUGIN.Title = "Nonstop Arena deathmatch"
-PLUGIN.Version = V(0, 0, 1)
+PLUGIN.Title = "Arena: Deathmatch"
+PLUGIN.Version = V(1, 0, 0)
 PLUGIN.Description = "Arena Deathmatch converted from Oxide 1"
 PLUGIN.Author = "Reneb - Oxide 1 version by eDeloa"
-PLUGIN.HasConfig = false
+PLUGIN.HasConfig = true
 
 function PLUGIN:Init()
+    self.Config = {}
+    self:LoadDefaultConfig()
+end
 
+function PLUGIN:OnServerInitialized()
 	local pluginList = plugins.GetAll()
     for i = 0, pluginList.Length - 1 do
         local pluginTitle = pluginList[i].Object.Title
@@ -27,20 +31,13 @@ function PLUGIN:Init()
    	  print("You must have the Arena Plugin")
 	  arena_loaded = false
 	  return
-   	else
-   		arena_loaded = true
    	end
-   	
-    self.Config = {}
-    self:LoadDefaultConfig()
-    
-    command.AddChatCommand( "deathmatch_pack", self.Object, "cmdDeathmatchPack")
-
-	self.DeathmatchData.GameID = arena_plugin:RegisterArenaGame("Deathmatch")
-  
-  
-
+   	arena_loaded = true
+   	self:InitializeTable()
+   	command.AddChatCommand( "deathmatch_pack", self.Object, "cmdDeathmatchPack")
+   	self.DeathmatchData.GameID = arena_plugin:RegisterArenaGame(self.Config.ArenaGame)
 end
+
 function PLUGIN:BroadcastChat(msg)
   local netusers = arena_plugin:GetAllPlayers()
   for k,player in pairs(netusers) do
@@ -55,20 +52,20 @@ function PLUGIN:cmdDeathmatchPack(player, cmd, args)
   	rust.SendChatMessage(player, self.Config.ChatName, "This command is restricted")
   	return
   end
-  pack = tonumber(args[1])
-  if (not pack) then
-    rust.SendChatMessage(player, "Deathmatch", "Syntax: /deathmatch_pack {packNumber (0 = default)}")
+  if(args.Length == 0 or ( args.Length > 0 and tonumber(args[0])==nil) ) then
+  	rust.SendChatMessage(player, self.Config.ArenaGame, "Syntax: /deathmatch_pack {packNumber (0 = default)}")
     return
   end
+  pack = tonumber(args[0])
 
   if (pack == 0) then
     self.DeathmatchData.CustomPack = 0
-    rust.SendChatMessage(player, "Deathmatch", "Default pack settings loaded.")
+    rust.SendChatMessage(player, self.Config.ArenaGame, "Default pack settings loaded.")
   elseif (pack > 0 and pack <= #self.Config.Packs) then
     self.DeathmatchData.CustomPack = pack
-    rust.SendChatMessage(player, "Deathmatch", "Custom Deathmatch pack selected.")
+    rust.SendChatMessage(player, self.Config.ArenaGame, "Custom Deathmatch pack selected.")
   else
-    rust.SendChatMessage(player, "Deathmatch", "Specified pack number out of bounds.")
+    rust.SendChatMessage(player, self.Config.ArenaGame, "Specified pack number out of bounds.")
   end
 end
 
@@ -177,7 +174,57 @@ function PLUGIN:OnArenaJoinPost(player)
     self.DeathmatchData.Users[userID].spawnTime = -1
   end
 end
+-- *******************************************
+-- Called when someone asks for a reward
+-- *******************************************
+function PLUGIN:isRewardRandom(arenagame)
+	if(arenagame == self.Config.ArenaGame) then
+		if(self.Config.Rewards.Random) then
+			return true
+		end
+		return false
+	end
+end
+function PLUGIN:OnRewardGetList(arenagame)
+	if(arenagame == self.Config.ArenaGame) then
+		msg = ""
+		for k,v in pairs(self.Config.Rewards.Packs) do
+			msg = msg .. "\"" .. k .. "\" "
+		end
+		return msg
+	end
+end
 
+function PLUGIN:giveRandomReward(player,arenagame)
+	if(arenagame == self.Config.ArenaGame) then
+		count = 0
+		for k,v in pairs(self.Config.Rewards.Packs) do
+			count = count + 1
+		end
+		crand = math.random(1,count)
+		count = 0
+		for k,v in pairs(self.Config.Rewards.Packs) do
+			count = count + 1
+			if(crand  == count) then
+				self:giveReward(player,v)
+				break
+			end
+		end
+	end
+end
+function PLUGIN:giveSpecificReward(player,arenagame,name)
+	if(arenagame == self.Config.ArenaGame) then
+		for k,v in pairs(self.Config.Rewards.Packs) do
+			if(name == k) then
+				if(crand  == count) then
+					self:giveReward(player,v)
+					return "true"
+				end
+			end
+		end
+		return false
+	end
+end
 -- *******************************************
 -- Called after a player has left the Arena.
 -- *******************************************
@@ -198,7 +245,11 @@ end
 -- *******************************************
 -- HOOK FUNCTIONS
 -- *******************************************
-
+function PLUGIN:AutoArenaConfig(cfgName)
+  if (self.DeathmatchData.IsChosen) then
+    return self.Config.AutoArena_Settings[cfgName]
+  end
+end
 function PLUGIN:OnEntityAttacked(entity,hitinfo)
   if (not arena_loaded) then
     return
@@ -209,7 +260,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
           if (entity:ToPlayer() ~= hitinfo.Initiator:ToPlayer()) then
               -- If the victim is protected, deal no damage
               if (arena_plugin:IsPlaying(entity:ToPlayer()) and self:IsImmune(entity:ToPlayer())) then
-                rust.SendChatMessage(hitinfo.Initiator:ToPlayer(), "Deathmatch", "New spawns have immunity!")
+                rust.SendChatMessage(hitinfo.Initiator:ToPlayer(), self.Config.ArenaGame, "New spawns have immunity!")
                 return false
               end
           end
@@ -217,6 +268,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
     end
   end
 end
+
 function PLUGIN:OnEntityDeath(entity, hitinfo)
   if (not arena_loaded) then
     return
@@ -235,7 +287,6 @@ function PLUGIN:OnEntityDeath(entity, hitinfo)
           else
             self:AwardKill(attacker)
           end
-          --timer.Once(0, function() arena_plugin:RemoveBag(victim) end)
         end
       end
     end
@@ -247,7 +298,7 @@ function PLUGIN:SendHelpText(player)
     return
   end
   if (player:GetComponent("BaseNetworkable").net.connection.authLevel > 0) then
-    rust.SendChatMessage(player, "Deathmatch", "Use /deathmatch_pack {packNumber} to select a custom pack for Deathamtch.")
+    rust.SendChatMessage(player, self.Config.ArenaGame, "Use /deathmatch_pack {packNumber} to select a custom pack for Deathamtch.")
   end
 end
 
@@ -364,12 +415,27 @@ end
 function PLUGIN:GiveWin(player)
   -- Announce win
   local str = "DEATHMATCH IS OVER!  " .. string.upper(player.displayName) .. " WINS!"
+  if(self.Config.Rewards.activated) then
+  	arena_plugin:GiveReward(player,self.Config.ArenaGame)
+  end
   for i = 1, 10 do
     arena_plugin:BroadcastToPlayers(str)
   end
 
   -- Trigger the end of the arena
   timer.Once(5, function() arena_plugin:EndArena() end)
+end
+
+function PLUGIN:giveReward(player,rewards)
+	for i,v in pairs(rewards) do
+		if (rewards[i][2]) then
+			giveitem, err = self:GiveItem(player.inventory,rewards[i][1],rewards[i][2],"main")
+			if(not giveitem) then print("Deathmatch: Error while giving reward " .. rewards[i][1] .. ": " .. err) end
+		else
+			giveitem, err = self:GiveItem(player.inventory,rewards[i][1],1,"main")
+			if(not giveitem) then print("Deathmatch: Error while giving reward " .. rewards[i][1] .. ": " .. err) end
+		end
+    end
 end
 
 -- *******************************************
@@ -385,15 +451,39 @@ end
 -- *******************************************
 function PLUGIN:LoadDefaultConfig()
   -- Set default configuration settings
+  self.Config.ArenaGame = "Deathmatch"
+  
+  self.Config.Rewards = {}
+  self.Config.Rewards.activated = true
+  self.Config.Rewards.Random = false
+  self.Config.Rewards.Packs = {
+  	["wood"] = {
+  		{"Wood", 10000},
+  		{"Hazmat Gloves", 1}
+  	},
+  	["lanterns"] = {
+  		{"Lantern", 1},
+  		{"Lantern", 1},
+  		{"Lantern", 1}
+  	}
+  }
+  
+  
   self.Config.AutoArena_Settings = {}
-  self.Config.AutoArena_Settings.MinimumPlayers = 2
-  self.Config.AutoArena_Settings.MaximumPlayers = 10
+  self.Config.AutoArena_Settings["MinimumPlayers"] = 2
+  self.Config.AutoArena_Settings["MaximumPlayers"] = 10
+  self.Config.AutoArena_Settings["CancelArenaTime"] = 360
+  self.Config.AutoArena_Settings["WaitToStartTime"] = 30
+  self.Config.AutoArena_Settings["ArenaLimitTime"] = 1800
+  self.Config.AutoArena_Settings["ArenasInterval"] = 1800
+  self.Config.AutoArena_Settings["CloseOnStart"] = true
   
   self.Config.authLevel = 1
   self.Config.SpawnImmunity = 4
   self.Config.RandomPack = true
   self.Config.DefaultPack = 1
   self.Config.KillLimit = 5000
+  
   self.Config.Packs =
   {
     {belt = {{"Thompson"},{"Medical Syringe", 1}}, armor = {"Hazmat Boots", "Hazmat Jacket", "Hazmat Gloves", "Hazmat Pants"}, backpack = {{"Pistol Bullet", 250}}},
@@ -423,7 +513,7 @@ end
 
 local msgNumber = 1
 function PLUGIN:DisplayKillMessage(player)
-  rust.SendChatMessage(player, "Deathmatch", self.Config.KillMessages[msgNumber])
+  rust.SendChatMessage(player, self.Config.ArenaGame, self.Config.KillMessages[msgNumber])
   msgNumber = (msgNumber % #self.Config.KillMessages) + 1
 end
 
