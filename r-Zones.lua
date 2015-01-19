@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-Zones"
 PLUGIN.Title = "r-Zones"
-PLUGIN.Version = V(1, 0, 11)
+PLUGIN.Version = V(1, 1, 2)
 PLUGIN.Description = "Manage zones"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -50,10 +50,13 @@ function PLUGIN:InitZones()
 end
  
 function PLUGIN:OnServerInitialized()
-	status, err = pcall( new, UnityEngine.Vector3._type, nil)
+    pcall(new, UnityEngine.Vector3._type, nil)
+    pcall(new, UnityEngine.Quaternion._type , nil)
+    pcall(new, Rust.DamageTypeList._type , nil )
+	emptyDamageType = new( Rust.DamageTypeList._type, nil)
     nulVector3 = new( UnityEngine.Vector3._type, nil )
-    status, err = pcall(function () self:InitZones() end)
-end 
+    self:InitZones()
+end
 ------------------------------------------------------------------------
 
 ------------------------------------------------------------------------
@@ -115,7 +118,7 @@ function PLUGIN:refreshPlayers()
 		PlayersZones[player] = {}
 		self:UpdatesPlayerFlags(player)
 	end
-		allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+		allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
 		for i=0, allRadiationZone.Length-1 do
 			if(RadiationZones[allRadiationZone[i]]) then
 				if(allRadiationZone[i].entityContents.Count > 0) then
@@ -134,10 +137,11 @@ end
 -- resetZones() => shutdown all custom zones
 --------------------------------------------------------------------
 local function resetZones()
-	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
 	for i=0, allRadiationZone.Length-1 do
 		if(RadiationZones[allRadiationZone[i]]) then
-			allRadiationZone[i]:RemoveObject(allRadiationZone[i].gameObject)
+			arr = util.TableToArray( { allRadiationZone[i].gameObject } )
+			UnityEngine.Object.Destroy.methodarray[1]:Invoke( nil , arr)
 		end
 	end
 	RadiationZones = {}
@@ -154,11 +158,12 @@ function PLUGIN:DeleteZone(zonenum)
 	newpos.x = zone.p.x
 	newpos.y = zone.p.y
 	newpos.z = zone.p.z
-	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
 	for i=0, allRadiationZone.Length-1 do
-		if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type)) then
+		if(allRadiationZone[i].gameObject.name == "Zone Manager") then
 			if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.x == newpos.x and allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.z == newpos.z) then
-				allRadiationZone[i]:RemoveObject(allRadiationZone[i].gameObject)
+				arr = util.TableToArray( { allRadiationZone[i].gameObject } )
+				UnityEngine.Object.Destroy.methodarray[1]:Invoke( nil , arr)
 			end
 		end
 	end
@@ -265,12 +270,12 @@ local function getNewZoneFromArgs(args)
 	zone_name = args[0]
 	if(tonumber(args[1])==nil) then return false, "Invalid Radius, needs to be a number" end
 	zone_radius = tonumber(args[1])
-	if(args[2] == "default" or args[2] == "") then
+	if(args[2] == "default" or args[2] == "" or args[2] == " ") then
 		zone_enter = "default"
 	else
 		zone_enter = args[2]
 	end
-	if(args[3] == "default" or args[3] == "") then
+	if(args[3] == "default" or args[3] == "" or args[3] == " ") then
 		zone_leave = "default"
 	else
 		zone_leave = args[3]
@@ -375,7 +380,7 @@ function PLUGIN:cmdZoneDelete(player,cmd,args)
 	self:DeleteZone(args[0])
 	ZonesData[tostring(args[0])] = nil
 	self:SaveData()
-	rust.SendChatMessage(player,"SERVER","Zone n°" .. args[0] .. " deleted")
+	rust.SendChatMessage(player,"SERVER","Zone nâˆž" .. args[0] .. " deleted")
 end
 function PLUGIN:cmdZoneAdd(player,cmd,args)
 	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Settings.authLevel) then
@@ -453,20 +458,20 @@ end
 function PLUGIN:OnEntityAttacked(entity,hitinfo)
 	if(entity:ToPlayer()) then
 		if( (entity:ToPlayer():IsSleeping()) and hasFlag(entity:ToPlayer(),"-sleepgod") ) then
-			hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+			hitinfo.damageTypes = emptyDamageType
 			hitinfo.DoHitEffects = false
 			hitinfo.HitMaterial = 0
 			return
 		elseif(not entity:ToPlayer():IsSleeping() and hitinfo.Initiator) then
 			if(hitinfo.Initiator:ToPlayer()) then
 				if(hasFlag(entity:ToPlayer(),"-pvpgod")) then
-					hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+					hitinfo.damageTypes = emptyDamageType
 					hitinfo.DoHitEffects = false
 					hitinfo.HitMaterial = 0
 					return
 				end
 			elseif(hasFlag(entity:ToPlayer(),"-pvegod")) then
-				hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+				hitinfo.damageTypes = emptyDamageType
 				hitinfo.DoHitEffects = false
 				hitinfo.HitMaterial = 0
 				return
@@ -475,7 +480,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
 	elseif(entity:GetComponent("BuildingBlock") or entity:GetComponent("WorldItem")) then
 		if(hitinfo ~= nil and hitinfo.Initiator and hitinfo.Initiator:ToPlayer()) then
 			if(hasFlag(hitinfo.Initiator:ToPlayer(),"-undestr")) then
-				hitinfo.damageTypes:Set( hitinfo.damageTypes:GetMajorityDamageType(), 0 )
+				hitinfo.damageTypes = emptyDamageType
 				hitinfo.DoHitEffects = false
 				hitinfo.HitMaterial = 0
 				return
@@ -542,12 +547,12 @@ end
 -- No return behavior
 -- -----------------------------------------------------------------------------
 function PLUGIN:OnEntityEnter(triggerbase,entity)
-	if(triggerbase:GetComponent(global.TriggerRadiation._type)) then
+	if(triggerbase:GetComponent(global.TriggerBase._type)) then
 		if(entity:GetComponentInParent(global.BasePlayer._type)) then
-			if(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)]) then
-				if(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)].enter  ~= "default") then
-					rust.SendChatMessage(entity,tostring(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)].enter))
-					self:addPlayerZone(entity:GetComponentInParent(global.BasePlayer._type),triggerbase:GetComponent(global.TriggerRadiation._type))
+			if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)]) then
+				self:addPlayerZone(entity:GetComponentInParent(global.BasePlayer._type),triggerbase:GetComponent(global.TriggerBase._type))
+				if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].enter  ~= "default") then
+					rust.SendChatMessage(entity,tostring(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].enter))
 				end
 			end
 		end
@@ -563,12 +568,12 @@ end
 -- No return behavior
 -- -----------------------------------------------------------------------------
 function PLUGIN:OnEntityLeave(triggerbase,entity)
-	if(triggerbase:GetComponent(global.TriggerRadiation._type)) then
+	if(triggerbase:GetComponent(global.TriggerBase._type)) then
 		if(entity:GetComponentInParent(global.BasePlayer._type)) then
-			if(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)]) then
-				if(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)].leave  ~= "default") then
-					rust.SendChatMessage(entity,tostring(RadiationZones[triggerbase:GetComponent(global.TriggerRadiation._type)].leave))
-					self:removePlayerZone(entity:GetComponentInParent(global.BasePlayer._type),triggerbase:GetComponent(global.TriggerRadiation._type))
+			if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)]) then
+				self:removePlayerZone(entity:GetComponentInParent(global.BasePlayer._type),triggerbase:GetComponent(global.TriggerBase._type))
+				if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].leave  ~= "default") then
+					rust.SendChatMessage(entity,tostring(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].leave))
 				end
 			end
 		end
@@ -582,6 +587,29 @@ end
 -- -----------------------------------------------------------------------------
 -- -----------------------------------------------------------------------------
 
+local function newTriggerBase(x,y,z,rad,radiation)
+	trigger = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+	
+	newgameobj = new( UnityEngine.GameObject._type , nil )
+	newpos = newgameobj:GetComponentInParent(UnityEngine.Transform._type).position
+	newgameobj.layer = UnityEngine.LayerMask.NameToLayer("Trigger")
+	newpos.x = x
+	newpos.y = y
+	newpos.z = z
+	newgameobj.name = "Zone Manager"
+	newgameobj:GetComponentInParent(UnityEngine.Transform._type).position = newpos
+	newgameobj:AddComponent(UnityEngine.SphereCollider._type)
+	newgameobj:GetComponentInParent(UnityEngine.SphereCollider._type).radius = rad
+	newgameobj:SetActive(true);
+	if(radiation ~= nil) then
+		newgameobj:AddComponent(global.TriggerRadiation._type)
+		newgameobj:GetComponentInParent(global.TriggerRadiation._type).RadiationAmount = radiation
+	else
+		newgameobj:AddComponent(global.TriggerBase._type)
+	end	
+	newgameobj:GetComponentInParent(global.TriggerBase._type).interestLayers = trigger[trigger.Length-1]:GetComponent(global.TriggerBase._type).interestLayers
+	return newgameobj:GetComponentInParent(global.TriggerBase._type)
+end 
 
 -- -----------------------------------------------------------------------------
 -- PLUGIN:isZone(zone)
@@ -592,21 +620,16 @@ function PLUGIN:isZone(zone)
 	newpos.x = zone.p.x
 	newpos.y = zone.p.y
 	newpos.z = zone.p.z
-	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
+	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
 	for i=0, allRadiationZone.Length-1 do
-		if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type)) then
+		if(allRadiationZone[i].gameObject.name == "Zone Manager") then
 			if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.x == newpos.x and allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.z == newpos.z) then
-				allRadiationZone[i].RadiationAmount = 0
-				allRadiationZone[i]:GetComponent(UnityEngine.SphereCollider._type).radius = zone.r
 				RadiationZones[allRadiationZone[i]] = {
 					name=zone.name,
 					enter=zone.em,
 					leave=zone.lm,
 					options=zone.o,
 				}
-				if(zone.o["-radiation"]) then
-					allRadiationZone[i].RadiationAmount = zone.o["-radiation"]
-				end
 				return true
 			end
 		end
@@ -624,30 +647,20 @@ function PLUGIN:CreateZone(zone)
 	newpos.x = zone.p.x
 	newpos.y = zone.p.y
 	newpos.z = zone.p.z
-	arr = util.TableToArray( { "autospawn/monument/generic/random_radiation", newpos, new( UnityEngine.Quaternion._type , nil ), true } )
-	local newBaseEntity = global.GameManager.CreatePrefab.methodarray[0]:Invoke(nil,arr)
+	local newBaseEntity = false
+	if(zone.o["-radiation"]) then
+		newBaseEntity = newTriggerBase(zone.p.x,zone.p.y,zone.p.z,zone.r,zone.o["-radiation"])
+	else
+		newBaseEntity = newTriggerBase(zone.p.x,zone.p.y,zone.p.z,zone.r,nil)
+	end
 	if(not newBaseEntity) then
 		return false, "couldnt create a new zone"
 	end
-	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerRadiation._type)
-	for i=0, allRadiationZone.Length-1 do
-		if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type) and allRadiationZone[i]:GetComponent(UnityEngine.SphereCollider._type)) then
-			if(allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.x == newpos.x and allRadiationZone[i]:GetComponent(UnityEngine.Transform._type).transform.position.z == newpos.z) then
-				allRadiationZone[i].RadiationAmount = 0
-				allRadiationZone[i]:GetComponent(UnityEngine.SphereCollider._type).radius = zone.r
-				RadiationZones[allRadiationZone[i]] = {
-					name=zone.n,
-					enter=zone.em,
-					leave=zone.lm,
-					options=zone.o
-				}
-				if(zone.o["-radiation"]) then
-					allRadiationZone[i].RadiationAmount = zone.o["-radiation"]
-				end
-				print("Successfully created zone name: " .. tostring(zone.n))
-				return true
-			end
-		end
-	end
-	return false, "zone was created but couldn't set any arguments"
+	RadiationZones[newBaseEntity] = {
+			name=zone.n,
+			enter=zone.em,
+			leave=zone.lm,
+			options=zone.o
+	}
+	return true
 end
