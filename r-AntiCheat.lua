@@ -1,11 +1,11 @@
 PLUGIN.Name = "r-AntiCheat"
 PLUGIN.Title = "r-AntiCheat"
-PLUGIN.Version = V(0, 0, 13)
+PLUGIN.Version = V(0, 0, 15)
 PLUGIN.Description = "Anti-Cheat system for Rust 2.0"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
  
-
+ 
 
 function PLUGIN:Init()
 	--------------------------------------------------------------------
@@ -32,7 +32,7 @@ function PLUGIN:Init()
 	--self:LoadDefaultConfig()
 	--------------------------------------------------------------------
 	
-	self:checkAllPlayers()
+	
 end
 
 function PLUGIN:OnServerInitialized()
@@ -53,6 +53,8 @@ function PLUGIN:OnServerInitialized()
     	return false
     end
 	--------------------------------------------------------------------
+	
+	self:checkAllPlayers()
 end
 --------------------------------------------------------------------
 -- Local Functions --
@@ -330,7 +332,7 @@ function PLUGIN:LoadDefaultConfig()
 	self.Config.AntiCheat.antiSuperJump = {}
 	self.Config.AntiCheat.antiSuperJump.activated = true
 	-- speedPerSecond is the max Height speed that is allowed per second. Max speed for normal players is 1-2m/s
-	self.Config.AntiCheat.antiSuperJump.speedPerSecond = 3
+	self.Config.AntiCheat.antiSuperJump.speedPerSecond = 5
 	self.Config.AntiCheat.antiSuperJump.ignoreSpeed = 100
 	self.Config.AntiCheat.antiSuperJump.detectionsBeforePunish = 2
 	self.Config.AntiCheat.antiSuperJump.DetectionMessage = "{player} jumped very high ({height}m)"
@@ -458,12 +460,12 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 		if(self.Config.AntiCheat.antiSpeedHack.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.banMessage,player,distY,dist2d)
 			self:SendBan(player,acType,dist2d,distY)
-			ebs:Ban(false, player, "r-Speedhack ("..dist2d.."m/s)", false)
+			ebs:Ban(nil, player, "r-Speedhack ("..dist2d.."m/s)", false)
 			
 		elseif(self.Config.AntiCheat.antiSpeedHack.punish.byKick) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHack.punish.kickMessage,player,distY,dist2d)
 			self:SendKick(player,acType,dist2d,distY)
-			ebs:Kick(false, player, "r-Speedhack ("..dist2d.."m/s)")
+			ebs:Kick(nil, player, "r-Speedhack ("..dist2d.."m/s)")
 			
 		end
 		RemovePlayerCheck(player)
@@ -471,12 +473,12 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 		if(self.Config.AntiCheat.antiSuperJump.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.banMessage,player,distY,dist2d)
 			self:SendBan(player,acType,dist2d,distY)
-			ebs:Ban(false, player, "r-Superjump ("..distY.."m/s)", false)
+			ebs:Ban(nil, player, "r-Superjump ("..distY.."m/s)", false)
 			
 		elseif(self.Config.AntiCheat.antiSuperJump.punish.byKick) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSuperJump.punish.kickMessage,player,distY,dist2d)
 			self:SendKick(player,acType,dist2d,distY)
-			ebs:Kick(false, player, "r-Superjump ("..distY.."m/s)")
+			ebs:Kick(nil, player, "r-Superjump ("..distY.."m/s)")
 			
 		end
 		RemovePlayerCheck(player)
@@ -484,12 +486,12 @@ function PLUGIN:punishPlayer(player,acType,dist2d,distY)
 		if(self.Config.AntiCheat.antiSpeedHit.punish.byBan) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.banMessage,player,distY,dist2d,PlayerCheck[player].hitHack.hitsLastSecond)
 			self:SendBan(player,acType,dist2d,distY)
-			ebs:Ban(false, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)", false)
+			ebs:Ban(nil, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)", false)
 			
 		elseif(self.Config.AntiCheat.antiSpeedHit.punish.byKick) then
 			msg = replaceMessage(self.Config.AntiCheat.antiSpeedHit.punish.kickMessage,player,distY,dist2d,PlayerCheck[player].hitHack.hitsLastSecond)
 			self:SendKick(player,acType,dist2d,distY)
-			ebs:Kick(false, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)")
+			ebs:Kick(nil, player, "r-SuperSpeedHit ("..PlayerCheck[player].hitHack.hitsLastSecond.."m/s)")
 		end
 		RemovePlayerCheck(player)
 	end
