@@ -50,6 +50,10 @@ function PLUGIN:LoadDefaultTables()
 	BuildingConfig["foundation"]["isFloor"] = true
 	BuildingConfig["foundation"]["prefab"] = "build/foundation"
 	
+	BuildingConfig["foundation.steps"] = {}
+	BuildingConfig["foundation.steps"]["isFloor"] = true
+	BuildingConfig["foundation.steps"]["prefab"] = "build/foundation.steps"
+	
 	BuildingConfig["wall"] = {}
 	BuildingConfig["wall"]["isFloor"] = false
 	BuildingConfig["wall"]["prefab"] = "build/wall"
@@ -88,6 +92,7 @@ function PLUGIN:LoadDefaultTables()
 ------------------------------------------------------------------------
 	BlockToBuilding = {}
 	BlockToBuilding["build/foundation"] = "foundation"
+	BlockToBuilding["build/foundation.steps"] = "foundation.steps"
 	BlockToBuilding["build/wall"] = "wall"
 	BlockToBuilding["build/floor"] = "floor"
 	BlockToBuilding["build/wall.window"] = "window"
@@ -105,6 +110,14 @@ function PLUGIN:LoadDefaultConfig()
     self.Config["foundation"]["build"] = "true"
     self.Config["foundation"]["spawn"] = "true"
     self.Config["foundation"]["grade"] = "5"
+    
+     self.Config["foundation.steps"]= {}
+    self.Config["foundation.steps"]["health"] = "800"
+    self.Config["foundation.steps"]["authlevel"] = "0"
+    self.Config["foundation.steps"]["foundationtofoundationonly"] = "true"
+    self.Config["foundation.steps"]["build"] = "true"
+    self.Config["foundation.steps"]["spawn"] = "true"
+    self.Config["foundation.steps"]["grade"] = "5"
     
     self.Config["wall"] = {}
     self.Config["wall"]["health"] = "100"
