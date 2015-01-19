@@ -1,6 +1,6 @@
 PLUGIN.Name = "buildingowners"
 PLUGIN.Title = "Building Owners"
-PLUGIN.Version = V(1, 3, 1)
+PLUGIN.Version = V(1, 3, 2)
 PLUGIN.Description = "Manage building owners"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
