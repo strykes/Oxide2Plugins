@@ -1,12 +1,12 @@
 PLUGIN.Name = "r-deathmessages"
 PLUGIN.Title = "Death Messages"
-PLUGIN.Version = V(0, 2, 9)
+PLUGIN.Version = V(0, 2, 12)
 PLUGIN.Description = "Death Messages"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
  
 function PLUGIN:Init()
-end
+end 
 function PLUGIN:LoadDefaultConfig()
 	self.Config.Settings = {}
 	self.Config.Settings.animaldeaths = true
@@ -71,7 +71,7 @@ function PLUGIN:OnEntityDeath(entity, hitinfo)
 	else
 		if(entity:ToPlayer()) then
 			self:PlayerDeath(entity,hitinfo)
-		elseif(entity:GetComponent("BaseAnimal")) then
+		elseif(entity:GetComponent("BaseNPC")) then
 			self:EntityDeath(entity:GetComponent("BaseEntity"),hitinfo)
 		end
 	end
@@ -112,7 +112,7 @@ function PLUGIN:EntityDeath(victim,hitinfo)
 	if(self.Config.Settings.animaldeaths) then
 		if(hitinfo.Initiator:ToPlayer()) then
 			local attacker = hitinfo.Initiator:ToPlayer()
-			local animal = victim:GetComponent("BaseAnimal")
+			local animal = victim:GetComponent("BaseNPC")
 			tags.killer = attacker.displayName
 			tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
 			tags.killerid = rust.UserIDFromPlayer(attacker)
@@ -130,6 +130,7 @@ function PLUGIN:EntityDeath(victim,hitinfo)
 end
 function PLUGIN:PlayerDeath(victim,hitinfo)
 	local tags = {}
+	
 	if(tostring(hitinfo.damageTypes:GetMajorityDamageType()) == tostring(Rust.DamageType.Suicide)) then
 		if(self.Config.SuicideDeaths) then
 			tags.killed = victim.displayName
@@ -139,15 +140,19 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 			self:BuildDeathMessage(tags,self.Config.SuicideDeathsMessage)
 		end
 	elseif(hitinfo.Initiator:ToPlayer()) then
-		if(self.Config.Settings.players) then
-			local attacker = hitinfo.Initiator:ToPlayer()
-			if(attacker == victim) then
-				tags.killed = victim.displayName
-				tags.killedid = rust.UserIDFromPlayer(victim)
+		attacker = hitinfo.Initiator:ToPlayer()
+		if(attacker == victim) then
+			if(self.Config.naturalcausesdeath) then
 				tags.killer = getDamageType(victim.lastDamage)
-				tags.type = "naturalcause"
-				self:BuildDeathMessage(tags,self.Config.naturalcausesdeathmessages[tags.killer])
-			else
+				if(self.Config.naturalcausesdeathmessages[tags.killer]) then
+					tags.killed = victim.displayName
+					tags.killedid = rust.UserIDFromPlayer(victim)
+					tags.type = "naturalcause"
+					self:BuildDeathMessage(tags,self.Config.naturalcausesdeathmessages[tags.killer])
+				end
+			end
+		else
+			if(self.Config.Settings.players) then
 				tags.killer = attacker.displayName
 				tags.killerid = rust.UserIDFromPlayer(attacker)
 				tags.killed = victim.displayName
@@ -163,10 +168,10 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 				end
 			end
 		end
-	elseif(hitinfo.Initiator:GetComponentInParent(global.BaseAnimal._type)) then
+	elseif(hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)) then
 		if(self.Config.Settings.animalkills) then
 			local attacker = hitinfo.Initiator
-			local animal = hitinfo.Initiator:GetComponentInParent(global.BaseAnimal._type)
+			local animal = hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)
 			
 			local tempname = string.sub(attacker.corpseEntity,13)
 			local tempname = string.sub(tempname,0,string.find(tempname,"_")-1)
