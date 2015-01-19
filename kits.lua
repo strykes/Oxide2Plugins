@@ -1,21 +1,25 @@
 PLUGIN.Name = "kits"
 PLUGIN.Title = "Kits"
-PLUGIN.Version = V(1, 0, 2)
+PLUGIN.Version = V(1, 1, 0)
 PLUGIN.Description = "Kits"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
- 
+
+local Table = {} 
 function PLUGIN:Init()
 	self:LoadSavedData()
 	command.AddChatCommand( "kit",self.Object, "cmdKit" )
 end
+function PLUGIN:OnServerInitialized()
+	self:InitializeTable()
+end
 function PLUGIN:InitializeTable()
-	self.Table = {}
+	Table = {}
 	local itemlist = global.ItemManager.GetItemDefinitions();
 	local it = itemlist:GetEnumerator()
 	while (it:MoveNext()) do
 		local correctname = string.lower(it.Current.displayname)
-		self.Table[correctname] = tostring(it.Current.shortname)
+		Table[correctname] = tostring(it.Current.shortname)
 	end
 end
 local function ChatMessage(player,msg)
@@ -26,15 +30,15 @@ function PLUGIN:LoadDefaultConfig()
 		["starter"] = {
 			description = "infinite kit",
 			main = {
-				{ name = "Foundation", amount = 1 },
+				{ name = "Building Plan", amount = 1 },
 				{ name = "Pistol Bullet", amount = 250 }
 			},
 			wear = {
-				{ name = "Hazmat Helmet", amount = 1 },
-				{ name = "Hazmat Jacket", amount = 1 },
-				{ name = "Hazmat Gloves", amount = 1 },
-				{ name = "Hazmat Pants", amount = 1 },
-				{ name = "Hazmat Boots", amount = 1 }
+				{ name = "Hazmat Helmet BP", amount = 1 },
+				{ name = "Hazmat Jacket BP", amount = 1 },
+				{ name = "Hazmat Gloves BP", amount = 1 },
+				{ name = "Hazmat Pants BP", amount = 1 },
+				{ name = "Hazmat Boots BP", amount = 1 }
 			},
 			belt = {
 				{ name = "Revolver", amount = 1 },
@@ -44,7 +48,7 @@ function PLUGIN:LoadDefaultConfig()
 		["dayly"] = {
 			cooldown = 86400,
 			main = {
-				{ name = "Foundation", amount = 1 },
+				{ name = "Building Plan", amount = 1 },
 				{ name = "Pistol Bullet", amount = 250 }
 			},
 			wear = {
@@ -63,7 +67,7 @@ function PLUGIN:LoadDefaultConfig()
 			max = 2,
 			description = "Only 2 kits",
 			main = {
-				{ name = "Foundation", amount = 1 },
+				{ name = "Building Plan", amount = 1 },
 				{ name = "Pistol Bullet", amount = 250 }
 			},
 			wear = {
@@ -82,7 +86,7 @@ function PLUGIN:LoadDefaultConfig()
 			moderator = true,
 			description = "for moderators",
 			main = {
-				{ name = "Foundation", amount = 1 },
+				{ name = "Building Plan", amount = 1 },
 				{ name = "Pistol Bullet", amount = 250 }
 			},
 			wear = {
@@ -101,7 +105,7 @@ function PLUGIN:LoadDefaultConfig()
 			admin = true,
 			description = "for admins",
 			main = {
-				{ name = "Foundation", amount = 1 },
+				{ name = "Building Plan", amount = 1 },
 				{ name = "Pistol Bullet", amount = 250 }
 			},
 			wear = {
@@ -140,11 +144,17 @@ function PLUGIN:LoadDefaultConfig()
 		NoKitLeft               = "You don't have any kits left for this kit",
 		NoPermissionKit         = "You don't have enough permissions to use this kit",
 		CoolDown                = "This kit is still in cooldown",
-		HelpMessage				= "/kit - to get the list of kits"
+		HelpMessage				= "/kit - to get the list of kits",
+		InvalidItem				= "Invalid item in kit",
 	}
 	self.Config.AuthLevel = 1
 end
-
+local function getItem(iname)
+	if(string.sub(string.lower(iname),-3) == " bp") then
+		return string.sub(string.lower(iname),0,-4), true
+	end
+	return string.lower(iname), false
+end
 function PLUGIN:LoadSavedData()
     KitData = datafile.GetDataTable( "kits" )
     KitData = KitData or {}
@@ -165,7 +175,6 @@ function PLUGIN:Count( tbl )
   return count
 end
 function PLUGIN:cmdKit( player, cmd, args )
-	if(not self.Table) then self:InitializeTable() end
 	local userID = tostring(rust.UserIDFromPlayer( player ))
 	local authLevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
 	if(args.Length == 0) then
@@ -206,7 +215,6 @@ function PLUGIN:cmdKit( player, cmd, args )
 end
 function PLUGIN:RedeemAutoKit( player )
 	if(not self.Config.AutoKits.allowed) then return end
-	if(not self.Table) then self:InitializeTable() end
 	local data = self.Config.AutoKits
 	local inv = player.inventory
 	if(inv:AllItems().Length > #self.Config.AutoKits.RustDefaultKit) then
@@ -229,7 +237,7 @@ function PLUGIN:RedeemAutoKit( player )
 		for i,subdata in pairs(data.main) do
 			if(subdata.name and subdata.amount) then
 				local giveitem, err = self:GiveItem(inv,subdata.name,subdata.amount,"main")
-				if(not giveitem) then print("Error while giving kit " .. kit .. ": " .. err) end
+				if(not giveitem) then print("Error while giving kit AutoKit: " .. err) end
 			end
 		end
 	end
@@ -237,7 +245,7 @@ function PLUGIN:RedeemAutoKit( player )
 		for i,subdata in pairs(data.belt) do
 			if(subdata.name and subdata.amount) then
 				local giveitem, err = self:GiveItem(inv,subdata.name,subdata.amount,"belt")
-				if(not giveitem) then print("Error while giving kit " .. kit .. ": " .. err) end
+				if(not giveitem) then print("Error while giving kit AutoKit: " .. err) end
 			end
 		end
 	end
@@ -245,14 +253,12 @@ function PLUGIN:RedeemAutoKit( player )
 		for i,subdata in pairs(data.wear) do
 			if(subdata.name and subdata.amount) then
 				local giveitem, err = self:GiveItem(inv,subdata.name,subdata.amount,"wear")
-				if(not giveitem) then print("Error while giving kit " .. kit .. ": " .. err) end
+				if(not giveitem) then print("Error while giving kit AutoKit: " .. err) end
 			end
 		end
 	end
 end
 function PLUGIN:RedeemKit( player, kit, userID )
-
-	if(not self.Table) then self:InitializeTable() end
 	local data = self.Config.Kits[kit]
 	local inv = player.inventory
 	
@@ -343,11 +349,11 @@ function PLUGIN:PermissionsCheck(player)
     end
 end
 
-function PLUGIN:GiveItem(inv,name,amount,type)
+function PLUGIN:GiveItem(inv,rawname,amount,type)
 	local itemname = false
-	name = string.lower(name)
-	if(self.Table[name]) then
-		itemname = self.Table[name]
+	name, isBP = getItem(rawname)
+	if(Table[name]) then
+		itemname = Table[name]
 	else
 		itemname = name
 	end
@@ -364,7 +370,12 @@ function PLUGIN:GiveItem(inv,name,amount,type)
 	else
 		return false, "wrong type: belt, main or wear"
 	end
-	local giveitem = global.ItemManager.CreateByName(itemname,amount)
+	arr = util.TableToArray( { itemname } )
+	definition = global.ItemManager.FindItemDefinition.methodarray[1]:Invoke(nil, arr )
+	if(not definition) then
+		return false, self.Config.Messages.InvalidItem .. ": " .. tostring(itemname)
+	end
+	local giveitem = global.ItemManager.CreateByItemID(definition.itemid,amount,isBP)
 	if(not giveitem) then
 		return false, itemname .. " is not a valid item name"
 	end
