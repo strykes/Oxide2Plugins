@@ -1,6 +1,6 @@
 PLUGIN.Name = "RustDB"
 PLUGIN.Title = "RustDB"
-PLUGIN.Version = V(1, 2, 0)
+PLUGIN.Version = V(1, 2, 2)
 PLUGIN.Description = "Use RustDB to protect your server and share your bans"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -8,7 +8,8 @@ PLUGIN.HasConfig = true
 function PLUGIN:Init()
 	--self.Config = {}
 	--self:LoadDefaultConfig()
-	command.AddChatCommand( "rustdb", self.Object, "cmdRustDB" )
+	command.AddChatCommand( "rustdb", self.Plugin, "cmdRustDB" )
+	ServerInitialized = false
 end
  
 function urlencode(str)
@@ -24,6 +25,7 @@ end
 
 
 function PLUGIN:OnServerInitialized()
+	ServerInitialized = true
 	pluginList = plugins.GetAll()
 	for i = 0, pluginList.Length - 1 do
         local pluginTitle = pluginList[i].Object.Title
@@ -60,7 +62,7 @@ function PLUGIN:cmdRustDB(player,cmd,args)
 		end
 		print(response)
 		rust.SendChatMessage(player,"[RustDB]",self.Config.Messages.lookIntoConsole)
-	end, self.Object)
+	end, self.Plugin)
 end
 function PLUGIN:sendToAdmins(msg)
 	itPlayerList = global.BasePlayer.activePlayerList:GetEnumerator()
@@ -85,12 +87,12 @@ function PLUGIN:RustDBBan( sourcePlayer, name, steamID, reason )
 		return
 	end
 	if(sourcePlayer and sourcePlayer ~= nil) then
-		reason = reason .. "(" .. tostring(sourcePlayer.displayName) .. ")"
+		reason = reason .. "(" .. sourcePlayer.displayName .. ")"
 	end
 	requestData = "action=ban&steamid="..urlencode(tostring(steamID)).."&name="..urlencode(tostring(name)).."&reason="..urlencode(tostring(reason)).."&ip="..tostring(self.Config.serverIP).."&port="..tostring(self.Config.serverPort)
 	local r = webrequests.EnqueueGet("http://rustdb.net/api2.php?"..requestData, function(code, response)
 		self:rustDBAnswers(response)
-	end, self.Object)
+	end, self.Plugin)
 end
 
 function PLUGIN:RustDBUnban( steamID )
@@ -103,7 +105,7 @@ function PLUGIN:RustDBUnban( steamID )
 	requestData = "action=unban&steamid="..urlencode(tostring(steamID)).."&ip="..tostring(self.Config.serverIP).."&port="..tostring(self.Config.serverPort)
 	local r = webrequests.EnqueueGet("http://rustdb.net/api2.php?"..requestData, function(code, response)
 		self:rustDBAnswers(response)
-	end, self.Object)
+	end, self.Plugin)
 end
 function PLUGIN:BuildServerTags(tags) tags:Add("rustdb") end
 function PLUGIN:OnPlayerInit( player )
@@ -137,7 +139,7 @@ function PLUGIN:OnPlayerInit( player )
 				end
 			end
 			self:rustDBAnswers(response)
-		end, self.Object)  
+		end, self.Plugin)  
 	end
 end
 
@@ -146,7 +148,7 @@ function PLUGIN:OnRunCommand(arg, wantsfeedback)
     if (not arg) then return end
     if (not arg.cmd) then return end
     if (not arg.cmd.name) then return end
-	
+	if(not ServerInitialized) then return end
 	if(arg.cmd.name == "ban" or arg.cmd.name == "banid") then
 		if(arg.Args.Length < 2) then arg:ReplyWith(self.Config.Messages.youMustSpecifyAReason) return end
 		player = nil
