@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-deathmessages"
 PLUGIN.Title = "Death Messages"
-PLUGIN.Version = V(0, 2, 12)
+PLUGIN.Version = V(0, 2, 14)
 PLUGIN.Description = "Death Messages"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -110,7 +110,7 @@ end
 function PLUGIN:EntityDeath(victim,hitinfo)
 	local tags = {}
 	if(self.Config.Settings.animaldeaths) then
-		if(hitinfo.Initiator:ToPlayer()) then
+		if(hitinfo.Initiator ~= nil and hitinfo.Initiator:ToPlayer()) then
 			local attacker = hitinfo.Initiator:ToPlayer()
 			local animal = victim:GetComponent("BaseNPC")
 			tags.killer = attacker.displayName
@@ -139,56 +139,58 @@ function PLUGIN:PlayerDeath(victim,hitinfo)
 			tags.type = "naturalcause"
 			self:BuildDeathMessage(tags,self.Config.SuicideDeathsMessage)
 		end
-	elseif(hitinfo.Initiator:ToPlayer()) then
-		attacker = hitinfo.Initiator:ToPlayer()
-		if(attacker == victim) then
-			if(self.Config.naturalcausesdeath) then
-				tags.killer = getDamageType(victim.lastDamage)
-				if(self.Config.naturalcausesdeathmessages[tags.killer]) then
+	elseif(hitinfo.Initiator ~= nil) then
+		if(hitinfo.Initiator:ToPlayer()) then
+			attacker = hitinfo.Initiator:ToPlayer()
+			if(attacker == victim) then
+				if(self.Config.naturalcausesdeath) then
+					tags.killer = getDamageType(victim.lastDamage)
+					if(self.Config.naturalcausesdeathmessages[tags.killer]) then
+						tags.killed = victim.displayName
+						tags.killedid = rust.UserIDFromPlayer(victim)
+						tags.type = "naturalcause"
+						self:BuildDeathMessage(tags,self.Config.naturalcausesdeathmessages[tags.killer])
+					end
+				end
+			else
+				if(self.Config.Settings.players) then
+					tags.killer = attacker.displayName
+					tags.killerid = rust.UserIDFromPlayer(attacker)
 					tags.killed = victim.displayName
 					tags.killedid = rust.UserIDFromPlayer(victim)
-					tags.type = "naturalcause"
-					self:BuildDeathMessage(tags,self.Config.naturalcausesdeathmessages[tags.killer])
+					tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
+					tags.type = "pvp"
+					tags.weapon = getWeapon(hitinfo)
+					tags.distance = math.floor(self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position) + 0.5)
+					if(not victim:IsConnected()) then
+						self:BuildDeathMessage(tags,self.Config.playerDeathWhileSleepingMessage)
+					else
+						self:BuildDeathMessage(tags,self.Config.playerDeathMessage)
+					end
 				end
 			end
-		else
-			if(self.Config.Settings.players) then
-				tags.killer = attacker.displayName
-				tags.killerid = rust.UserIDFromPlayer(attacker)
+		elseif(hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)) then
+			if(self.Config.Settings.animalkills) then
+				local attacker = hitinfo.Initiator
+				local animal = hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)
+			
+				local tempname = string.sub(attacker.corpseEntity,13)
+				local tempname = string.sub(tempname,0,string.find(tempname,"_")-1)
+				tags.killer = tempname
+				tags.killerid = "npc"
 				tags.killed = victim.displayName
 				tags.killedid = rust.UserIDFromPlayer(victim)
 				tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
-				tags.type = "pvp"
+				tags.type = "pve"
 				tags.weapon = getWeapon(hitinfo)
-				tags.distance = math.floor(self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position) + 0.5)
+				tags.distance = self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position)
 				if(not victim:IsConnected()) then
-					self:BuildDeathMessage(tags,self.Config.playerDeathWhileSleepingMessage)
+					self:BuildDeathMessage(tags,self.Config.deathByEntityWhileSleepingMessage)
 				else
-					self:BuildDeathMessage(tags,self.Config.playerDeathMessage)
+					self:BuildDeathMessage(tags,self.Config.deathByEntityMessage)
 				end
-			end
+			end 
 		end
-	elseif(hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)) then
-		if(self.Config.Settings.animalkills) then
-			local attacker = hitinfo.Initiator
-			local animal = hitinfo.Initiator:GetComponentInParent(global.BaseNPC._type)
-			
-			local tempname = string.sub(attacker.corpseEntity,13)
-			local tempname = string.sub(tempname,0,string.find(tempname,"_")-1)
-			tags.killer = tempname
-			tags.killerid = "npc"
-			tags.killed = victim.displayName
-			tags.killedid = rust.UserIDFromPlayer(victim)
-			tags.bodypart = self:GetBodyPart(hitinfo.HitBone)
-			tags.type = "pve"
-			tags.weapon = getWeapon(hitinfo)
-			tags.distance = self:Distance3D(attacker.transform.position,victim:GetComponent("BaseEntity").transform.position)
-			if(not victim:IsConnected()) then
-				self:BuildDeathMessage(tags,self.Config.deathByEntityWhileSleepingMessage)
-			else
-				self:BuildDeathMessage(tags,self.Config.deathByEntityMessage)
-			end
-		end 
 	end
 end
 function PLUGIN:BuildDeathMessage(tags, str)
@@ -204,11 +206,13 @@ function PLUGIN:BuildDeathMessage(tags, str)
 	global.ConsoleSystem.Broadcast("chat.add \"" .. self.Config.ChatName .. "\" \"" .. customMessage .. "\"")
 end 
 function PLUGIN:SendToMysql(tags)
-	if(self.Config.Mysql.pve and tags.type == "pve") then
-		 webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=pve&killerid=" .. tags.killerid .. "&killedid="..tags.killedid.."&weapon="..tags.weapon.."&distance="..tags.distance.."&bodypart=".. tags.bodypart .."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Object)
-	elseif(self.Config.Mysql.pvp and tags.type == "pvp") then
-		webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=pvp&killerid=" .. tags.killerid .. "&killedid="..tags.killedid.."&weapon="..tags.weapon.."&distance="..tags.distance.."&bodypart=".. tags.bodypart .."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Object)
-	elseif(self.Config.Mysql.naturalcauses and tags.type == "naturalcause") then
-		webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=natural&killedid="..tags.killedid.."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Object)
+	if(self.Config.Mysql.key ~= nil and self.Config.Mysql.key ~= "") then
+		if(self.Config.Mysql.pve and tags.type == "pve") then
+			 webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=pve&killerid=" .. tags.killerid .. "&killedid="..tags.killedid.."&weapon="..tags.weapon.."&distance="..tags.distance.."&bodypart=".. tags.bodypart .."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Plugin)
+		elseif(self.Config.Mysql.pvp and tags.type == "pvp") then
+			webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=pvp&killerid=" .. tags.killerid .. "&killedid="..tags.killedid.."&weapon="..tags.weapon.."&distance="..tags.distance.."&bodypart=".. tags.bodypart .."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Plugin)
+		elseif(self.Config.Mysql.naturalcauses and tags.type == "naturalcause") then
+			webrequests.EnqueueGet(self.Config.Mysql.uploadpage .. "?key="..self.Config.Mysql.key.."&type=natural&killedid="..tags.killedid.."&killer="..tags.killer.."&killed="..tags.killed, function(code, response) end, self.Plugin)
+		end
 	end
 end
