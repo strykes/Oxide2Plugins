@@ -1,6 +1,6 @@
 PLUGIN.Name = "Spawns Database"
 PLUGIN.Title = "Spawns Database"
-PLUGIN.Version = V(1, 0, 2)
+PLUGIN.Version = V(1, 0, 3)
 PLUGIN.Description = "Set Custom Spawns"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -155,6 +155,7 @@ local function loadSpawnfile( filename )
 	end
 	if(empty) then return false, "This file doesn't exist or is empty" end
 	LoadedSpawns[filename] = {}
+
 	for k,v in pairs( DataFile ) do
 		if(k and v) then
 			LoadedSpawns[filename][tonumber(k)] = v
@@ -169,6 +170,19 @@ function PLUGIN:GetRandomSpawn( filename , max )
 	end
 	if(not LoadedSpawns[filename][max]) then return false, "This spawn number is out of range" end
 	return LoadedSpawns[filename][math.random(max)]
+end
+function PLUGIN:GetRandomSpawnVector3( filename , max )
+	if(not LoadedSpawns[filename]) then
+		local success, err = loadSpawnfile(filename)
+		if(not success) then return false, err end
+	end
+	if(not LoadedSpawns[filename][max]) then return false, "This spawn number is out of range" end
+	newPos = new( UnityEngine.Vector3._type, nil);
+	spawndata = LoadedSpawns[filename][math.random(max)]
+	newPos.x = spawndata.x
+	newPos.y = spawndata.y
+	newPos.z = spawndata.z
+	return newPos
 end
 function PLUGIN:GetSpawn( filename , number )
 	if(not LoadedSpawns[filename]) then
