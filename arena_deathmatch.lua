@@ -1,25 +1,19 @@
 PLUGIN.Name = "Arena: Deathmatch"
 PLUGIN.Title = "Arena: Deathmatch"
-PLUGIN.Version = V(1, 0, 0)
+PLUGIN.Version = V(1, 1, 3)
 PLUGIN.Description = "Arena Deathmatch converted from Oxide 1"
 PLUGIN.Author = "Reneb - Oxide 1 version by eDeloa"
 PLUGIN.HasConfig = true
-
+ 
 function PLUGIN:Init()
-    self.Config = {}
-    self:LoadDefaultConfig()
+	arena_loaded = false
 end
 
 function PLUGIN:OnServerInitialized()
-	local pluginList = plugins.GetAll()
-    for i = 0, pluginList.Length - 1 do
-        local pluginTitle = pluginList[i].Object.Title
-        if pluginTitle == "Spawns Database" then
-            spawns_plugin = pluginList[i].Object
-        elseif pluginTitle == "Arena" then
-        	arena_plugin = pluginList[i].Object
-        end
-    end
+
+spawns_plugin = plugins.Find("spawns")
+	arena_plugin = plugins.Find("arena")
+
     self.DeathmatchData = {}
 	self.DeathmatchData.Users = {}
 	self.DeathmatchData.IsChosen = false
@@ -29,17 +23,17 @@ function PLUGIN:OnServerInitialized()
     if(not spawns_plugin or not arena_plugin) then
    	  print("You must have the Spawns Database @ http://forum.rustoxide.com/plugins/spawns-database.720/")
    	  print("You must have the Arena Plugin")
-	  arena_loaded = false
+	  
 	  return
    	end
    	arena_loaded = true
    	self:InitializeTable()
-   	command.AddChatCommand( "deathmatch_pack", self.Object, "cmdDeathmatchPack")
-   	self.DeathmatchData.GameID = arena_plugin:RegisterArenaGame(self.Config.ArenaGame)
+   	command.AddChatCommand( "deathmatch_pack", self.Plugin, "cmdDeathmatchPack")
+   	self.DeathmatchData.GameID = arena_plugin:CallHook("RegisterArenaGame",self.Config.ArenaGame)
 end
 
 function PLUGIN:BroadcastChat(msg)
-  local netusers = arena_plugin:GetAllPlayers()
+  local netusers = arena_plugin:CallHook("GetAllPlayers", nil)
   for k,player in pairs(netusers) do
   	rust.SendChatMessage(player,msg)
   end
@@ -91,10 +85,10 @@ function PLUGIN:CanArenaOpen()
     return "true"
   end
 end
-
+  
 function PLUGIN:OnArenaOpenPost()
   if (self.DeathmatchData.IsChosen) then
-    arena_plugin:BroadcastChat("In Deathmatch, your inventory WILL be lost!  Do not join until you have put away your items!")
+    arena_plugin:CallHook("BroadcastToPlayers","In Deathmatch, your inventory WILL be lost!  Do not join until you have put away your items!")
   end
 end
 
@@ -106,7 +100,7 @@ end
 
 function PLUGIN:OnArenaClosePost()
 end
-
+ 
 function PLUGIN:CanArenaStart()
   if (self.DeathmatchData.IsChosen) then
     return "true"
@@ -164,7 +158,7 @@ end
 function PLUGIN:OnArenaJoinPost(player)
   if (self.DeathmatchData.IsChosen) then
     if (self.DeathmatchData.HasStarted) then
-      arena_plugin:TeleportPlayerToArena(player)
+      arena_plugin:CallHook("TeleportPlayerToArena",player)
       self:EquipPlayer(player)
     end
 
@@ -216,10 +210,8 @@ function PLUGIN:giveSpecificReward(player,arenagame,name)
 	if(arenagame == self.Config.ArenaGame) then
 		for k,v in pairs(self.Config.Rewards.Packs) do
 			if(name == k) then
-				if(crand  == count) then
-					self:giveReward(player,v)
-					return "true"
-				end
+				self:giveReward(player,v)
+				return "true"
 			end
 		end
 		return false
@@ -230,7 +222,6 @@ end
 -- *******************************************
 function PLUGIN:OnArenaLeavePost(player)
   if (self.DeathmatchData.IsChosen) then
-    self:ClearInventory(player)
     self.DeathmatchData.Users[rust.UserIDFromPlayer(player)] = nil
   end
 end
@@ -259,7 +250,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
       if (entity and entity:ToPlayer()) then
           if (entity:ToPlayer() ~= hitinfo.Initiator:ToPlayer()) then
               -- If the victim is protected, deal no damage
-              if (arena_plugin:IsPlaying(entity:ToPlayer()) and self:IsImmune(entity:ToPlayer())) then
+              if (arena_plugin:CallHook("IsPlaying",entity:ToPlayer()) and self:IsImmune(entity:ToPlayer())) then
                 rust.SendChatMessage(hitinfo.Initiator:ToPlayer(), self.Config.ArenaGame, "New spawns have immunity!")
                 return false
               end
@@ -279,10 +270,10 @@ function PLUGIN:OnEntityDeath(entity, hitinfo)
         local attacker = hitinfo.Initiator:ToPlayer()
         local victim = entity:ToPlayer()
 
-        if (attacker and victim and arena_plugin:IsPlaying(victim)) then
+        if (attacker and victim and arena_plugin:CallHook("IsPlaying",victim)) then
           if (attacker == victim) then
             -- Process suicide
-          elseif (not arena_plugin:IsPlaying(attacker)) then
+          elseif (not arena_plugin:CallHook("IsPlaying",attacker)) then
             -- Handle this
           else
             self:AwardKill(attacker)
@@ -316,9 +307,9 @@ function PLUGIN:InitializeTable()
 end 
   
 function PLUGIN:EquipAllPlayers()
-  local netusers = arena_plugin:GetAllPlayers()
+  local netusers = arena_plugin:CallHook("GetAllPlayers",nil)
   for k,player in pairs(netusers) do
-    if (arena_plugin:IsPlaying(player)) then
+    if (arena_plugin:CallHook("IsPlaying",player)) then
       self:EquipPlayer(player)
     end
   end
@@ -416,14 +407,14 @@ function PLUGIN:GiveWin(player)
   -- Announce win
   local str = "DEATHMATCH IS OVER!  " .. string.upper(player.displayName) .. " WINS!"
   if(self.Config.Rewards.activated) then
-  	arena_plugin:GiveReward(player,self.Config.ArenaGame)
+  	arena_plugin:CallHook("GiveReward",player,self.Config.ArenaGame)
   end
   for i = 1, 10 do
-    arena_plugin:BroadcastToPlayers(str)
+    arena_plugin:CallHook("BroadcastToPlayers",str)
   end
 
   -- Trigger the end of the arena
-  timer.Once(5, function() arena_plugin:EndArena() end)
+  timer.Once(5, function() arena_plugin:CallHook("EndArena",nil) end)
 end
 
 function PLUGIN:giveReward(player,rewards)
@@ -519,7 +510,7 @@ end
 
 function PLUGIN:ShowPlayerScore(player)
   local userData = self:GetUserData(player)
-  arena_plugin:BroadcastToPlayers(player.displayName .. " has a total of " .. userData.kills .. " kills!")
+  arena_plugin:CallHook("BroadcastToPlayers",player.displayName .. " has a total of " .. userData.kills .. " kills!")
 end
 
 function PLUGIN:GetUserData(player)
