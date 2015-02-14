@@ -1,6 +1,6 @@
 PLUGIN.Name = "finder"
 PLUGIN.Title = "Finder"
-PLUGIN.Version = V(1, 4, 1)
+PLUGIN.Version = V(1, 4, 2)
 PLUGIN.Description = "Find objects that belongs to players. sleepingbags, players, sleepers, doors for the moment."
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -8,16 +8,16 @@ PLUGIN.ResourceId = 692
 local deadPlayerList = false
 function PLUGIN:Init()
 	self.Find = {}
-	command.AddChatCommand( "findsleepingbags", self.Object, "cmdFindSleepingBag" )
-	command.AddChatCommand( "findsleepingbag", self.Object, "cmdFindSleepingBag" )
-	command.AddChatCommand( "findplayers", self.Object, "cmdFindPlayer" )
-	command.AddChatCommand( "findplayer", self.Object, "cmdFindPlayer" )
-	command.AddChatCommand( "finddoor", self.Object, "cmdFindDoor" )
-	command.AddChatCommand( "finddoors", self.Object, "cmdFindDoor" )
-	command.AddChatCommand( "findtp", self.Object, "cmdFindTp" )
-	command.AddChatCommand( "finditem", self.Object, "cmdFindItem" )
-	command.AddChatCommand( "findprivilege", self.Object, "cmdFindBuildingPrivilege" )
-	command.AddChatCommand( "findprivileges", self.Object, "cmdFindBuildingPrivilege" )
+	command.AddChatCommand( "findsleepingbags", self.Plugin, "cmdFindSleepingBag" )
+	command.AddChatCommand( "findsleepingbag", self.Plugin, "cmdFindSleepingBag" )
+	command.AddChatCommand( "findplayers", self.Plugin, "cmdFindPlayer" )
+	command.AddChatCommand( "findplayer", self.Plugin, "cmdFindPlayer" )
+	command.AddChatCommand( "finddoor", self.Plugin, "cmdFindDoor" )
+	command.AddChatCommand( "finddoors", self.Plugin, "cmdFindDoor" )
+	command.AddChatCommand( "findtp", self.Plugin, "cmdFindTp" )
+	command.AddChatCommand( "finditem", self.Plugin, "cmdFindItem" )
+	command.AddChatCommand( "findprivilege", self.Plugin, "cmdFindBuildingPrivilege" )
+	command.AddChatCommand( "findprivileges", self.Plugin, "cmdFindBuildingPrivilege" )
 	local pluginList = plugins.GetAll()
     for i = 0, pluginList.Length - 1 do
         local pluginTitle = pluginList[i].Object.Title
