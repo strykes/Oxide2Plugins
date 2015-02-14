@@ -1,64 +1,28 @@
 PLUGIN.Name = "portgun"
 PLUGIN.Title       = "Portgun"
 PLUGIN.Description = "Teleport to where you are looking at"
-PLUGIN.Version     = V(1, 2, 3)
+PLUGIN.Version     = V(1, 3, 2)
 PLUGIN.HasConfig   = true
 PLUGIN.Author      = "Reneb"
 
 function PLUGIN:Init()
-    command.AddChatCommand( "p",  self.Object, "cmdTeleport" )
-	command.AddChatCommand( "pg",  self.Object, "cmdTeleport" )
-	command.AddChatCommand( "forward",  self.Object, "cmdForward" )
-	command.AddChatCommand( "fw",  self.Object, "cmdForward" )
-	command.AddChatCommand( "up",  self.Object, "cmdUp" )
-	command.AddChatCommand( "down",  self.Object, "cmdDown" )
+    command.AddChatCommand( "p",  self.Plugin, "cmdTeleport" )
+	command.AddChatCommand( "pg",  self.Plugin, "cmdTeleport" )
+	command.AddChatCommand( "forward",  self.Plugin, "cmdForward" )
+	command.AddChatCommand( "fw",  self.Plugin, "cmdForward" )
+	command.AddChatCommand( "up",  self.Plugin, "cmdUp" )
+	command.AddChatCommand( "down",  self.Plugin, "cmdDown" )
 	TeleportVectors = {}
 end
 function PLUGIN:LoadDefaultConfig()
 	self.Config.PortgunForModerators = true
 end
-local function makeTeleportVectors()
-	if #TeleportVectors == 0 then
-        local coordsArray = util.TableToArray( { 0, 0, 0 } )
-        local tempValues = { 
-            { x = 2000, y = 0, z = 2000 },
-            { x = 2000, y = 0, z = -2000 },
-            { x = -2000, y = 0, z = -2000 },
-            { x = -2000, y = 0, z = 2000 }
-        }
-
-        for k, v in pairs( tempValues ) do
-        	util.ConvertAndSetOnArray( coordsArray, 0, v.x, System.Single._type )
-        	util.ConvertAndSetOnArray( coordsArray, 1, v.y, System.Single._type )
-        	util.ConvertAndSetOnArray( coordsArray, 2, v.z, System.Single._type )
-            vector3 = new( UnityEngine.Vector3._type, coordsArray )
-            table.insert( TeleportVectors, vector3 )
-        end
-    end
-end
 
 function PLUGIN:Teleport( player, destination, rot )
-	if(not preTeleportLocation) then preTeleportLocation = new( UnityEngine.Vector3._type, nil ) end
-    if #TeleportVectors == 0 then makeTeleportVectors() end
-
-    for _,vector3 in pairs( TeleportVectors ) do
-        if UnityEngine.Vector3.Distance( player.transform.position, vector3 ) > 1000 and UnityEngine.Vector3.Distance( destination, vector3 ) > 1000 then
-            preTeleportLocation = vector3
-            break
-        end
-    end
-    player.transform.position = preTeleportLocation
-    player.transform.rotation = rot;
-    player:UpdateNetworkGroup()
-    player:UpdatePlayerCollider(true, false)
-    destination.y = destination.y + 0.5
-    player.transform.position = destination
-    player:UpdateNetworkGroup()
-    player:UpdatePlayerCollider(true, false)  
-    player:StartSleeping()
-    player.metabolism:NetworkUpdate()
-    player:SendFullSnapshot()
-    timer.Once(0.1, function() player:EndSleeping() player.inventory:SendSnapshot() end )
+	player.transform.position = destination
+	newobj = util.TableToArray( { destination } )
+	util.ConvertAndSetOnArray( newobj, 0, destination, UnityEngine.Object._type )
+	player:ClientRPC(nil,player,"ForcePositionTo",newobj)
 end
 local function ChatMessage(player,msg)
 	player:SendConsoleCommand( "chat.add \"SERVER\" \"" .. msg .. "\"" );
@@ -139,9 +103,11 @@ function PLUGIN:GetPoint(ray)
 	local closestpoint = false
 	local enumhit = hits:GetEnumerator()
 	while (enumhit:MoveNext()) do
-		if(enumhit.Current.distance < closestdist) then
-			closestdist = enumhit.Current.distance
-			closestpoint = enumhit.Current.point
+		if(not enumhit.Current.collider:GetComponentInParent(global.TriggerBase._type)) then
+			if(enumhit.Current.distance < closestdist) then
+				closestdist = enumhit.Current.distance
+				closestpoint = enumhit.Current.point
+			end
 		end
 	end
 	if(closestpoint) then
