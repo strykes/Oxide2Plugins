@@ -1,25 +1,27 @@
 PLUGIN.Name = "Build"
 PLUGIN.Title = "Build"
-PLUGIN.Version = V(0, 5, 1)
-PLUGIN.Description = "Build structures the way that you want them"
+PLUGIN.Version = V(0, 5, 5)
+PLUGIN.Description = "Manage building owners"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
 
+
 function PLUGIN:Init()
+
 ------------------------------------------------------------------------
 -- Initialize all the ingame commands ----------------------------------
 ------------------------------------------------------------------------
-    command.AddChatCommand( "bld",  self.Object, "cmdBuild" )
-    command.AddChatCommand( "bldup",  self.Object, "cmdBuildUp" )
-    command.AddChatCommand( "blddown",  self.Object, "cmdBuildDown" )
-    command.AddChatCommand( "bldlvl",  self.Object, "cmdBuildLevel" )
-    command.AddChatCommand( "bldheal",  self.Object, "cmdBuildHeal" )
-    command.AddChatCommand( "bldhelp",  self.Object, "cmdBuildHelp" )
-    command.AddChatCommand( "spawn",  self.Object, "cmdSpawn" )
-    command.AddChatCommand( "deploy",  self.Object, "cmdDeploy" )
-    command.AddChatCommand( "plant",  self.Object, "cmdPlant" )
-    command.AddChatCommand( "animal",  self.Object, "cmdAnimal" )
-    
+    command.AddChatCommand( "bld",  self.Plugin, "cmdBuild" )
+    command.AddChatCommand( "bldup",  self.Plugin, "cmdBuildUp" )
+    command.AddChatCommand( "blddown",  self.Plugin, "cmdBuildDown" )
+    command.AddChatCommand( "bldlvl",  self.Plugin, "cmdBuildLevel" )
+    command.AddChatCommand( "bldheal",  self.Plugin, "cmdBuildHeal" )
+    command.AddChatCommand( "bldhelp",  self.Plugin, "cmdBuildHelp" )
+    command.AddChatCommand( "spawn",  self.Plugin, "cmdSpawn" )
+    command.AddChatCommand( "deploy",  self.Plugin, "cmdDeploy" )
+    command.AddChatCommand( "plant",  self.Plugin, "cmdPlant" )
+    command.AddChatCommand( "animal",  self.Plugin, "cmdAnimal" )
+
 ------------------------------------------------------------------------
 -- Initialize the Default tables with the prefabs ----------------------
 ------------------------------------------------------------------------
@@ -27,16 +29,10 @@ function PLUGIN:Init()
 ------------------------------------------------------------------------
 -- Initialize the buildingowners plugin  -------------------------------
 ------------------------------------------------------------------------
-    local pluginList = plugins.GetAll()
-    for i = 0, pluginList.Length - 1 do
-        local pluginTitle = pluginList[i].Object.Title
-        if pluginTitle == "Building Owners" then
-            buildingowners = pluginList[i].Object
-            break
-        end
-    end
-    self.Config = {}
-    self:LoadDefaultConfig()
+    buildingowners = plugins.Find("Building Owners")
+
+    --self.Config = {}
+    --self:LoadDefaultConfig()
     
     
     nilarray = util.TableToArray( { } )
@@ -190,7 +186,7 @@ function PLUGIN:LoadDefaultConfig()
     
 end
 local function ChatMessage(player,msg)
-	player:SendConsoleCommand( "chat.add \"SERVER\" \"" .. msg .. "\"" )
+	player:SendConsoleCommand( "chat.add \"SERVER\" \"" .. tostring(msg) .. "\"" );
 end
 local function Distance2D(p1, p2)
     return math.sqrt(math.pow(p1.x - p2.x,2) + math.pow(p1.z - p2.z,2)) 
@@ -287,7 +283,8 @@ local function DoLevel( blocks, lvl )
 	return true, count
 end
 local function DoCreateBuildingBlock( prefabname )
-	local newobj = UnityEngine.Object.Instantiate.methodarray[1]:Invoke(nil, util.TableToArray( { global.GameManager.FindPrefab( prefabname ) } ))
+	prefabfound  = global.GameManager.server:FindPrefab(prefabname)
+	local newobj = UnityEngine.Object.Instantiate.methodarray[1]:Invoke(nil, util.TableToArray( { prefabfound } ))
 	local newblock = newobj:GetComponent("BuildingBlock")
 	return newblock
 end
@@ -305,15 +302,15 @@ function PLUGIN:CreateBuildingBlock( structure, pos, rot, player )
 	newblock.transform.rotation = rot
 	newblock.gameObject:SetActive(true)
 	newblock2 = newblock.gameObject:GetComponent("BuildingBlock")
-	newblock2.blockDefinition = global.Library.FindByPrefabID(newblock.prefabID)	
+	newblock2.blockDefinition = global["Construction+Library"].FindByPrefabID(newblock.prefabID)	
 	doSetGrade(newblock2, tonumber(self.Config[structure]["grade"]))
 	newblock2:GetComponent("BaseCombatEntity").health = tonumber(self.Config[structure]["health"])+1
 	newblock2:Spawn(true)
 	
 	if(buildingowners) then
-		local ownerid = buildingowners:FindBlockData(newblock)
+		local ownerid = buildingowners:CallHook("FindBlockData", util.TableToArray( { block } ));
 		if(not ownerid) then
-			buildingowners:AddBlockData(newblock,player)
+			buildingowners:CallHook("AddBlockData",util.TableToArray( { newblock,player } ))
 		end
 	end
 	return newblock
@@ -710,7 +707,7 @@ local function DoDeploy( player, deployablename )
 		tempRotation.z = 0
 	end
 	tempRotation = UnityEngine.Quaternion.EulerRotation.methodarray[1]:Invoke(nil, util.TableToArray( { tempRotation } ) )
-	local newBaseEntity = global.GameManager.CreateEntity(deployModule.deployablePrefabName, closesthitpoint, tempRotation)
+	local newBaseEntity = global.GameManager.server:CreateEntity( deployModule.deployablePrefabName, closesthitpoint, tempRotation )
 	if(not newBaseEntity) then
 		return false, "Couldn't create the deployable: " .. deployModule.deployablePrefabName
 	end
@@ -721,7 +718,7 @@ local function DoDeploy( player, deployablename )
 	return true
 end
 local function DoCreate( player, prefabname )
-	local prefab = global.GameManager.FindPrefab( prefabname )
+	local prefab = global.GameManager.server:FindPrefab(prefabname )
 	if(not prefab) then return false, "This Prefab doesn't exist" end
 	local closestent, closesthitpoint = DoRaycastPlayer( player )
 	if(not closestent) then return false, "You may not create in the sky" end
@@ -732,12 +729,8 @@ local function DoCreate( player, prefabname )
 		tempRotation.x = 0
 		tempRotation.z = 0
 	end
-	local prefab = global.GameManager.FindPrefab( prefabname )
-	if(not prefab) then return false, "not a prefab" end
 	tempRotation = UnityEngine.Quaternion.EulerRotation.methodarray[1]:Invoke(nil, util.TableToArray( { tempRotation } ) )
-	local arr = util.TableToArray( { prefabname , closesthitpoint, tempRotation, true } )
-	-- USE CREATEPREFAB? TO MAKE IT INVUL? WILL WORK FOR TREES AND THE REST?
-	local newBaseEntity = global.GameManager.CreateEntity(prefabname, closesthitpoint, tempRotation)
+	local newBaseEntity = global.GameManager.server:CreateEntity( prefabname, closesthitpoint, tempRotation )
 	if(not newBaseEntity) then
 		return false, "Couldn't create the prefab: " .. prefabname
 	end
