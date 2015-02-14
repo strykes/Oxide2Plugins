@@ -1,6 +1,6 @@
 PLUGIN.Name = "r-Zones"
 PLUGIN.Title = "r-Zones"
-PLUGIN.Version = V(1, 1, 2)
+PLUGIN.Version = V(1, 2, 5)
 PLUGIN.Description = "Manage zones"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -11,13 +11,13 @@ local ZonesData = {}
 function PLUGIN:Init()
 
 	------------------------------------------------------------------------
-	-- command.AddChatCommand( "Command_name", self.Object, "target_function" )
+	-- command.AddChatCommand( "Command_name", self.Plugin, "target_function" )
 	------------------------------------------------------------------------
-	--command.AddChatCommand( "zone", self.Object, "cmdZone" )
-	command.AddChatCommand( "zone_add", self.Object, "cmdZoneAdd" )
-	command.AddChatCommand( "zone_list", self.Object, "cmdZoneList" )
-	command.AddChatCommand( "zone_delete", self.Object, "cmdZoneDelete" )
-	command.AddChatCommand( "zone_reset", self.Object, "cmdZoneReset" )
+	--command.AddChatCommand( "zone", self.Plugin, "cmdZone" )
+	command.AddChatCommand( "zone_add", self.Plugin, "cmdZoneAdd" )
+	command.AddChatCommand( "zone_list", self.Plugin, "cmdZoneList" )
+	command.AddChatCommand( "zone_delete", self.Plugin, "cmdZoneDelete" )
+	command.AddChatCommand( "zone_reset", self.Plugin, "cmdZoneReset" )
 	------------------------------------------------------------------------
 	
 	------------------------------------------------------------------------
@@ -55,6 +55,7 @@ function PLUGIN:OnServerInitialized()
     pcall(new, Rust.DamageTypeList._type , nil )
 	emptyDamageType = new( Rust.DamageTypeList._type, nil)
     nulVector3 = new( UnityEngine.Vector3._type, nil )
+    opDiv = UnityEngine.Vector3._type:GetMethod("op_Division")
     self:InitZones()
 end
 ------------------------------------------------------------------------
@@ -64,6 +65,7 @@ end
 ------------------------------------------------------------------------
 function PLUGIN:LoadZonesConfig()
 	ArgZones = {}
+	ArgZones["-eject"] = true
 	ArgZones["-pvpgod"] = true
 	ArgZones["-pvegod"] = true
 	ArgZones["-sleepgod"] = true
@@ -111,6 +113,32 @@ end
 
 ------------------------------------------------------------------------
 --------------------------------------------------------------------
+-- self:ejectPlayer(zone,player) => eject player from a zone
+--------------------------------------------------------------------
+function PLUGIN:ejectPlayer(triggerbase,entity)
+
+	-- We want to eject the player OUT of the zone, so we take the radius + 1m
+	distEject = triggerbase:GetComponentInParent(UnityEngine.SphereCollider._type).radius + 1
+	
+	-- We need to know what direction from the center of the zone the player is to eject him regarding the angle.
+	ejectDirection = UnityEngine.Vector3.op_Subtraction(entity.transform.position,triggerbase.transform.position)
+	
+	-- a bunch of calculations that i don't understand my self XD
+	magnitude = ejectDirection.magnitude
+	arr = util.TableToArray( { ejectDirection, magnitude } )
+	util.ConvertAndSetOnArray( arr, 1, magnitude, System.Single._type )
+	div = opDiv:Invoke(nil, arr)
+	arr = util.TableToArray( { div, distEject } )
+	util.ConvertAndSetOnArray( arr, 1, distEject, System.Single._type )
+	add = UnityEngine.Vector3.op_Multiply.methodarray[0]:Invoke(nil ,arr)
+	newPos = UnityEngine.Vector3.op_Addition(triggerbase.transform.position,add)
+	
+	-- Now that we got the correct location where we wnat the player at we can teleport him there
+	rust.ForcePlayerPosition(entity:GetComponentInParent(global.BasePlayer._type),newPos.x,newPos.y,newPos.z)
+end
+
+------------------------------------------------------------------------
+--------------------------------------------------------------------
 -- refreshPlayers() => refresh players in a zone
 --------------------------------------------------------------------
 function PLUGIN:refreshPlayers()
@@ -118,18 +146,18 @@ function PLUGIN:refreshPlayers()
 		PlayersZones[player] = {}
 		self:UpdatesPlayerFlags(player)
 	end
-		allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
-		for i=0, allRadiationZone.Length-1 do
-			if(RadiationZones[allRadiationZone[i]]) then
-				if(allRadiationZone[i].entityContents.Count > 0) then
-					for o=0, allRadiationZone[i].entityContents.Count-1 do
-						if( allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type) ) then
-							self:addPlayerZone(allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type),allRadiationZone[i])
-						end
+	allRadiationZone = UnityEngine.Object.FindObjectsOfTypeAll(global.TriggerBase._type)
+	for i=0, allRadiationZone.Length-1 do
+		if(RadiationZones[allRadiationZone[i]]) then
+			if(allRadiationZone[i].entityContents.Count > 0) then
+				for o=0, allRadiationZone[i].entityContents.Count-1 do
+					if( allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type) ) then
+						self:addPlayerZone(allRadiationZone[i].entityContents[o]:GetComponentInParent(global.BasePlayer._type),allRadiationZone[i])
 					end
 				end
 			end
 		end
+	end
 end
 
 
@@ -179,9 +207,9 @@ function PLUGIN:Unload()
 	resetZones()
 	itPlayerList = global.BasePlayer.activePlayerList:GetEnumerator()
     playerList = {}
-    while itPlayerList:MoveNext() do
+    --[[while itPlayerList:MoveNext() do
         self:UpdatePlayerBuildingPrivilege(itPlayerList.Current,false) 
-    end
+    end]]
 	PlayersFlags = {}
 	PlayersZones = {}
 end
@@ -208,11 +236,11 @@ function PLUGIN:UpdatePlayerBuildingPrivilege(baseplayer,newbuildpriv)
 		timer.Once(0.1, function()
 			if(baseplayer:GetComponent("BaseNetworkable").net.connection  ~= nil) then
 				if(self.Config.AdminsCanForceBuild and baseplayer:GetComponent("BaseNetworkable").net.connection.authLevel >= self.Config.Settings.authLevel) then
-					baseplayer:SetPlayerFlag(global.PlayerFlags.HasBuildingPrivilege, true)
-					baseplayer:SetPlayerFlag(global.PlayerFlags.InBuildingPrivilege, true)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].HasBuildingPrivilege, true)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].InBuildingPrivilege, true)
 				else
-					baseplayer:SetPlayerFlag(global.PlayerFlags.HasBuildingPrivilege, false)
-					baseplayer:SetPlayerFlag(global.PlayerFlags.InBuildingPrivilege, true)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].HasBuildingPrivilege, false)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].InBuildingPrivilege, true)
 				end
 			end
 		end)
@@ -220,8 +248,8 @@ function PLUGIN:UpdatePlayerBuildingPrivilege(baseplayer,newbuildpriv)
 		if(not newbuildpriv) then
 			timer.Once(0.1, function()
 				if(baseplayer:GetComponent("BaseNetworkable").net.connection  ~= nil) then
-					baseplayer:SetPlayerFlag(global.PlayerFlags.HasBuildingPrivilege, true)
-					baseplayer:SetPlayerFlag(global.PlayerFlags.InBuildingPrivilege, false)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].HasBuildingPrivilege, true)
+					baseplayer:SetPlayerFlag(global["BasePlayer+PlayerFlags"].InBuildingPrivilege, false)
 				end
 			end)
 		end
@@ -242,7 +270,7 @@ function PLUGIN:UpdatesPlayerFlags(baseplayer)
 			end
 		end
 	end
-	self:UpdatePlayerBuildingPrivilege(baseplayer,false)
+	--self:UpdatePlayerBuildingPrivilege(baseplayer,false)
 end
 
 
@@ -380,7 +408,7 @@ function PLUGIN:cmdZoneDelete(player,cmd,args)
 	self:DeleteZone(args[0])
 	ZonesData[tostring(args[0])] = nil
 	self:SaveData()
-	rust.SendChatMessage(player,"SERVER","Zone nâˆž" .. args[0] .. " deleted")
+	rust.SendChatMessage(player,"SERVER","Zone n∞" .. args[0] .. " deleted")
 end
 function PLUGIN:cmdZoneAdd(player,cmd,args)
 	if(player:GetComponent("BaseNetworkable").net.connection.authLevel < self.Config.Settings.authLevel) then
@@ -391,6 +419,7 @@ function PLUGIN:cmdZoneAdd(player,cmd,args)
 		rust.SendChatMessage(player,"SERVER","Please select the type of the zone that you want to add: (/zone_add \"NAME\" \"RADIUS\" \"ENTER MSG\" \"LEAVE MSG\" OPTIONS)")
 		rust.SendChatMessage(player,"SERVER","MSG can be: \"default\" meaning no message will be displayed")
 		rust.SendChatMessage(player,"SERVER","Options:")
+		rust.SendChatMessage(player,"SERVER","-eject => will prevent players from entering the zone")
 		rust.SendChatMessage(player,"SERVER","-pvpgod => will prevent players from hurting each other")
 		rust.SendChatMessage(player,"SERVER","-pvegod => will prevent animals from hurting players")
 		rust.SendChatMessage(player,"SERVER","-sleepgod => will prevent players from hurting sleepers")
@@ -444,7 +473,7 @@ function PLUGIN:OnEntityBuilt(helditem,gameobject)
 	if(hasFlag(helditem.ownerPlayer,"-nobuild")) then
 		if(not self.Config.AdminsCanForceBuild or helditem.ownerPlayer:GetComponent("BaseNetworkable").net.connection.authLevel <= self.Config.Settings.authLevel) then
 			rust.SendChatMessage(helditem.ownerPlayer,"SERVER","You are not allowed to build here")
-			gameobject:GetComponent("BaseEntity"):Kill(ProtoBuf.Mode.None,0,0,nulVector3)
+			gameobject:GetComponent("BaseEntity"):Kill(ProtoBuf["EntityDestroy+Mode"].None,0,0,nulVector3)
 		end
 	end
 end
@@ -462,7 +491,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
 			hitinfo.DoHitEffects = false
 			hitinfo.HitMaterial = 0
 			return
-		elseif(not entity:ToPlayer():IsSleeping() and hitinfo.Initiator) then
+		elseif(not entity:ToPlayer():IsSleeping() and hitinfo.Initiator ~= nil) then
 			if(hitinfo.Initiator:ToPlayer()) then
 				if(hasFlag(entity:ToPlayer(),"-pvpgod")) then
 					hitinfo.damageTypes = emptyDamageType
@@ -478,7 +507,7 @@ function PLUGIN:OnEntityAttacked(entity,hitinfo)
 			end
 		end
 	elseif(entity:GetComponent("BuildingBlock") or entity:GetComponent("WorldItem")) then
-		if(hitinfo ~= nil and hitinfo.Initiator and hitinfo.Initiator:ToPlayer()) then
+		if(hitinfo ~= nil and hitinfo.Initiator ~= nil and hitinfo.Initiator:ToPlayer()) then
 			if(hasFlag(hitinfo.Initiator:ToPlayer(),"-undestr")) then
 				hitinfo.damageTypes = emptyDamageType
 				hitinfo.DoHitEffects = false
@@ -554,12 +583,17 @@ function PLUGIN:OnEntityEnter(triggerbase,entity)
 				if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].enter  ~= "default") then
 					rust.SendChatMessage(entity,tostring(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].enter))
 				end
+				if(RadiationZones[triggerbase:GetComponent(global.TriggerBase._type)].options["-eject"]) then
+					if(entity.net.connection.authLevel < 1) then
+						self:ejectPlayer(triggerbase,entity)
+					end
+				end
 			end
 		end
-	elseif(triggerbase:GetComponent(global.BuildPrivilegeTrigger._type)) then
+	--[[elseif(triggerbase:GetComponent(global.BuildPrivilegeTrigger._type)) then
 		if(entity:GetComponentInParent(global.BasePlayer._type)) then
 			self:UpdatePlayerBuildingPrivilege(entity:GetComponentInParent(global.BasePlayer._type),true)
-		end
+		end]]
 	end
 end
 -- -----------------------------------------------------------------------------
@@ -577,10 +611,10 @@ function PLUGIN:OnEntityLeave(triggerbase,entity)
 				end
 			end
 		end
-	elseif(triggerbase:GetComponent(global.BuildPrivilegeTrigger._type)) then
+	--[[elseif(triggerbase:GetComponent(global.BuildPrivilegeTrigger._type)) then
 		if(entity:GetComponentInParent(global.BasePlayer._type)) then
 			self:UpdatePlayerBuildingPrivilege(entity:GetComponentInParent(global.BasePlayer._type),true)
-		end
+		end]]
 	end
 end
 -- -----------------------------------------------------------------------------
