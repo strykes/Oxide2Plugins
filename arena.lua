@@ -1,20 +1,21 @@
-PLUGIN.Name = "Arena"
 PLUGIN.Title = "Arena"
-PLUGIN.Version = V(1, 0, 0)
+PLUGIN.Version = V(1, 1, 3)
 PLUGIN.Description = "Arena converted from Oxide 1"
 PLUGIN.Author = "Reneb - Oxide 1 version by eDeloa"
 PLUGIN.HasConfig = true
 
 local DataFile = "arena"
 local Data = {}
+local MessageClient   = UnityEngine.NetworkNetworkable._type:GetMethod( "MessageClient")
 
 function PLUGIN:Init()
-  
+  arena_loaded = false
   self:LoadDataFile()
   
   self.ArenaData = {}
   self.ArenaData.Games = {}
   self.ArenaData.CurrentGame = nil
+  self.ArenaData.SavedInventories = {}
   self.ArenaData.Users = {}
   self.ArenaData.UserCount = 0
   self.ArenaData.IsOpen = false
@@ -22,41 +23,35 @@ function PLUGIN:Init()
   self.ArenaData.HasEnded = false
   self.ArenaData.AutoArena = false
   self.ArenaTimers = {}
-  command.AddChatCommand( "arena", self.Object, "cmdArena")
+  command.AddChatCommand( "arena", self.Plugin, "cmdArena")
 end
 
 function PLUGIN:OnServerInitialized()
-	local pluginList = plugins.GetAll()
-    for i = 0, pluginList.Length - 1 do
-        local pluginTitle = pluginList[i].Object.Title
-        if pluginTitle == "Spawns Database" then
-            spawns_plugin = pluginList[i].Object
-            break
-        end
-    end
-    arena_loaded = false
+	spawns_plugin = plugins.Find("spawns")
+
+    
     if(not spawns_plugin) then
    	 print("You must have the Spawns Database @ http://forum.rustoxide.com/plugins/spawns-database.720/")
    	 return false
    	end
    	arena_loaded = true
    	
-   	command.AddChatCommand( "arena_game", self.Object, "cmdArenaGame")
-	command.AddChatCommand( "arena_open", self.Object, "cmdArenaOpen")
-	command.AddChatCommand( "arena_close", self.Object, "cmdArenaClose")
-	command.AddChatCommand( "arena_start", self.Object, "cmdArenaStart")
-	command.AddChatCommand( "arena_end", self.Object, "cmdArenaEnd")
-	command.AddChatCommand( "arena_spawnfile", self.Object, "cmdArenaSpawnFile")
+   	command.AddChatCommand( "arena_game", self.Plugin, "cmdArenaGame")
+	command.AddChatCommand( "arena_open", self.Plugin, "cmdArenaOpen")
+	command.AddChatCommand( "arena_close", self.Plugin, "cmdArenaClose")
+	command.AddChatCommand( "arena_start", self.Plugin, "cmdArenaStart")
+	command.AddChatCommand( "arena_end", self.Plugin, "cmdArenaEnd")
+	command.AddChatCommand( "arena_spawnfile", self.Plugin, "cmdArenaSpawnFile")
 
-	command.AddChatCommand( "arena_list", self.Object, "cmdArenaList")
-	command.AddChatCommand( "arena_join", self.Object, "cmdArenaJoin")
-	command.AddChatCommand( "arena_leave", self.Object, "cmdArenaLeave")
+	command.AddChatCommand( "arena_list", self.Plugin, "cmdArenaList")
+	command.AddChatCommand( "arena_join", self.Plugin, "cmdArenaJoin")
+	command.AddChatCommand( "arena_leave", self.Plugin, "cmdArenaLeave")
 	
-	command.AddChatCommand( "arena_launch", self.Object, "cmdArenaLaunch")
-	command.AddChatCommand( "arena_stop", self.Object, "cmdArenaStop")
+	command.AddChatCommand( "arena_launch", self.Plugin, "cmdArenaLaunch")
+	command.AddChatCommand( "arena_stop", self.Plugin, "cmdArenaStop")
 	
-	command.AddChatCommand( "arena_reward", self.Object, "cmdArenaReward")
-	command.AddChatCommand( "arena_givereward", self.Object, "cmdArenaGiveReward")
+	command.AddChatCommand( "arena_reward", self.Plugin, "cmdArenaReward")
+	command.AddChatCommand( "arena_givereward", self.Plugin, "cmdArenaGiveReward")
 	
 	timer.Once(0.1, function()
 		if(self.Config.Default.SpawnFileName  ~= "") then	
@@ -422,7 +417,7 @@ end
 -- MAIN FUNCTIONS
 -- *******************************************
 function PLUGIN:LoadArenaSpawnFile(filename)
-  local spawnsCount, err = spawns_plugin:GetSpawnsCount(filename)
+  local spawnsCount, err = spawns_plugin:CallHook("GetSpawnsCount",filename)
   if (not spawnsCount) then
     return false, err
   end
@@ -518,7 +513,7 @@ function PLUGIN:StartArena()
   self.ArenaData.HasStarted = true
   self.ArenaData.HasEnded = false
 	
-  timer.Once(5, function() self:SaveAllHomeLocations() self:TeleportAllPlayersToArena() self:pluginsCall("OnArenaStartPost", { } ) end)
+  timer.Once(5, function() self:SaveAllInventories() self:SaveAllHomeLocations() self:TeleportAllPlayersToArena() self:pluginsCall("OnArenaStartPost", { } ) end)
   return true
 end
 
@@ -567,6 +562,7 @@ function PLUGIN:JoinArena(player)
 
   if (self.ArenaData.HasStarted) then
     self:SaveHomeLocation(player)
+    self:SaveInventory(player)
   end
   
   rust.BroadcastChat(self.Config.ChatName,player.displayName .. " has joined the Arena!  (Total Players: " .. self.ArenaData.UserCount .. ")")
@@ -586,6 +582,7 @@ function PLUGIN:LeaveArena(player)
   end
 
   if (self.ArenaData.HasStarted) then
+  	self:RedeemInventory(player)
     self:TeleportPlayerHome(player)
     self.ArenaData.Users[rust.UserIDFromPlayer( player )] = nil
     self:pluginsCall("OnArenaLeavePost", { player } )
@@ -671,7 +668,7 @@ function PLUGIN:SaveAllHomeLocations()
   for k,player in pairs(netusers) do
     if (self:IsPlaying(player)) then
       self:SaveHomeLocation(player)
-    end
+    end 
   end
 end
 
@@ -729,14 +726,27 @@ end
 function PLUGIN:TeleportPlayerToArena(player)
   if(not newVector3) then newVector3 = new( UnityEngine.Vector3._type , nil ) end
   
-  local spawnPoint, err = spawns_plugin:GetRandomSpawn( self.ArenaData.SpawnsFile, self.ArenaData.SpawnCount )
+  local spawnPoint, err = spawns_plugin:CallHook("GetRandomSpawn", self.ArenaData.SpawnsFile, self.ArenaData.SpawnCount )
   if(not spawnPoint) then rust.BroadcastChat(self.Config.ChatName,err) end
   newVector3.x = spawnPoint.x
   newVector3.y = spawnPoint.y
   newVector3.z = spawnPoint.z
   self:TeleportPlayer(player, newVector3)
 end
-
+function PLUGIN:cmdArenatest(player,cmd,args)
+	self:loadScreen(player)
+end
+function PLUGIN:loadScreen(player)
+	
+	--[[local Data    = new( global.NetworkData._type, nil )
+    Data:WriteUInt( global.StringPool.Get.methodarray[1]:Invoke( nil, util.TableToArray( { "startloading" } ) ) )
+    Data:WriteUInt64( player.net.connection.ownerid )
+    MessageClient:Invoke( nil , util.TableToArray( { player.net, player.net.connection, UnityEngine.MSG.RPC_MESSAGE, Data:ToBytes() } ) )
+	]]
+	player:SetPlayerFlag( global["BasePlayer+PlayerFlags"].ReceivingSnapshot, true )
+	player:UpdateNetworkGroup()
+	player:SendFullSnapshot()
+end
 function PLUGIN:TeleportPlayerHome(player)
 	if(not newVector3) then newVector3 = new( UnityEngine.Vector3._type , nil ) end
 	
@@ -746,31 +756,18 @@ function PLUGIN:TeleportPlayerHome(player)
     newVector3.y = self.ArenaData.Users[userID].HomeCoords.y
     newVector3.z = self.ArenaData.Users[userID].HomeCoords.z
     self:TeleportPlayer(player, newVector3)
+    
   end
 end
 
 function PLUGIN:TeleportPlayer( player, destination )
-	if(not preTeleportLocation) then preTeleportLocation = new( UnityEngine.Vector3._type, nil ) end
-    if (TeleportVectors == nil or (TeleportVectors and #TeleportVectors == 0)) then makeTeleportVectors() end
-    for _,vector3 in pairs( TeleportVectors ) do
-        if UnityEngine.Vector3.Distance( player.transform.position, vector3 ) > 1000 and UnityEngine.Vector3.Distance( destination, vector3 ) > 1000 then
-            preTeleportLocation = vector3
-            break
-        end
-    end
-    player.transform.position = preTeleportLocation
-    player:UpdateNetworkGroup()
-    player:UpdatePlayerCollider(true, false)
-    destination.y = destination.y + 0.1
-    player.transform.position = destination
-    player:UpdateNetworkGroup()
-    player:UpdatePlayerCollider(true, false)  
-    player:StartSleeping()
-    player.metabolism:NetworkUpdate()
-    player:SendFullSnapshot()
-    timer.Once(0.1, function()
-    	player.inventory:SendSnapshot()
-    end)
+	player:StartSleeping()
+	player.transform.position = destination
+	newobj = util.TableToArray( { destination } )
+	util.ConvertAndSetOnArray( newobj, 0, destination, UnityEngine.Object._type )
+	player:ClientRPC(nil,player,"ForcePositionTo",newobj)
+	player:TransformChanged()
+	self:loadScreen(player)
 end
 
 
@@ -784,7 +781,47 @@ function PLUGIN:BroadcastToPlayers(message)
     end
   end
 end
-
+function PLUGIN:RedeemInventory(player)
+	inv = player.inventory
+	inv:Strip()
+	container = {}
+	container["Main"] = inv.containerMain
+	container["Belt"] = inv.containerBelt
+	container["Wear"] = inv.containerWear
+	for n,cont in pairs(container) do
+		for i,data in pairs( self.ArenaData.SavedInventories[cont] ) do
+			inv:GiveItem(self.ArenaData.SavedInventories[cont][i],cont)
+		end
+		self.ArenaData.SavedInventories[cont] = {}
+	end
+end
+function PLUGIN:SaveAllInventories()
+  local netusers =  self:GetAllPlayers()
+  for k,player in pairs(netusers) do
+    if (self:IsPlaying(player)) then
+      self:SaveInventory(player)
+    end
+  end
+end
+function PLUGIN:SaveInventory(player)
+	inv = player.inventory
+	container = {}
+	container["Main"] = inv.containerMain
+	container["Belt"] = inv.containerBelt
+	container["Wear"] = inv.containerWear
+	for n,cont in pairs(container) do
+		ilist = cont.itemList
+		self.ArenaData.SavedInventories[cont] = {}
+		for i=0, ilist.Count-1 do
+			table.insert(self.ArenaData.SavedInventories[cont],ilist[i])
+		end
+		for i,data in pairs( self.ArenaData.SavedInventories[cont] ) do
+			ilist:Remove(self.ArenaData.SavedInventories[cont][i])
+			self.ArenaData.SavedInventories[cont][i].parent = nil
+		end
+		cont:MarkDirty()
+	end
+end
 function PLUGIN:FindPlayer( target )
 	local steamid = false
 	if(tonumber(target) ~= nil and string.len(target) == 17) then
