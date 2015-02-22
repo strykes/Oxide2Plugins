@@ -62,10 +62,10 @@ namespace Oxide.Plugins
         private void InitializeTable()
         {
             displaynameToShortname.Clear();
-            List<Item.Definition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<Item.Definition>;
-            foreach(Item.Definition itemdef in ItemsDefinition)
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach(ItemDefinition itemdef in ItemsDefinition)
             {
-                displaynameToShortname.Add(itemdef.displayname.ToString().ToLower(), itemdef.shortname.ToString());
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
         private object GetConfig(string menu, string datavalue, object defaultValue)
@@ -131,7 +131,9 @@ namespace Oxide.Plugins
             if (definition == null)
                 return string.Format("{0} {1}",itemNotFound,itemname);
             int giveamount = 0;
-            int stack = (int)definition.stackable;
+            int stack = 1;
+            if (definition.stackable == null || stack < 1) stack = 1;
+            else stack = (int)definition.stackable;
             if (isBP)
                 stack = 1;
             for (var i = amount; i > 0; i = i - stack)
@@ -140,6 +142,7 @@ namespace Oxide.Plugins
                     giveamount = stack;
                 else
                     giveamount = i;
+                if (giveamount < 1) return true;
                 player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, giveamount, isBP), pref);
             }
             return true;
@@ -156,13 +159,13 @@ namespace Oxide.Plugins
         void SendList(object source)
         {
             var kitEnum = KitsConfig.GetEnumerator();
-            string kitname = string.Empty;
             int authlevel = GetSourceLevel(source);
-            string kitdescription = string.Empty;
-            string options = string.Empty;
-            int kitlvl = 0;
             while (kitEnum.MoveNext())
             {
+                int kitlvl = 0;
+                string kitdescription = string.Empty;
+                string options = string.Empty;
+                string kitname = string.Empty;
                 options = string.Empty;
                 kitname = kitEnum.Current.Key.ToString();
                 var kitdata = kitEnum.Current.Value as Dictionary<string, object>;
@@ -172,7 +175,9 @@ namespace Oxide.Plugins
                 {
                     kitlvl = (int)kitdata["level"];
                     options = string.Format("{0} - {1}+", options, kitlvl.ToString());
+                   
                 }
+
                 if (kitdata.ContainsKey("max"))
                 {
                     options = string.Format("{0} - {1} max", options, kitdata["max"].ToString());
