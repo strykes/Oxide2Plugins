@@ -52,10 +52,10 @@ namespace Oxide.Plugins
         private void InitializeTable()
         {
             displaynameToShortname.Clear();
-            List<Item.Definition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<Item.Definition>;
-            foreach(Item.Definition itemdef in ItemsDefinition)
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach(ItemDefinition itemdef in ItemsDefinition)
             {
-                displaynameToShortname.Add(itemdef.displayname.ToString().ToLower(), itemdef.shortname.ToString());
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
         private object GetConfig(string menu, string datavalue, object defaultValue)
@@ -172,7 +172,7 @@ namespace Oxide.Plugins
         {
             description = itemname;
             itemname = itemname.ToLower();
-           
+            if (amount < 1) amount = 1;
             bool isBP = false;
             if (itemname.EndsWith(" bp"))
             {
@@ -184,9 +184,10 @@ namespace Oxide.Plugins
             var definition = ItemManager.FindItemDefinition(itemname);
             if (definition == null)
                 return string.Format("{0} {1}",itemNotFound,itemname);
-            description = definition.displayname.ToString();
+            description = definition.displayName.english.ToString();
             int giveamount = 0;
             int stack = (int)definition.stackable;
+            if (stack < 1) stack = 1;
             if (isBP)
             {
                 stack = 1;
@@ -205,6 +206,7 @@ namespace Oxide.Plugins
                         giveamount = stack;
                     else
                         giveamount = i;
+                    if (giveamount < 1) return true;
                     player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, giveamount, isBP), pref);
                     SendReply(player, string.Format("You've received {0} x {1}", description, giveamount.ToString()));
                 }
@@ -309,12 +311,14 @@ namespace Oxide.Plugins
             int amount = 1;
             if (Args.Length > 2)
                 int.TryParse(Args[2].ToString(), out amount);
+            
             var target = FindPlayer(Args[0].ToString());
             if (target is string)
             {
                 SendTheReply(source, target.ToString());
                 return;
             }
+
             string description = Args[1];
             object error = GiveItem((BasePlayer)target, Args[1], amount, (ItemContainer)((BasePlayer)target).inventory.containerMain, out description);
             if (!(error is bool))
