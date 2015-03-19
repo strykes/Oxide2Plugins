@@ -1,13 +1,20 @@
 PLUGIN.Name = "Build"
 PLUGIN.Title = "Build"
-PLUGIN.Version = V(0, 5, 5)
+PLUGIN.Version = V(0, 5, 8)
 PLUGIN.Description = "Manage building owners"
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
 
+local GradeIdEnum = {
+	global.BuildingGrade.Enum.Twigs,
+	global.BuildingGrade.Enum.Wood,
+	global.BuildingGrade.Enum.Stone,
+	global.BuildingGrade.Enum.Metal,
+	global.BuildingGrade.Enum.TopTier,
+	global.BuildingGrade.Enum.Count,
+}
 
 function PLUGIN:Init()
-
 ------------------------------------------------------------------------
 -- Initialize all the ingame commands ----------------------------------
 ------------------------------------------------------------------------
@@ -271,10 +278,10 @@ local function DoLevel( blocks, lvl )
 	count = 0
 	for buildingblock,k in pairs(blocks) do
 		if(buildingblock.blockDefinition and buildingblock.blockDefinition.grades) then
-			if( lvl > buildingblock.blockDefinition.grades.Length-1) then
-				buildingblock:SetGrade(buildingblock.blockDefinition.grades.Length-1)
+			if( lvl > buildingblock.blockDefinition.grades.Length) then
+				buildingblock:SetGrade(GradeIdEnum[buildingblock.blockDefinition.grades.Length])
 			else
-				buildingblock:SetGrade(lvl)
+				buildingblock:SetGrade(GradeIdEnum[lvl])
 			end
 			count = count + 1
 			buildingblock:GetComponent("BaseCombatEntity").health = buildingblock:MaxHealth()+1
@@ -290,9 +297,9 @@ local function DoCreateBuildingBlock( prefabname )
 end
 local function doSetGrade( newblock, newgrade )
 	if(newgrade > newblock.blockDefinition.grades.Length-1) then
-		newblock:SetGrade(newblock.blockDefinition.grades.Length-1)
+		newblock:SetGrade(GradeIdEnum[newblock.blockDefinition.grades.Length-1])
 	else
-		newblock:SetGrade(newgrade)
+		newblock:SetGrade(GradeIdEnum[newgrade])
 	end
 end
 
@@ -678,12 +685,12 @@ local function InitializeTable()
 	local itemlist = global.ItemManager.GetItemDefinitions();
 	local it = itemlist:GetEnumerator()
 	while (it:MoveNext()) do
-		local correctname = string.lower(it.Current.displayname,"%%","t")
+		local correctname = string.lower(it.Current.displayName.english,"%%","t")
 		Table[correctname] = tostring(it.Current.shortname)
 	end
 end
 local function DoDeploy( player, deployablename )
-	if(not Table) then InitializeTable() end
+	InitializeTable()
 	if(Table[deployablename]) then
 		deployablename = Table[deployablename]
 	end
@@ -691,12 +698,15 @@ local function DoDeploy( player, deployablename )
 	if(not newItem) then
 		return false, "This item doesn't exist"
 	end
-	local it = newItem.info.modules:GetEnumerator()
-	local deployModule = false
-	while (it:MoveNext()) do
-		if(it.Current.deployablePrefabName and it.Current.deployablePrefabName ~= "deployablePrefabName") then deployModule = it.Current end
+
+	if(not newItem.info:GetComponent(global.ItemModDeployable._type)) then
+		return false, "This item can't be deployed"
 	end
-	if(not deployModule) then return false, "This item can't be deployed" end
+
+	if(not newItem.info:GetComponent(global.ItemModDeployable._type).entityPrefab.targetObject:GetComponent(global.Deployable._type)) then
+		return false, "This item can't be deployed"
+	end
+	local todeploy = newItem.info:GetComponent(global.ItemModDeployable._type).entityPrefab.targetObject:GetComponent(global.Deployable._type)
 	local closestent, closesthitpoint = DoRaycastPlayer( player )
 	if(not closestent) then return false, "You may not deploy in the sky" end
 	local entRot = closestent.transform.rotation
@@ -707,9 +717,9 @@ local function DoDeploy( player, deployablename )
 		tempRotation.z = 0
 	end
 	tempRotation = UnityEngine.Quaternion.EulerRotation.methodarray[1]:Invoke(nil, util.TableToArray( { tempRotation } ) )
-	local newBaseEntity = global.GameManager.server:CreateEntity( deployModule.deployablePrefabName, closesthitpoint, tempRotation )
+	local newBaseEntity = global.GameManager.server:CreateEntity( todeploy.gameObject, closesthitpoint, tempRotation )
 	if(not newBaseEntity) then
-		return false, "Couldn't create the deployable: " .. deployModule.deployablePrefabName
+		return false, "Couldn't create the deployable: " .. todeploy.gameObject.name
 	end
 	newBaseEntity:SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver )
 	newBaseEntity:SendMessage("InitializeItem", newItem, UnityEngine.SendMessageOptions.DontRequireReceiver )
