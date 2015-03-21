@@ -24,6 +24,7 @@ namespace Oxide.Plugins
             public bool ispressed;
             public float lastTickPress;
             public float currentHeightAdjustment;
+            public string selection;
             void Awake()
             {
                 input = serverinput.GetValue(GetComponent<BasePlayer>()) as InputState;
@@ -74,6 +75,14 @@ namespace Oxide.Plugins
                 else if (currentType == "animal")
                 {
                     DoAnimal(this);
+                }
+                else if (currentType == "grade")
+                {
+                    DoGrade(this);
+                }
+                else if (currentType == "heal")
+                {
+                    DoHeal(this);
                 }
             }
         }
@@ -467,6 +476,130 @@ namespace Oxide.Plugins
             }
             SpawnResource(newPrefab, newPos, newRot);
         }
+        private static void SetGrade(BuildingBlock block, BuildingGrade.Enum level)
+        {
+            block.SetGrade(level);
+            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+        }
+        private static void SetHealth(BuildingBlock block)
+        {
+            block.health = block.MaxHealth();
+            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+        }
+        private static void DoGrade(BuildPlayer buildplayer)
+        {
+            BasePlayer player = buildplayer.player;
+            if (!TryGetPlayerView(player, out currentRot))
+            {
+                return;
+            }
+            if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
+            {
+                return;
+            }
+            var baseentity = closestEnt as Collider;
+            if (baseentity == null)
+            {
+                return;
+            }
+            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            if (buildingblock == null)
+            {
+                return;
+            }
+            
+            SetGrade(buildingblock, buildplayer.currentGrade);
+            if (buildplayer.selection == "select")
+                {
+                return;
+            }
+
+            List<object> houseList = new List<object>();
+            List<Vector3> checkFrom = new List<Vector3>();
+            BuildingBlock fbuildingblock;
+
+            houseList.Add(buildingblock);
+            checkFrom.Add(buildingblock.transform.position);
+
+            int current = 0;
+            while (true)
+            {
+                current++;
+                if (current > checkFrom.Count)
+                    break;
+                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                foreach (var hit in hits)
+                {
+                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    {
+                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
+                        if (!(houseList.Contains(fbuildingblock)))
+                        {
+                            houseList.Add(fbuildingblock);
+                            checkFrom.Add(fbuildingblock.transform.position);
+                            SetGrade(fbuildingblock, buildplayer.currentGrade);
+                        }
+                    }
+                }
+            }
+        }
+        private static void DoHeal(BuildPlayer buildplayer)
+        {
+            BasePlayer player = buildplayer.player;
+            if (!TryGetPlayerView(player, out currentRot))
+            {
+                return;
+            }
+            if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
+            {
+                return;
+            }
+            var baseentity = closestEnt as Collider;
+            if (baseentity == null)
+            {
+                return;
+            }
+            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            if (buildingblock == null)
+            {
+                return;
+            }
+            
+                SetHealth(buildingblock);
+            if (buildplayer.selection == "select")
+            {
+                return;
+            }
+
+            List<object> houseList = new List<object>();
+            List<Vector3> checkFrom = new List<Vector3>();
+            BuildingBlock fbuildingblock;
+
+            houseList.Add(buildingblock);
+            checkFrom.Add(buildingblock.transform.position);
+
+            int current = 0;
+            while (true)
+            {
+                current++;
+                if (current > checkFrom.Count)
+                    break;
+                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                foreach (var hit in hits)
+                {
+                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    {
+                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
+                        if (!(houseList.Contains(fbuildingblock)))
+                        {
+                            houseList.Add(fbuildingblock);
+                            checkFrom.Add(fbuildingblock.transform.position);
+                            SetHealth(fbuildingblock);
+                        }
+                    }
+                }
+            }
+        }
         private static void DoDeploy(BuildPlayer buildplayer)
         {
             BasePlayer player = buildplayer.player;
@@ -843,6 +976,77 @@ namespace Oxide.Plugins
             buildplayer.currentHeightAdjustment = heightAdjustment;
             SendReply(player, string.Format("BuildUp Activated: {0}", args[0]));
         }
+        [ChatCommand("buildgrade")]
+        void cmdChatBuilGrade(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) return;
+
+            if (args == null || args.Length == 0)
+            {
+                if (player.GetComponent<BuildPlayer>())
+                {
+                    UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
+                    SendReply(player, "SetGrade Deactivated");
+                }
+                else
+                    SendReply(player, "For more informations say: /buildhelp grades");
+                return;
+            }
+            BuildPlayer buildplayer;
+            if (player.GetComponent<BuildPlayer>() == null)
+                buildplayer = player.gameObject.AddComponent<BuildPlayer>();
+            else
+                buildplayer = player.GetComponent<BuildPlayer>();
+            buildType = "buildup";
+            buildplayer.currentType = "grade";
+            buildplayer.selection = "select";
+            defaultGrade = 0;
+            int.TryParse(args[0], out defaultGrade);
+            if (args.Length > 1)
+            {
+                if (args[1] == "all")
+                {
+                    buildplayer.selection = "all";
+                }
+            }
+            buildplayer.currentGrade = GetGrade(defaultGrade);
+            SendReply(player, string.Format("SetGrave to level {0} Activated for {1}", args[0], buildplayer.selection));
+        }
+        [ChatCommand("buildheal")]
+        void cmdChatBuilHeal(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) return;
+
+            if (args == null || args.Length == 0)
+            {
+                if (player.GetComponent<BuildPlayer>())
+                {
+                    UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
+                    SendReply(player, "Heal Deactivated");
+                }
+                else
+                    SendReply(player, "For more informations say: /buildhelp heal");
+                return;
+            }
+            BuildPlayer buildplayer;
+            if (player.GetComponent<BuildPlayer>() == null)
+                buildplayer = player.gameObject.AddComponent<BuildPlayer>();
+            else
+                buildplayer = player.GetComponent<BuildPlayer>();
+            buildType = "buildup";
+            buildplayer.currentType = "heal";
+            buildplayer.selection = "select";
+            defaultGrade = 0;
+            int.TryParse(args[0], out defaultGrade);
+            if (args.Length > 0)
+            { 
+                if (args[0] == "all")
+                {
+                    buildplayer.selection = "all";
+                }
+            }
+            SendReply(player, string.Format("Heal Activated for {0}", buildplayer.selection));
+        }
         [ChatCommand("buildhelp")]
         void cmdChatBuildhelp(BasePlayer player, string command, string[] args)
         {
@@ -851,6 +1055,8 @@ namespace Oxide.Plugins
             {
                 SendReply(player, "======== Buildings ========");
                 SendReply(player, "/buildhelp buildings");
+                SendReply(player, "/buildhelp grades");
+                SendReply(player, "/buildhelp heal");
                 SendReply(player, "======== Deployables ========");
                 SendReply(player, "/buildhelp deployables");
                 SendReply(player, "======== Resources (Trees, Ores, Barrels) ========");
@@ -873,6 +1079,21 @@ namespace Oxide.Plugins
                 SendReply(player, "/build block.halfheight - /build block.halfheight.slanted (stairs)");
                 SendReply(player, "/build wall - /build wall.low - /build wall.doorway - /build wall.window");
                 SendReply(player, "/build floor - /build floor.triangle - /build roof");
+            }
+            else if (args[0].ToLower() == "grades")
+            {
+                SendReply(player, "======== Commands ========");
+                SendReply(player, "/buildgrade GradeLevel Optional:all => default is only the selected block");
+                SendReply(player, "======== Usage ========");
+                SendReply(player, "/buildgrade 0 => set grade 0 for the select block");
+                SendReply(player, "/buildgrade 2 all => set grade 2 (Stone) for the entire building");
+            }
+            else if (args[0].ToLower() == "heal")
+            {
+                SendReply(player, "======== Commands ========");
+                SendReply(player, "/buildheal Optional:all => default is only the selected block");
+                SendReply(player, "======== Usage ========");
+                SendReply(player, "/buildheal all => will heal your entire structure");
             }
             else if (args[0].ToLower() == "deployables")
             {
