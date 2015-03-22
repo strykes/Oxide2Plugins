@@ -133,7 +133,7 @@ namespace Oxide.Plugins
 			}
 			return true;
         }
-        bool isEditing(BasePlayer player, int ttype)
+        bool isEditingWP(BasePlayer player, int ttype)
         {
         	if(player.GetComponent<WaypointEditor>())
         	{
@@ -159,6 +159,9 @@ namespace Oxide.Plugins
         	}
         	return false;
         }
+        
+        string GetPlayerName(object userID) => deadPlayers[Convert.ToUInt64(userID)]?.Name;
+        
     	[ChatCommand("waypoints_new")]
         void cmdWaypointsNew(BasePlayer player, string command, string[] args)
         {
