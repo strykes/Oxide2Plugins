@@ -13,17 +13,100 @@ namespace Oxide.Plugins
     [Info("HumanNPC", "Reneb", "1.0")]
     class HumanNPC : RustPlugin
     {
+    
+    	/// VARIABLES
+    	private static FieldInfo serverinput;
+    	private static FieldInfo viewangles;
+    	public static Core.Configuration.DynamicConfigFile NPCList;
+    	private List<Oxide.Plugins.Timer> TimersList;
+    	
+    	/// CACHED VARIABLES
+    	private object closestEnt;
         private Vector3 closestHitpoint;
-        private object closestEnt;
         private Quaternion currentRot;
-        private static FieldInfo serverinput;
         private Quaternion viewAngle;
-        private static FieldInfo viewangles;
-        private RaycastHit hitinfo;
-        public static Core.Configuration.DynamicConfigFile NPCList;
+        private RaycastHit raycasthitinfo;
         private DamageTypeList emptyDamage;
-        private List<Oxide.Plugins.Timer> TimersList;
+        
+		
+		/// WAYPOINTS
+		
+		StoredData storedData;
+        Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
+        bool dataChanged = false;
+		class WaypointInfo
+		{
+			public string x;
+			public string y;
+			public string z;
+			public string s;
+			Vector3 position;
+			float speed;
 
+			public WaypointInfo(Vector3 position, float speed)
+			{
+				x = position.x.ToString();
+				y = position.y.ToString();
+				z = position.z.ToString();
+				s = speed.ToString();
+			
+				this.position = position;
+				this.speed = speed;
+			}
+
+			public Vector3 GetPosition()
+			{
+				if (position == Vector3.zero)
+					position = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
+				return position;
+			}
+			public float GetSpeed()
+			{
+				if (Single.IsNaN(speed))
+					speed = float.Parse(s);
+				return speed;
+			}
+		}
+    	class Waypoint
+        {
+        	public string Name;
+        	public List<WaypointInfo> Waypoints;
+        	
+        	public Waypoint()
+        	{
+        	}
+        	
+        	public Waypoint(string name)
+        	{
+        		Name = name;
+        		Waypoints = new List<WaypointInfo>();
+        	}
+        	public AddWaypoint(Vector3 position, float speed)
+        	{
+        		Waypoints.Add(new WaypointInfo( position, speed ));
+        	}
+        }
+    	
+    	class WaypointEditor
+        {
+            public Waypoint targetWaypoint;
+
+            public WaypointEditor()
+            {
+            }
+        }
+    	
+    	class StoredData
+        {
+            public HashSet<Waypoint> WayPoints = new HashSet<Waypoint>();
+
+            public StoredData()
+            {
+            }
+        }
+        
+		
+		
         class NPCEditor : MonoBehaviour
         {
             public BasePlayer player;
@@ -40,32 +123,42 @@ namespace Oxide.Plugins
         {
             public BasePlayer player;
             public Vector3 spawnPosition;
+            private Vector3 LastWaypoint;
+            private Vector3 NextWaypoint;
+            
             public Quaternion spawnRotation;
+            public Quaternion tempQuaternion;
+            
             public string onEnterMessage;
             public string onLeaveMessage;
             public Dictionary<string, object> npcData;
             public Vector3 tempVector3;
-            public Quaternion tempQuaternion;
-            public bool invulnerability;
+            
             public float initialHealth;
-            public bool respawn;
-            public float respawnSeconds;
-            public bool useWaypoint;
-            public List<object> Waypoints;
-            public int currentWaypoint;
-            public int maxWaypoint;
             public float walkSpeed;
             public float runSpeed;
             private float secondsToTake;
             private float secondsTaken;
-            private Vector3 LastWaypoint;
-            private Vector3 NextWaypoint;
             private float waypointDone;
+            private float lastTick;
+            
+            public bool invulnerability;
+            public bool useWaypoint;
+            public bool respawn;
+            public float respawnSeconds;
+            
+            public List<object> Waypoints;
+            
+            public int currentWaypoint;
+            public int maxWaypoint;
+            private int currentColliding;
+            
+            
             private List<BasePlayer> insideSpherePlayers;
             private List<BasePlayer> deletePlayers;
             private List<BasePlayer> addPlayers;
-            private float lastTick;
-            private int currentColliding;
+            
+            
 
             void Awake()
             {
@@ -266,6 +359,7 @@ namespace Oxide.Plugins
         {
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             viewangles = typeof(BasePlayer).GetField("viewAngles", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            LoadWPData();
             LoadData();
             TimersList = new List<Oxide.Plugins.Timer>();
         }
@@ -277,6 +371,20 @@ namespace Oxide.Plugins
         {
             NPCList = Interface.GetMod().DataFileSystem.GetDatafile("HumanNPC"); 
         }
+        void LoadWPData()
+        {
+            waypoints.Clear();
+            try
+            {
+                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("Waypoints");
+            }
+            catch
+            {
+                storedData = new StoredData();
+            }
+            foreach (var thewaypoint in storedData.Waypoint)
+                waypoints[thewaypoint.Name] = thewaypoint;
+        }
         void SaveData()
         {
             Interface.GetMod().DataFileSystem.SaveDatafile("HumanNPC");
@@ -284,6 +392,10 @@ namespace Oxide.Plugins
         void Unload()
         {
             var objects = GameObject.FindObjectsOfType(typeof(HumanPlayer));
+            if (objects != null)
+                foreach (var gameObj in objects)
+                    GameObject.Destroy(gameObj);
+            var objects = GameObject.FindObjectsOfType(typeof(WaypointEditor));
             if (objects != null)
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
@@ -405,7 +517,7 @@ namespace Oxide.Plugins
         {
             if (input.WasJustPressed(BUTTON.USE))
             {
-                if(Physics.Raycast(player.eyes.Ray(), out hitinfo, 5f))
+                if(Physics.Raycast(player.eyes.Ray(), out raycasthitinfo, 5f))
                 { 
                     if (hitinfo.collider.GetComponentInParent<HumanPlayer>() != null)
                     {
@@ -708,6 +820,105 @@ namespace Oxide.Plugins
         void cmdChatNPCEnd(BasePlayer player, string command, string[] args)
         {
             EndNPCEditor(player);
+        }
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        bool isEditingWP(BasePlayer player, int ttype)
+        {
+        	if(player.GetComponent<WaypointEditor>())
+        	{
+        		if(ttype == 0)
+        			SendReply(player, string.Format("You are already editing {0}",player.GetComponent<WaypointEditor>().targetWaypoint.Name.ToString()));
+
+        		return true;
+        	}
+        	else
+        	{
+        		if(ttype == 1)
+        			SendReply(player, string.Format("You are not editing any waypoints, say /waypoints_new or /waypoints_edit NAME"));
+        			
+        		return false;
+        	}
+        }
+        bool hasNoArguments(BasePlayer player, string[] args, int Number)
+        {
+        	if(args.Length < Number)
+        	{
+        		SendReply(player, "Not enough Arguments, say /waypoints_help for more informations");
+        		return true;
+        	}
+        	return false;
+        }
+        [ChatCommand("waypoints_new")]
+        void cmdWaypointsNew(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) return;
+            if(isEditing(player,0)) return;
+            
+            var newWaypoint = new Waypoint( args[0].ToString() );
+            if(newWaypoint == null)
+            {
+            	SendReply(player, "Waypoints: Something went wrong while making a new waypoint");
+            	return;
+            }
+            var newWaypointEditor = player.gameObject.AddComponent<WaypointEditor>();
+            newWaypointEditor.targetWaypoint = newWaypoint;
+            SendReply(player, "Waypoints: New WaypointList created, you may now add waypoints.");
+        }
+        [ChatCommand("waypoints_add")]
+        void cmdWaypointsAdd(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) return;
+            if(!isEditing(player,1)) return;
+            var WaypointEditor = player.GetComponent<WaypointEditor>();
+            if(WaypointEditor.targetWaypoint == null)
+            {
+            	SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
+            	return;
+            }
+            float speed = 3f;
+            if(args.Length > 0) float.TryParse(args[0], out speed);
+            WaypointEditor.targetWaypoint.AddWaypoint(player.transform.position,speed);
+            
+            SendReply(player, string.Format("Waypoint Added: {0} {1} {2} - Speed: {3}",player.transform.position.x.ToString(),player.transform.position.y.ToString(),player.transform.position.z.ToString(),speed.ToString()));
+        }
+        [ChatCommand("waypoints_save")]
+        void cmdWaypointsSave(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) return;
+            if(!isEditing(player,1)) return;
+            if(hasEnoughArguments(player,args,1)) return;
+            var WaypointEditor = player.GetComponent<WaypointEditor>();
+            if(WaypointEditor.targetWaypoint == null)
+            {
+            	SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
+            	return;
+            }
+            
+            WaypointEditor.targetWaypoint.Name = args[0];
+            
+            if(waypoints[args[0]] != null) storedData.Waypoint.Remove(waypoints[args[0]]);
+            waypoints[args[0]] = WaypointEditor.targetWaypoint;
+            storedData.Waypoint.Add(waypoints[args[0]]);
+            SendReply(player, string.Format("Waypoints: New waypoint saved with: {0} with {1} waypoints stored",WaypointEditor.targetWaypoint.Name, WaypointEditor.targetWaypoint.Waypoints.Count.ToString()));
+        	GameObject.Destroy(player.GetComponent<WaypointEditor>());
         }
     }
 }
