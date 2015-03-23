@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Data;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Plugins;
 using Rust;
 
 namespace Oxide.Plugins
@@ -21,8 +22,8 @@ namespace Oxide.Plugins
         StoredData storedData;
         static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
         Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
-
-
+        [PluginReference] Plugin Kits;
+         
         // Cached
         private Quaternion currentRot;
         private object closestEnt;
@@ -246,6 +247,7 @@ namespace Oxide.Plugins
              void Update()
             {
                 if(info == null) enabled = false;
+                
                 Move();
                 LookUp();
             } 
@@ -419,9 +421,7 @@ namespace Oxide.Plugins
                 if(findplayer == null)
                     SpawnNPC(pair.Key);
                 else
-                {
                     RefreshNPC(findplayer);
-                }
             }
             foreach(BasePlayer player in UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>())
             {
@@ -429,6 +429,7 @@ namespace Oxide.Plugins
                 {
                     if(!npcspawned.Contains(player.userID.ToString()))
                     {
+                        player.KillMessage();
                         Puts(string.Format("Detected a HumanNPC with no data, deleting him: {0} {1}", player.userID.ToString(), player.displayName));
                     }
                 }
@@ -588,13 +589,8 @@ namespace Oxide.Plugins
             {
                 GameObject.Destroy(player.GetComponent<NPCEditor>());
             }
-
-            if (((Collider)closestEnt).GetComponentInParent<HumanPlayer>() == null)
-            {
-                SendReply(player, "This is not an NPC");
-                return;
-            }
             humannpcs.Clear();
+             storedData.HumanNPCs.Clear();
             SaveData();
             OnServerInitialized();
         }
@@ -712,7 +708,7 @@ namespace Oxide.Plugins
                 }
                 npceditor.targetNPC.info.spawnkit = args[1];
             }
-            else
+            else 
             {
                 SendReply(player, "Wrong Argument, /npc for more informations");
                 return;
@@ -855,7 +851,13 @@ namespace Oxide.Plugins
             if(npc.GetComponent<HumanPlayer>().info.spawnkit != null && npc.GetComponent<HumanPlayer>().info.spawnkit != "")
             {
                 npc.inventory.Strip();
-                Interface.CallHook("GiveKit", new object[] { npc, npc.GetComponent<HumanPlayer>().info.spawnkit });
+                Kits.Call("GiveKit", npc, npc.GetComponent<HumanPlayer>().info.spawnkit);
+                if(npc.inventory.containerBelt.GetSlot(0) != null)
+                {
+                    npc.svActiveItem = npc.inventory.containerBelt.GetSlot(0);
+                    HeldEntity entity2 = npc.svActiveItem.GetHeldEntity() as HeldEntity;
+                    entity2.SetHeld(true);
+                }
                 npc.SV_ClothingChanged();
                 npc.inventory.ServerUpdate(0f);
             }
