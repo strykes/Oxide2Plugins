@@ -18,11 +18,16 @@ namespace Oxide.Plugins
         private static FieldInfo viewangles;
         private DamageTypeList emptyDamage;
         private List<Oxide.Plugins.Timer> TimersList;
+        StoredData storedData;
+        static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
+        Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
+
 
         // Cached
         private Quaternion currentRot;
         private object closestEnt;
         private Vector3 closestHitpoint;
+        private RaycastHit hitinfo;
 
         class WaypointInfo
 		{
@@ -122,7 +127,7 @@ namespace Oxide.Plugins
             public BasePlayer player;
 
             public bool invulnerability;
-
+            public float collisionRadius;
 
             // Cached Values for Waypoints
             private float secondsToTake;
@@ -135,12 +140,19 @@ namespace Oxide.Plugins
             private int currentWaypoint;
 
             // Cached Values for entity collisions
-
+            Collider[] colliderArray;
+            float lastTick;
+            List<BasePlayer> deletePlayers;
+            List<BasePlayer> collidePlayers;
+            List<BasePlayer> addPlayers;
 
             void Awake()
             {
                 enabled = false;
                 player = GetComponent<BasePlayer>();
+                deletePlayers = new List<BasePlayer>();
+                collidePlayers = new List<BasePlayer>();
+                addPlayers = new List<BasePlayer>();
             }
             public void SetInfo(HumanNPCInfo info)
             {
@@ -155,18 +167,21 @@ namespace Oxide.Plugins
                 player.userID = ulong.Parse( info.userid );
                 player.displayName = info.displayName;
                 invulnerability = bool.Parse( info.invulnerability );
+                collisionRadius = float.Parse( info.collisionRadius );
                 player.health = float.Parse( info.health );
                 player.syncPosition = true;
                 player.transform.position = info.spawnInfo.GetPosition();
-                SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.TransformChanged();
+                SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.EndSleeping();
                 player.UpdateNetworkGroup();
+                lastTick = Time.realtimeSinceStartup;
+                Interface.CallHook("OnNPCRespawn", player);
             }
             void FindNextWaypoint()
             {
                 StartPos = player.transform.position;
-                Interface.CallHook("OnNPCPosition",StartPos);
+                Interface.CallHook("OnNPCPosition", player, StartPos);
                 cachedWaypoints = GetWayPoints(info.waypoint);
                 if(lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count-1))
                     currentWaypoint = -1;
@@ -191,14 +206,49 @@ namespace Oxide.Plugins
             }
             void LookUp()
             {
-
+                if (Time.realtimeSinceStartup > (lastTick + 2))
+                {
+                    
+                    colliderArray = Physics.OverlapSphere(player.transform.position, collisionRadius);
+                    foreach (BasePlayer targetplayer in collidePlayers)
+                        deletePlayers.Add(targetplayer);
+                    foreach (Collider collider in colliderArray)
+                    {
+                        if (collider.GetComponentInParent<BasePlayer>())
+                        {
+                            if (collidePlayers.Contains(collider.GetComponentInParent<BasePlayer>()))
+                                deletePlayers.Remove(collider.GetComponentInParent<BasePlayer>());
+                            else if (player != collider.GetComponentInParent<BasePlayer>())
+                                OnEnterCollision(collider.GetComponentInParent<BasePlayer>());
+                        }
+                    }
+                    foreach (BasePlayer targetplayer in deletePlayers)
+                        OnLeaveCollision(targetplayer);
+                    foreach (BasePlayer targetplayer in addPlayers)
+                        collidePlayers.Add(targetplayer);
+                    addPlayers.Clear();
+                    deletePlayers.Clear();
+                    lastTick = Time.realtimeSinceStartup;
+                }
             }
+            void OnEnterCollision(BasePlayer targetplayer)
+            {
+                addPlayers.Add(targetplayer);
+                if(targetplayer != null)
+                    Interface.CallHook("OnEnterNPC", player, targetplayer);
+            }
+            void OnLeaveCollision(BasePlayer targetplayer)
+            {
+                collidePlayers.Remove(targetplayer);
+                if(targetplayer != null)
+                    Interface.CallHook("OnLeaveNPC", player, targetplayer);
+            } 
              void Update()
             {
                 if(info == null) enabled = false;
                 Move();
                 LookUp();
-            }
+            } 
         }
         class HumanNPCInfo
         {
@@ -210,6 +260,8 @@ namespace Oxide.Plugins
             public string respawnSeconds;
             public SpawnInfo spawnInfo;
             public string waypoint;
+            public string collisionRadius;
+            public string spawnkit;
 
             public HumanNPCInfo(ulong userid, Vector3 position, Quaternion rotation)
 			{
@@ -220,6 +272,7 @@ namespace Oxide.Plugins
                 respawn = "true";
                 respawnSeconds = "60";
                 spawnInfo = new SpawnInfo(position, rotation);
+                collisionRadius = "10";
 			}
         }
     	
@@ -251,10 +304,7 @@ namespace Oxide.Plugins
             }
         }
     	
-    	StoredData storedData;
-        static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
-        Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
-        bool dataChanged = false;
+    	
     	
     	void Loaded()
         {
@@ -279,6 +329,10 @@ namespace Oxide.Plugins
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
             objects = GameObject.FindObjectsOfType(typeof(HumanPlayer));
+            if (objects != null)
+                foreach (var gameObj in objects)
+                    GameObject.Destroy(gameObj);
+            objects = GameObject.FindObjectsOfType(typeof(NPCEditor));
             if (objects != null)
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
@@ -308,9 +362,38 @@ namespace Oxide.Plugins
         }
     	void OnServerSave()
         {
-            if (!dataChanged) return;
             SaveData();
-            dataChanged = false;
+        }
+        void OnPlayerInput(BasePlayer player, InputState input)
+        {
+            if (input.WasJustPressed(BUTTON.USE))
+                if(Physics.Raycast(player.eyes.Ray(), out hitinfo, 5f))
+                    if (hitinfo.collider.GetComponentInParent<HumanPlayer>() != null)
+                        Interface.CallHook("OnUseNPC", hitinfo.collider.GetComponentInParent<BasePlayer>(), player);
+        }
+        void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
+        {
+            if (entity.GetComponent<HumanPlayer>() != null)
+            {
+                Interface.CallHook("OnHitNPC", entity.GetComponent<BasePlayer>(), hitinfo);
+                if (entity.GetComponent<HumanPlayer>().invulnerability)
+                {
+                    hitinfo.damageTypes = emptyDamage;
+                    hitinfo.HitMaterial = 0;
+                }
+            }
+        }
+        void OnEntityDeath(BaseEntity entity, HitInfo hitinfo)
+        {
+            if (entity.GetComponent<HumanPlayer>() != null)
+            {
+                Interface.CallHook("OnKillNPC", entity.GetComponent<BasePlayer>(), hitinfo);
+                if (entity.GetComponent<HumanPlayer>().info.respawn == "true")
+                {
+                    var userid = entity.GetComponent<HumanPlayer>().info.userid;
+                    TimersList.Add( timer.Once(float.Parse(entity.GetComponent<HumanPlayer>().info.respawnSeconds), () => SpawnNPC(userid)) );
+                }
+            }
         }
         BasePlayer FindPlayerByID(ulong userid)
         {
@@ -328,11 +411,11 @@ namespace Oxide.Plugins
         }
         void RefreshAllNPC()
         {
+            List<string> npcspawned = new List<string>();
             foreach (KeyValuePair<string, HumanNPCInfo> pair in humannpcs)
             {
-                Puts(pair.Key);
                 BasePlayer findplayer = FindPlayerByID(Convert.ToUInt64(pair.Key));
-                
+                npcspawned.Add(pair.Key);
                 if(findplayer == null)
                     SpawnNPC(pair.Key);
                 else
@@ -340,23 +423,33 @@ namespace Oxide.Plugins
                     RefreshNPC(findplayer);
                 }
             }
+            foreach(BasePlayer player in UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>())
+            {
+                if (player.userID < 76560000000000000L && player.userID > 0L)
+                {
+                    if(!npcspawned.Contains(player.userID.ToString()))
+                    {
+                        Puts(string.Format("Detected a HumanNPC with no data, deleting him: {0} {1}", player.userID.ToString(), player.displayName));
+                    }
+                }
+            }
+
         }
         void SpawnNPC(string userid)
         {
-            Puts("spawn");
             if(humannpcs[userid] == null) return;
             var newplayer = GameManager.server.CreateEntity("player/player", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
             newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
-            newplayer.Spawn(true);
+            newplayer.Spawn(true); 
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
             humanplayer.SetInfo( humannpcs[userid] );
-            Puts(newplayer.userID.ToString());
             Puts("Spawned NPC: "+userid);
         }
         void RefreshNPC(BasePlayer player)
         {
-            if(player.GetComponent<HumanPlayer>() == null) player.gameObject.AddComponent<HumanPlayer>();
+            if(player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
+            player.gameObject.AddComponent<HumanPlayer>();
             player.GetComponent<HumanPlayer>().SetInfo( humannpcs[player.userID.ToString()] );
             Puts("Refreshed NPC: "+player.userID.ToString());
         }
@@ -488,6 +581,23 @@ namespace Oxide.Plugins
             npceditor.targetNPC = ((Collider)closestEnt).GetComponentInParent<HumanPlayer>();
             SendReply(player, string.Format("NPC Editor: Start Editing {0} - {1}",npceditor.targetNPC.player.displayName,npceditor.targetNPC.player.userID.ToString()));
         }
+         [ChatCommand("npc_reset")]
+        void cmdChatNPCReset(BasePlayer player, string command, string[] args)
+        {
+            if (player.GetComponent<NPCEditor>() != null)
+            {
+                GameObject.Destroy(player.GetComponent<NPCEditor>());
+            }
+
+            if (((Collider)closestEnt).GetComponentInParent<HumanPlayer>() == null)
+            {
+                SendReply(player, "This is not an NPC");
+                return;
+            }
+            humannpcs.Clear();
+            SaveData();
+            OnServerInitialized();
+        }
          
         static List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
         string GetNPCName(string userid) => humannpcs[userid]?.displayName;
@@ -590,6 +700,18 @@ namespace Oxide.Plugins
                 }
                 npceditor.targetNPC.info.waypoint = args[1];
             }
+            else if (args[0] == "kit") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.spawnkit == null || npceditor.targetNPC.info.spawnkit == "" )
+                        SendReply(player, "No spawn kits set for this NPC yet");
+                    else
+                        SendReply(player, string.Format("This NPC spawn kit is: {0}",npceditor.targetNPC.info.spawnkit));
+                    return;
+                }
+                npceditor.targetNPC.info.spawnkit = args[1];
+            }
             else
             {
                 SendReply(player, "Wrong Argument, /npc for more informations");
@@ -688,6 +810,55 @@ namespace Oxide.Plugins
             SendReply(player, string.Format("Waypoints: New waypoint saved with: {0} with {1} waypoints stored",WaypointEditor.targetWaypoint.Name, WaypointEditor.targetWaypoint.Waypoints.Count.ToString()));
         	GameObject.Destroy(player.GetComponent<WaypointEditor>());
             SaveData();
+        }
+
+
+
+
+
+
+
+
+
+
+        // NPC HOOKS:
+        void OnHitNPC(BasePlayer npc, HitInfo hinfo)
+        {
+            if(hinfo.Initiator != null)
+                if(hinfo.Initiator.ToPlayer() != null)
+                    hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Ouch that hurt!"), 1.0 });
+        }
+        void OnUseNPC(BasePlayer npc, BasePlayer player)
+        {
+            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "How can i help you?"), 1.0 });
+        }
+        void OnEnterNPC(BasePlayer npc, BasePlayer player)
+        {
+            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Hi"), 1.0 });
+        }
+        void OnLeaveNPC(BasePlayer npc, BasePlayer player)
+        {
+            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Bye"), 1.0 });
+        }
+        void OnKillNPC(BasePlayer npc, HitInfo hinfo)
+        {
+            if(hinfo.Initiator != null)
+                if(hinfo.Initiator.ToPlayer() != null)
+                    hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "You murderer!"), 1.0 });
+        }
+        void OnNPCPosition(BasePlayer npc, Vector3 pos)
+        { 
+            return;
+        }
+        void OnNPCRespawn(BasePlayer npc)
+        { 
+            if(npc.GetComponent<HumanPlayer>().info.spawnkit != null && npc.GetComponent<HumanPlayer>().info.spawnkit != "")
+            {
+                npc.inventory.Strip();
+                Interface.CallHook("GiveKit", new object[] { npc, npc.GetComponent<HumanPlayer>().info.spawnkit });
+                npc.SV_ClothingChanged();
+                npc.inventory.ServerUpdate(0f);
+            }
         }
     }
 }
