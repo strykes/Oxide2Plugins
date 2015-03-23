@@ -52,8 +52,7 @@ namespace Oxide.Plugins
 			}
 			public float GetSpeed()
 			{
-				if (Single.IsNaN(speed))
-					speed = float.Parse(s);
+ 			    speed = Convert.ToSingle(s);
 				return speed;
 			}
 		}
@@ -92,8 +91,8 @@ namespace Oxide.Plugins
 			}
 			public Quaternion GetRotation()
 			{
-				if (rotation == new Quaternion(0f,0f,0f,0f))
-					rotation = new Quaternion(Convert.ToSingle(rx), Convert.ToSingle(ry), Convert.ToSingle(rz), Convert.ToSingle(rw));
+                if(rotation.x == 0f)
+				    rotation = new Quaternion(Convert.ToSingle(rx), Convert.ToSingle(ry), Convert.ToSingle(rz), Convert.ToSingle(rw));
 				return rotation;
 			}
             public string String()
@@ -124,6 +123,20 @@ namespace Oxide.Plugins
 
             public bool invulnerability;
 
+
+            // Cached Values for Waypoints
+            private float secondsToTake;
+            private float secondsTaken;
+            private Vector3 EndPos;
+            private Vector3 StartPos;
+            private string lastWaypoint;
+            private float waypointDone;
+            private List<WaypointInfo> cachedWaypoints;
+            private int currentWaypoint;
+
+            // Cached Values for entity collisions
+
+
             void Awake()
             {
                 enabled = false;
@@ -135,11 +148,6 @@ namespace Oxide.Plugins
                 enabled = true;
                 InitPlayer();
             } 
-            void Update()
-            {
-                if(info == null) enabled = false;
-
-            }
             void InitPlayer()
             { 
                 if(info == null) return;
@@ -150,17 +158,48 @@ namespace Oxide.Plugins
                 player.health = float.Parse( info.health );
                 player.syncPosition = true;
                 player.transform.position = info.spawnInfo.GetPosition();
+                SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.TransformChanged();
                 player.EndSleeping();
-                Puts(info.spawnInfo.GetRotation().ToString());
-                SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.UpdateNetworkGroup();
-                player.UpdatePlayerCollider(true, false);
-                player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
             }
-            
-        }
+            void FindNextWaypoint()
+            {
+                StartPos = player.transform.position;
+                Interface.CallHook("OnNPCPosition",StartPos);
+                cachedWaypoints = GetWayPoints(info.waypoint);
+                if(lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count-1))
+                    currentWaypoint = -1;
+                currentWaypoint++;
+                EndPos = cachedWaypoints[currentWaypoint].GetPosition(); 
+                secondsToTake = Vector3.Distance(EndPos, StartPos) / cachedWaypoints[currentWaypoint].GetSpeed();
+                SetViewAngle(player, Quaternion.LookRotation( EndPos - StartPos ));
+                secondsTaken = 0f;
+                waypointDone = 0f; 
+                lastWaypoint = info.waypoint;
+            }
+            void Move()
+            {
+                if(info.waypoint == "" || info.waypoint == null) return;
+                if (secondsTaken == 0f) FindNextWaypoint();
+                secondsTaken += Time.deltaTime;
+                waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
+                player.transform.position = Vector3.Lerp(StartPos,EndPos, waypointDone);
+                player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
+                if (waypointDone >= 1f)
+                    secondsTaken = 0f;
+            }
+            void LookUp()
+            {
 
+            }
+             void Update()
+            {
+                if(info == null) enabled = false;
+                Move();
+                LookUp();
+            }
+        }
         class HumanNPCInfo
         {
             public string userid;
@@ -170,6 +209,7 @@ namespace Oxide.Plugins
             public string respawn;
             public string respawnSeconds;
             public SpawnInfo spawnInfo;
+            public string waypoint;
 
             public HumanNPCInfo(ulong userid, Vector3 position, Quaternion rotation)
 			{
@@ -181,7 +221,6 @@ namespace Oxide.Plugins
                 respawnSeconds = "60";
                 spawnInfo = new SpawnInfo(position, rotation);
 			}
-
         }
     	
     	class WaypointEditor : MonoBehaviour
@@ -213,7 +252,7 @@ namespace Oxide.Plugins
         }
     	
     	StoredData storedData;
-        Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
+        static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
         Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
         bool dataChanged = false;
     	
@@ -409,6 +448,7 @@ namespace Oxide.Plugins
 
             var newplayer = GameManager.server.CreateEntity("player/player", player.transform.position, currentRot).ToPlayer();
             newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
+            newplayer.displayName = "NPC";
             newplayer.Spawn(true);
             var humannpcinfo = new HumanNPCInfo(newplayer.userID, player.transform.position, currentRot);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
@@ -449,7 +489,7 @@ namespace Oxide.Plugins
             SendReply(player, string.Format("NPC Editor: Start Editing {0} - {1}",npceditor.targetNPC.player.displayName,npceditor.targetNPC.player.userID.ToString()));
         }
          
-        List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
+        static List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
         string GetNPCName(string userid) => humannpcs[userid]?.displayName;
 
 
@@ -533,6 +573,23 @@ namespace Oxide.Plugins
 
                 SendReply(player, string.Format("This NPC Spawn now is set to: {0}", newSpawn.String()));
             }
+            else if (args[0] == "waypoints") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.waypoint == null || npceditor.targetNPC.info.waypoint == "" )
+                        SendReply(player, "No waypoints set for this NPC yet");
+                    else
+                        SendReply(player, string.Format("This NPC waypoints are: {0}",npceditor.targetNPC.info.waypoint));
+                    return;
+                }
+                if(waypoints[args[1]] == null)
+                {
+                    SendReply(player, "This waypoint doesn't exist");
+                    return;
+                }
+                npceditor.targetNPC.info.waypoint = args[1];
+            }
             else
             {
                 SendReply(player, "Wrong Argument, /npc for more informations");
@@ -589,6 +646,22 @@ namespace Oxide.Plugins
             WaypointEditor.targetWaypoint.AddWaypoint(player.transform.position,speed);
             
             SendReply(player, string.Format("Waypoint Added: {0} {1} {2} - Speed: {3}",player.transform.position.x.ToString(),player.transform.position.y.ToString(),player.transform.position.z.ToString(),speed.ToString()));
+        }
+        [ChatCommand("waypoints_list")]
+        void cmdWaypointsList(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) return;
+            if(waypoints.Count == 0)
+            {
+                SendReply(player, "No waypoints created yet");
+                return;
+            }
+            SendReply(player, "==== Waypoints ====");
+            foreach (KeyValuePair<string, Waypoint> pair in waypoints)
+            {
+                SendReply(player, pair.Key);
+            }
+
         }
         [ChatCommand("waypoints_save")]
         void cmdWaypointsSave(BasePlayer player, string command, string[] args)
