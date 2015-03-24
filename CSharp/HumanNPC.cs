@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "1.0")]
+    [Info("HumanNPC", "Reneb", "0.0.1")]
     class HumanNPC : RustPlugin
     {
 
@@ -29,7 +29,7 @@ namespace Oxide.Plugins
         private object closestEnt;
         private Vector3 closestHitpoint;
         private RaycastHit hitinfo;
-
+        private Vector3 eyesPosition;
         class WaypointInfo
 		{
 			public string x;
@@ -149,7 +149,6 @@ namespace Oxide.Plugins
 
             void Awake()
             {
-                enabled = false;
                 player = GetComponent<BasePlayer>();
                 deletePlayers = new List<BasePlayer>();
                 collidePlayers = new List<BasePlayer>();
@@ -158,7 +157,6 @@ namespace Oxide.Plugins
             public void SetInfo(HumanNPCInfo info)
             {
                 this.info = info;
-                enabled = true;
                 InitPlayer();
             } 
             void InitPlayer()
@@ -178,6 +176,7 @@ namespace Oxide.Plugins
                 player.UpdateNetworkGroup();
                 lastTick = Time.realtimeSinceStartup;
                 Interface.CallHook("OnNPCRespawn", player);
+                enabled = true;
             }
             void FindNextWaypoint()
             {
@@ -209,7 +208,6 @@ namespace Oxide.Plugins
             {
                 if (Time.realtimeSinceStartup > (lastTick + 2))
                 {
-                    
                     colliderArray = Physics.OverlapSphere(player.transform.position, collisionRadius);
                     foreach (BasePlayer targetplayer in collidePlayers)
                         deletePlayers.Add(targetplayer);
@@ -247,9 +245,8 @@ namespace Oxide.Plugins
              void Update()
             {
                 if(info == null) enabled = false;
-                
-                Move();
-                LookUp();
+                 LookUp();
+                 Move();
             } 
         }
         class HumanNPCInfo
@@ -264,6 +261,11 @@ namespace Oxide.Plugins
             public string waypoint;
             public string collisionRadius;
             public string spawnkit;
+            public string message_hello;
+            public string message_bye;
+            public string message_use;
+            public string message_hurt;
+            public string message_kill;
 
             public HumanNPCInfo(ulong userid, Vector3 position, Quaternion rotation)
 			{
@@ -314,6 +316,7 @@ namespace Oxide.Plugins
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             viewangles = typeof(BasePlayer).GetField("viewAngles", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             TimersList = new List<Oxide.Plugins.Timer>();
+            eyesPosition = new Vector3(0f,0.5f,0f);
         }
         void OnServerInitialized()
         {
@@ -369,9 +372,12 @@ namespace Oxide.Plugins
         void OnPlayerInput(BasePlayer player, InputState input)
         {
             if (input.WasJustPressed(BUTTON.USE))
-                if(Physics.Raycast(player.eyes.Ray(), out hitinfo, 5f))
+            {
+                TryGetPlayerView(player, out currentRot);
+                if(Physics.Raycast( new Ray(player.transform.position + eyesPosition, currentRot*Vector3.forward) , out hitinfo, 5f))
                     if (hitinfo.collider.GetComponentInParent<HumanPlayer>() != null)
                         Interface.CallHook("OnUseNPC", hitinfo.collider.GetComponentInParent<BasePlayer>(), player);
+            }
         }
         void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         {
@@ -450,8 +456,8 @@ namespace Oxide.Plugins
         void RefreshNPC(BasePlayer player)
         {
             if(player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
-            player.gameObject.AddComponent<HumanPlayer>();
-            player.GetComponent<HumanPlayer>().SetInfo( humannpcs[player.userID.ToString()] );
+            var humanplayer = player.gameObject.AddComponent<HumanPlayer>();
+            humanplayer.SetInfo( humannpcs[player.userID.ToString()] );
             Puts("Refreshed NPC: "+player.userID.ToString());
         }
     	bool hasAccess(BasePlayer player)
@@ -610,14 +616,19 @@ namespace Oxide.Plugins
             var npceditor = player.GetComponent<NPCEditor>();
             if (args.Length == 0)
             {
+                SendReply(player, "/npc bye reset/\"TEXT\" => Dont forgot the \", this what will be said when the player gets away from the NPC");
+                SendReply(player, "/npc radius XXX => Radius of which the NPC will detect the player");
                 SendReply(player, "/npc name \"THE NAME\" => To set a name to the NPC");
                 SendReply(player, "/npc health XXX => To set the Health of the NPC");
-                SendReply(player, "/npc hello \"TEXT\" => Dont forgot the \", this what will be said to the players when they interract with the NPC");
+                SendReply(player, "/npc hello reset/\"TEXT\" => Dont forgot the \", this what will be said when the player gets close to the NPC");
+                SendReply(player, "/npc hurt reset/\"TEXT\" => Dont forgot the \", set a message to tell the player when he hurts the NPC");
                 SendReply(player, "/npc invulnerable true/false => To set the NPC invulnerable or not");
+                SendReply(player, "/npc kill reset/\"TEXT\" => Dont forgot the \", set a message to tell the player when he kills the NPC");
+                SendReply(player, "/npc kit reset/\"KitName\" => To set the kit of this NPC, requires the Kit plugin");
                 SendReply(player, "/npc respawn true/false XX => To set it to respawn on death after XX seconds, default is instant respawn");
                 SendReply(player, "/npc spawn \"new\" => To set the new spawn location");
-                SendReply(player, "/npc waypoint set/reset \"Waypoint list Name\" => To set waypoints of an NPC, /npc_help for more informations");
-
+                SendReply(player, "/npc use reset/\"TEXT\" => Dont forgot the \", this what will be said when the player presses USE on the NPC");
+                SendReply(player, "/npc waypoints reset/\"Waypoint list Name\" => To set waypoints of an NPC, /npc_help for more informations");
                 return;
             }
             if (args[0] == "name")
@@ -649,6 +660,15 @@ namespace Oxide.Plugins
                     return;
                 }
                 npceditor.targetNPC.info.health = args[1];
+            }
+                else if (args[0] == "radius")
+            {
+                if (args.Length == 1)
+                {
+                    SendReply(player, string.Format("This NPC Collision radius is set to: {0}",  npceditor.targetNPC.info.collisionRadius));
+                    return;
+                }
+                npceditor.targetNPC.info.collisionRadius = args[1];
             }
             else if (args[0] == "respawn")
             {
@@ -689,12 +709,19 @@ namespace Oxide.Plugins
                         SendReply(player, string.Format("This NPC waypoints are: {0}",npceditor.targetNPC.info.waypoint));
                     return;
                 }
-                if(waypoints[args[1]] == null)
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.waypoint = "";
+                }
+                else if(waypoints[args[1]] == null)
                 {
                     SendReply(player, "This waypoint doesn't exist");
                     return;
                 }
-                npceditor.targetNPC.info.waypoint = args[1];
+                else
+                {
+                    npceditor.targetNPC.info.waypoint = args[1];
+                }
             }
             else if (args[0] == "kit") 
             {
@@ -708,6 +735,101 @@ namespace Oxide.Plugins
                 }
                 npceditor.targetNPC.info.spawnkit = args[1];
             }
+            else if (args[0] == "hello") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.message_hello == null || npceditor.targetNPC.info.message_hello == "" )
+                        SendReply(player, "No hello message set yet");
+                    else
+                        SendReply(player, string.Format("This NPC will say hi: {0}",npceditor.targetNPC.info.message_hello));
+                    return;
+                }
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.message_hello = "";
+                }
+                else
+                {
+                    npceditor.targetNPC.info.message_hello = args[1];
+                }
+            }
+            else if (args[0] == "bye") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.message_bye == null || npceditor.targetNPC.info.message_bye == "" )
+                        SendReply(player, "No bye message set yet");
+                    else
+                        SendReply(player, string.Format("This NPC will say bye: {0}",npceditor.targetNPC.info.message_bye));
+                    return;
+                }
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.message_bye = "";
+                }
+                else
+                {
+                    npceditor.targetNPC.info.message_bye = args[1];
+                }
+            }
+            else if (args[0] == "use") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.message_use == null || npceditor.targetNPC.info.message_use == "" )
+                        SendReply(player, "No bye message set yet");
+                    else
+                        SendReply(player, string.Format("This NPC will say bye: {0}",npceditor.targetNPC.info.message_use));
+                    return;
+                }
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.message_use = "";
+                }
+                else
+                {
+                    npceditor.targetNPC.info.message_use = args[1];
+                }
+            }
+            else if (args[0] == "hurt") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.message_hurt == null || npceditor.targetNPC.info.message_hurt == "" )
+                        SendReply(player, "No hurt message set yet");
+                    else
+                        SendReply(player, string.Format("This NPC will say ouch: {0}",npceditor.targetNPC.info.message_hurt));
+                    return;
+                }
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.message_hurt = "";
+                }
+                else
+                {
+                    npceditor.targetNPC.info.message_hurt = args[1];
+                }
+            }
+            else if (args[0] == "kill") 
+            {
+                if (args.Length < 2)
+                {
+                    if( npceditor.targetNPC.info.message_kill == null || npceditor.targetNPC.info.message_kill == "" )
+                        SendReply(player, "No kill message set yet");
+                    else
+                        SendReply(player, string.Format("This NPC will say a death message: {0}",npceditor.targetNPC.info.message_kill));
+                    return;
+                }
+                if(args[1] == "reset")
+                {
+                    npceditor.targetNPC.info.message_kill = "";
+                }
+                else
+                {
+                    npceditor.targetNPC.info.message_kill = args[1];
+                }
+            }
             else 
             {
                 SendReply(player, "Wrong Argument, /npc for more informations");
@@ -719,7 +841,40 @@ namespace Oxide.Plugins
                 SendReply(player, string.Format("NPC Editor: Set {0} to {1}", args[0], args[1]));
         }
 
-
+        [ChatCommand("npc_end")]
+        void cmdChatNPCEnd(BasePlayer player, string command, string[] args)
+        {
+            if (player.GetComponent<NPCEditor>() == null)
+            {
+                SendReply(player, "NPC Editor: You are not editing any NPC");
+                return;
+            }
+            GameObject.Destroy(player.GetComponent<NPCEditor>());
+            SendReply(player, "NPC Editor: Ended");
+        }
+         [ChatCommand("npc_remove")]
+        void cmdChatNPCRemove(BasePlayer player, string command, string[] args)
+        {
+            if (!TryGetPlayerView(player, out currentRot))
+            {
+                return;
+            }
+            if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
+            {
+                return;
+            }
+            
+            if (((Collider)closestEnt).GetComponentInParent<HumanPlayer>() == null)
+            {
+                SendReply(player, "This is not an NPC");
+                return;
+            }
+            var userid = ((Collider)closestEnt).GetComponentInParent<BasePlayer>().userID.ToString();
+            storedData.HumanNPCs.Remove(humannpcs[userid]);
+            humannpcs[userid] = null;
+            RefreshAllNPC();
+            SendReply(player, "NPC Removed");
+        }
 
 
 
@@ -807,40 +962,47 @@ namespace Oxide.Plugins
         	GameObject.Destroy(player.GetComponent<WaypointEditor>());
             SaveData();
         }
-
-
-
-
-
-
-
+        [ChatCommand("waypoints_close")]
+        void cmdWaypointsClose(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) return;
+            if(!isEditingWP(player,1)) return;
+            var WaypointEditor = player.GetComponent<WaypointEditor>();
+            SendReply(player, "Waypoints: Closed without saving");
+        	GameObject.Destroy(player.GetComponent<WaypointEditor>());
+        }
 
 
 
         // NPC HOOKS:
         void OnHitNPC(BasePlayer npc, HitInfo hinfo)
         {
-            if(hinfo.Initiator != null)
-                if(hinfo.Initiator.ToPlayer() != null)
-                    hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Ouch that hurt!"), 1.0 });
+            if(npc.GetComponent<HumanPlayer>().info.message_hurt != null && npc.GetComponent<HumanPlayer>().info.message_hurt != "")
+                if(hinfo.Initiator != null)
+                    if(hinfo.Initiator.ToPlayer() != null)
+                        hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, npc.GetComponent<HumanPlayer>().info.message_hurt), 1.0 });
         }
         void OnUseNPC(BasePlayer npc, BasePlayer player)
         {
-            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "How can i help you?"), 1.0 });
+            if(npc.GetComponent<HumanPlayer>().info.message_use != null && npc.GetComponent<HumanPlayer>().info.message_use != "")
+                player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, npc.GetComponent<HumanPlayer>().info.message_use), 1.0 });
         }
         void OnEnterNPC(BasePlayer npc, BasePlayer player)
         {
-            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Hi"), 1.0 });
+            if(npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello != "")
+                player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, npc.GetComponent<HumanPlayer>().info.message_hello), 1.0 });
         }
         void OnLeaveNPC(BasePlayer npc, BasePlayer player)
         {
-            player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "Bye"), 1.0 });
+            if(npc.GetComponent<HumanPlayer>().info.message_bye != null && npc.GetComponent<HumanPlayer>().info.message_bye != "")
+                player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, npc.GetComponent<HumanPlayer>().info.message_bye), 1.0 });
         }
         void OnKillNPC(BasePlayer npc, HitInfo hinfo)
         {
-            if(hinfo.Initiator != null)
-                if(hinfo.Initiator.ToPlayer() != null)
-                    hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, "You murderer!"), 1.0 });
+            if(npc.GetComponent<HumanPlayer>().info.message_kill != null && npc.GetComponent<HumanPlayer>().info.message_kill != "")
+                if(hinfo.Initiator != null)
+                    if(hinfo.Initiator.ToPlayer() != null)
+                        hinfo.Initiator.ToPlayer().SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.displayName, npc.GetComponent<HumanPlayer>().info.message_kill), 1.0 });
         }
         void OnNPCPosition(BasePlayer npc, Vector3 pos)
         { 
