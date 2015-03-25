@@ -1,4 +1,5 @@
 // Reference: Oxide.Ext.Rust
+// Reference: RustBuild
 
 using System.Collections.Generic;
 using System;
@@ -11,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.0.2")]
+    [Info("HumanNPC", "Reneb", "0.0.3")]
     class HumanNPC : RustPlugin
     {
 
@@ -163,6 +164,9 @@ namespace Oxide.Plugins
 
             public bool invulnerability;
             public float collisionRadius;
+            public float damageDistance;
+            public float damageAmount;
+            public float attackDistance;
 
             // Cached Values for Waypoints
             private float secondsToTake;
@@ -173,6 +177,7 @@ namespace Oxide.Plugins
             private float waypointDone;
             private List<WaypointInfo> cachedWaypoints;
             private int currentWaypoint;
+            private Vector3 nextPos;
 
             // Cached Values for entity collisions
             Collider[] colliderArray;
@@ -180,6 +185,12 @@ namespace Oxide.Plugins
             List<BasePlayer> deletePlayers;
             List<BasePlayer> collidePlayers;
             List<BasePlayer> addPlayers;
+
+            public BaseEntity attackEntity;
+            private Vector3 LastPos;
+            private float lastHit;
+            private float c_attackDistance;
+            private Vector3 targetPos;
 
             void Awake()
             {
@@ -192,6 +203,7 @@ namespace Oxide.Plugins
             {
                 this.info = info;
                 InitPlayer();
+                
             } 
             void InitPlayer()
             { 
@@ -200,7 +212,10 @@ namespace Oxide.Plugins
                 player.userID = ulong.Parse( info.userid );
                 player.displayName = info.displayName;
                 invulnerability = bool.Parse( info.invulnerability );
+                damageAmount = float.Parse( info.damageAmount );
+                damageDistance = float.Parse( info.damageDistance );
                 collisionRadius = float.Parse( info.collisionRadius );
+                attackDistance = float.Parse( info.attackDistance );
                 player.health = float.Parse( info.health );
                 player.syncPosition = true;
                 player.transform.position = info.spawnInfo.GetPosition();
@@ -210,33 +225,60 @@ namespace Oxide.Plugins
                 player.UpdateNetworkGroup();
                 lastTick = Time.realtimeSinceStartup;
                 Interface.CallHook("OnNPCRespawn", player);
+                attackEntity = null;
                 enabled = true;
             }
             void FindNextWaypoint()
             {
-                StartPos = player.transform.position;
-                Interface.CallHook("OnNPCPosition", player, StartPos);
+                if(info.waypoint == "" || info.waypoint == null) 
+                {
+                    StartPos = EndPos = LastPos = Vector3.zero;
+                    return;
+                }
+                Interface.CallHook("OnNPCPosition", player, player.transform.position);
                 cachedWaypoints = GetWayPoints(info.waypoint);
                 if(lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count-1))
                     currentWaypoint = -1;
                 currentWaypoint++;
-                EndPos = cachedWaypoints[currentWaypoint].GetPosition(); 
-                secondsToTake = Vector3.Distance(EndPos, StartPos) / cachedWaypoints[currentWaypoint].GetSpeed();
-                SetViewAngle(player, Quaternion.LookRotation( EndPos - StartPos ));
+                SetMovementPoint(cachedWaypoints[currentWaypoint].GetPosition(),cachedWaypoints[currentWaypoint].GetSpeed());
+                if(StartPos == EndPos) 
+                {
+                    enabled = false;
+                    Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}",player.userID.ToString()));
+                    return;
+                }
+                
+                lastWaypoint = info.waypoint;
+            }
+            public void SetMovementPoint(Vector3 endpos, float s)
+            {
+                StartPos = player.transform.position;
+                EndPos = endpos; 
+                secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
+                if(EndPos != StartPos)
+                    SetViewAngle(player, Quaternion.LookRotation( EndPos - StartPos ));
                 secondsTaken = 0f;
                 waypointDone = 0f; 
-                lastWaypoint = info.waypoint;
             }
             void Move()
             {
-                if(info.waypoint == "" || info.waypoint == null) return;
+                if(attackEntity != null) { AttackEntity(attackEntity); return; }
                 if (secondsTaken == 0f) FindNextWaypoint();
-                secondsTaken += Time.deltaTime;
-                waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
-                player.transform.position = Vector3.Lerp(StartPos,EndPos, waypointDone);
-                player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
+                Execute_Move();
                 if (waypointDone >= 1f)
                     secondsTaken = 0f;
+            }
+            void Execute_Move()
+            {
+                if(StartPos != EndPos)
+                {
+                    secondsTaken += Time.deltaTime;
+                    waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
+                    nextPos = Vector3.Lerp(StartPos,EndPos, waypointDone);
+                    nextPos.y = TerrainMeta.HeightMap.GetHeight(nextPos);
+                    player.transform.position = nextPos;
+                    player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
+                }
             }
             void LookUp()
             {
@@ -264,24 +306,64 @@ namespace Oxide.Plugins
                     lastTick = Time.realtimeSinceStartup;
                 }
             }
+            void AttackEntity(BaseEntity entity)
+            {
+                c_attackDistance = Vector3.Distance(entity.transform.position, player.transform.position);
+                if(c_attackDistance < attackDistance && Vector3.Distance(LastPos, player.transform.position) < 200f)
+                {
+                    targetPos = player.transform.position - entity.transform.position;
+                    SetMovementPoint(entity.transform.position + (0.5f * (targetPos / targetPos.magnitude)),3f);
+                    Execute_Move(); 
+                    if(c_attackDistance < damageDistance && Time.realtimeSinceStartup > lastHit+2)
+                        Hit((BaseCombatEntity)entity);
+                }
+                else
+                    EndAttackingEntity();
+            }
+            public void StartAttackingEntity(BaseEntity entity)
+            {
+                attackEntity = entity;
+                if(LastPos == Vector3.zero) LastPos = player.transform.position;
+            }
+            public void EndAttackingEntity()
+            {
+                attackEntity = null;
+                player.health = float.Parse( info.health );
+                GetBackToLastPos();
+            }
+            void GetBackToLastPos()
+            {
+                SetMovementPoint( LastPos, 7f );
+                secondsTaken = 0.1f;
+            }
+            void Hit(BaseCombatEntity target)
+            {
+                HitInfo info = new HitInfo( player, DamageType.Bite, damageAmount, target.transform.position ) {
+                    PointStart = player.transform.position,
+                    PointEnd = target.transform.position
+                };
+                target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver );
+                lastHit  = Time.realtimeSinceStartup;
+                player.SignalBroadcast(BaseEntity.Signal.Attack,null);
+            }
             void OnEnterCollision(BasePlayer targetplayer)
             {
                 addPlayers.Add(targetplayer);
                 if(targetplayer != null)
                     Interface.CallHook("OnEnterNPC", player, targetplayer);
-            }
+             }
             void OnLeaveCollision(BasePlayer targetplayer)
             {
                 collidePlayers.Remove(targetplayer);
                 if(targetplayer != null)
                     Interface.CallHook("OnLeaveNPC", player, targetplayer);
-            } 
-             void Update()
+            }
+            void FixedUpdate()
             {
                 if(info == null) enabled = false;
                  LookUp();
                  Move();
-            } 
+            }
         }
 
         ////////////////////////////////////////////////////// 
@@ -302,6 +384,9 @@ namespace Oxide.Plugins
             public string waypoint;
             public string collisionRadius;
             public string spawnkit;
+            public string damageAmount;
+            public string damageDistance;
+            public string attackDistance;
             public List<string> message_hello;
             public List<string> message_bye;
             public List<string> message_use;
@@ -318,6 +403,9 @@ namespace Oxide.Plugins
                 respawnSeconds = "60";
                 spawnInfo = new SpawnInfo(position, rotation);
                 collisionRadius = "10";
+                damageDistance = "3";
+                damageAmount = "10";
+                attackDistance = "20";
 			}
         }
     	
@@ -528,12 +616,17 @@ namespace Oxide.Plugins
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
             humanplayer.SetInfo( humannpcs[userid] );
+            //var basenpc = newplayer.gameObject.AddComponent<NPCAI>();
+            //Puts(basenpc.ToString());
             Puts("Spawned NPC: "+userid);
         }
         void RefreshNPC(BasePlayer player)
         {
             if(player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
+            if(player.GetComponent<NPCAI>() != null) GameObject.Destroy(player.GetComponent<NPCAI>());
             var humanplayer = player.gameObject.AddComponent<HumanPlayer>();
+            //var basenpc = player.gameObject.AddComponent<NPCAI>();
+            //Puts(basenpc.ToString());
             humanplayer.SetInfo( humannpcs[player.userID.ToString()] );
             Puts("Refreshed NPC: "+player.userID.ToString());
         }
@@ -682,7 +775,9 @@ namespace Oxide.Plugins
             humannpcs.Clear();
              storedData.HumanNPCs.Clear();
             SaveData();
+             SendReply(player, "All NPCs were removed");
             OnServerInitialized();
+
         }
          
         static List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
@@ -708,8 +803,10 @@ namespace Oxide.Plugins
             var npceditor = player.GetComponent<NPCEditor>();
             if (args.Length == 0)
             {
+                SendReply(player, "/npc attackdistance XXX => Distance between him and the target needed for the NPC to ignore the target and go back to spawn");
                 SendReply(player, "/npc bye reset/\"TEXT\" \"TEXT2\" \"TEXT3\" => Dont forgot the \", this is what NPC with say when a player gets away, multiple texts are possible");
-                SendReply(player, "/npc radius XXX => Radius of which the NPC will detect the player");
+                SendReply(player, "/npc damageamount XXX => Damage done by that NPC when he hits a player");
+                SendReply(player, "/npc damagedistance XXX => Min distance for the NPC to hit a player (3 is default, maybe 20-30 needed for snipers?)");
                 SendReply(player, "/npc name \"THE NAME\" => To set a name to the NPC");
                 SendReply(player, "/npc health XXX => To set the Health of the NPC");
                 SendReply(player, "/npc hello reset/\"TEXT\" \"TEXT2\" \"TEXT3\" => Dont forgot the \", this what will be said when the player gets close to the NPC");
@@ -717,6 +814,7 @@ namespace Oxide.Plugins
                 SendReply(player, "/npc invulnerable true/false => To set the NPC invulnerable or not");
                 SendReply(player, "/npc kill reset/\"TEXT\" \"TEXT2\" \"TEXT3\" => Dont forgot the \", set a message to tell the player when he kills the NPC");
                 SendReply(player, "/npc kit reset/\"KitName\" => To set the kit of this NPC, requires the Kit plugin");
+                SendReply(player, "/npc radius XXX => Radius of which the NPC will detect the player");
                 SendReply(player, "/npc respawn true/false XX => To set it to respawn on death after XX seconds, default is instant respawn");
                 SendReply(player, "/npc spawn \"new\" => To set the new spawn location");
                 SendReply(player, "/npc use reset/\"TEXT\" \"TEXT2\" \"TEXT3\" => Dont forgot the \", this what will be said when the player presses USE on the NPC");
@@ -753,7 +851,34 @@ namespace Oxide.Plugins
                 }
                 npceditor.targetNPC.info.health = args[1];
             }
-                else if (args[0] == "radius")
+            else if (args[0] == "attackdistance")
+            {
+                if (args.Length == 1)
+                {
+                    SendReply(player, string.Format("This Max Attack Distance is: {0}",  npceditor.targetNPC.info.attackDistance));
+                    return;
+                }
+                npceditor.targetNPC.info.attackDistance = args[1];
+            }
+            else if (args[0] == "damageamount")
+            {
+                if (args.Length == 1)
+                {
+                    SendReply(player, string.Format("This Damage amount is: {0}",  npceditor.targetNPC.info.damageAmount));
+                    return;
+                }
+                npceditor.targetNPC.info.damageAmount = args[1];
+            }
+            else if (args[0] == "damagedistance")
+            {
+                if (args.Length == 1)
+                {
+                    SendReply(player, string.Format("This Damage distance is: {0}",  npceditor.targetNPC.info.damageDistance));
+                    return;
+                }
+                npceditor.targetNPC.info.damageDistance = args[1];
+            }
+            else if (args[0] == "radius")
             {
                 if (args.Length == 1)
                 {
@@ -833,8 +958,8 @@ namespace Oxide.Plugins
                 {
                     if( npceditor.targetNPC.info.message_hello == null || (npceditor.targetNPC.info.message_hello.Count == 0) )
                         SendReply(player, "No hello message set yet");
-                    //else
-                        //SendReply(player, string.Format("This NPC will say hi: {0}",npceditor.targetNPC.info.message_hello));
+                    else
+                        SendReply(player, string.Format("This NPC will say hi: {0} different messages",npceditor.targetNPC.info.message_hello.Count.ToString()));
                     return;
                 }
                 if(args[1] == "reset")
@@ -852,8 +977,8 @@ namespace Oxide.Plugins
                 {
                     if( npceditor.targetNPC.info.message_bye == null || npceditor.targetNPC.info.message_bye.Count == 0  )
                         SendReply(player, "No bye message set yet");
-                    //else
-                       // SendReply(player, string.Format("This NPC will say bye: {0}",npceditor.targetNPC.info.message_bye));
+                    else
+                        SendReply(player, string.Format("This NPC will say bye: {0} difference messages ",npceditor.targetNPC.info.message_bye.Count.ToString()));
                     return;
                 } 
                 if(args[1] == "reset")
@@ -871,8 +996,8 @@ namespace Oxide.Plugins
                 {
                     if( npceditor.targetNPC.info.message_use == null || npceditor.targetNPC.info.message_use.Count == 0 )
                         SendReply(player, "No bye message set yet");
-                    //else
-                       // SendReply(player, string.Format("This NPC will say bye: {0}",npceditor.targetNPC.info.message_use));
+                    else
+                        SendReply(player, string.Format("This NPC will say bye: {0} different messages",npceditor.targetNPC.info.message_use.Count.ToString()));
                     return;
                 }
                 if(args[1] == "reset")
@@ -890,8 +1015,8 @@ namespace Oxide.Plugins
                 {
                     if( npceditor.targetNPC.info.message_hurt == null || npceditor.targetNPC.info.message_hurt.Count == 0 )
                         SendReply(player, "No hurt message set yet");
-                    //else
-                        //SendReply(player, string.Format("This NPC will say ouch: {0}",npceditor.targetNPC.info.message_hurt));
+                    else
+                        SendReply(player, string.Format("This NPC will say ouch: {0} different messages",npceditor.targetNPC.info.message_hurt.Count.ToString()));
                     return;
                 }
                 if(args[1] == "reset")
@@ -909,8 +1034,8 @@ namespace Oxide.Plugins
                 {
                     if( npceditor.targetNPC.info.message_kill == null || npceditor.targetNPC.info.message_kill.Count == 0 )
                         SendReply(player, "No kill message set yet");
-                    //else
-                        //SendReply(player, string.Format("This NPC will say a death message: {0}",npceditor.targetNPC.info.message_kill));
+                    else
+                        SendReply(player, string.Format("This NPC will say a death message: {0} different messages",npceditor.targetNPC.info.message_kill.Count.ToString()));
                     return;
                 }
                 if(args[1] == "reset")
@@ -1062,6 +1187,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnHitNPC(BasePlayer npc, HitInfo hinfo)
         {
+            npc.GetComponent<HumanPlayer>().StartAttackingEntity(hinfo.Initiator);
             if(npc.GetComponent<HumanPlayer>().info.message_hurt != null && npc.GetComponent<HumanPlayer>().info.message_hurt.Count != 0)
                 if(hinfo.Initiator != null)
                     if(hinfo.Initiator.ToPlayer() != null)
