@@ -12,10 +12,10 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.0.12", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.0.13", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
-
+         
         ////////////////////////////////////////////////////// 
         ///  Fields
         //////////////////////////////////////////////////////
@@ -298,12 +298,14 @@ namespace Oxide.Plugins
             void Move()
             {
                 if (player.IsWounded()) return;
+
                 if (attackEntity != null) { AttackEntity(attackEntity); return; }
+
                 if (!canMove) return;
+
                 if (secondsTaken == 0f) FindNextWaypoint();
                 Execute_Move();
-                if (waypointDone >= 1f)
-                    secondsTaken = 0f;
+                if (waypointDone >= 1f) secondsTaken = 0f;
             }
             void Execute_Move()
             {
@@ -332,7 +334,7 @@ namespace Oxide.Plugins
                     foreach (Collider collider in colliderArray)
                     {
                         if (collider.GetComponentInParent<BasePlayer>())
-                        {
+                        { 
                             if (collidePlayers.Contains(collider.GetComponentInParent<BasePlayer>()))
                                 deletePlayers.Remove(collider.GetComponentInParent<BasePlayer>());
                             else if (player != collider.GetComponentInParent<BasePlayer>())
@@ -360,18 +362,20 @@ namespace Oxide.Plugins
                         return;
                     }
 
-                    if (Time.realtimeSinceStartup - lastPathFindingCall > 2)
+                    if (Time.realtimeSinceStartup - lastPathFindingCall > 1)
                     {
                         pathFinding = (List<Vector3>)Interface.CallHook("FindBestPath", player.transform.position, entity.transform.position);
                         lastPathFindingCall = Time.realtimeSinceStartup;
                         if (pathFinding == null) noPath++;
+                        else noPath = 0;
                     }
                     if (pathFinding == null) return;
                     if (pathFinding.Count > 0)
                     {
-                        if (Vector3.Distance(player.transform.position, pathFinding[0]) < 2) pathFinding.RemoveAt(0);
-                        SetMovementPoint(pathFinding[0], speed);
+                        Debug.Log(waypointDone.ToString());
+                        if(waypointDone == 0f) SetMovementPoint(pathFinding[0], speed);
                         Execute_Move();
+                        if (waypointDone >= 1f) { pathFinding.RemoveAt(0); waypointDone = 0f; }
                     }
                 }
                 else
@@ -1178,8 +1182,7 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
             var npceditor = player.GetComponent<NPCEditor>();
-            Puts(PathFinding.ToString());
-            PathFinding?.Call("FindAndFollowPath", npceditor.targetNPC.player, npceditor.targetNPC.player.transform.position, closestHitpoint);
+            Interface.CallHook("FindAndFollowPath", npceditor.targetNPC.player, npceditor.targetNPC.player.transform.position, closestHitpoint);
         }
         [ChatCommand("npc_remove")]
         void cmdChatNPCRemove(BasePlayer player, string command, string[] args)
