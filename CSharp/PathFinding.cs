@@ -183,8 +183,17 @@ namespace Oxide.Plugins
             }
             return false;
         }
-
-        public static bool FindGroundPositionUP(Vector3 sourcePos, out Vector3 groundPos)
+        public static bool FindRawGroundPosition(Vector3 sourcePos, out Vector3 groundPos)
+        {
+            groundPos = sourcePos;
+            if (Physics.Raycast(sourcePos, Vector3Down, out hitinfo, groundLayer))
+            {
+                groundPos.y = hitinfo.point.y;
+                return true;
+            }
+            return false;
+        }
+        public static bool FindRawGroundPositionUP(Vector3 sourcePos, out Vector3 groundPos)
         {
             groundPos = sourcePos;
             if (Physics.Raycast(sourcePos, Vector3UP, out hitinfo, groundLayer))
@@ -252,7 +261,7 @@ namespace Oxide.Plugins
                     if (player != null) player.ClientRPC(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
                 }
-            }
+            } 
             void FindNextWaypoint()
             {
                 if (Paths.Count == 0) { StartPos = EndPos = Vector3.zero; enabled = false; return; }
@@ -348,7 +357,7 @@ namespace Oxide.Plugins
             FollowPath(entity, bestPath);
             return true;
         }
-         
+
         void FollowPath(BaseEntity entity, List<Vector3> pathpoints)
         {
             PathFollower pathfollower;
@@ -376,22 +385,25 @@ namespace Oxide.Plugins
         {
             float distance = (int)Mathf.Ceil(Vector3.Distance(sourcePosition, targetPosition));
             Hash<float,Vector3> StraightPath = new Hash<float, Vector3>();
-            if (!FindGroundPosition(sourcePosition, out GroundPosition))
-                if (!FindGroundPositionUP(sourcePosition, out GroundPosition))
+            if (!FindRawGroundPosition(sourcePosition, out GroundPosition))
+                if (!FindRawGroundPositionUP(sourcePosition, out GroundPosition))
                     return null;
             StraightPath[0f] = GroundPosition;
-            Vector3 currentPos; 
+            Vector3 currentPos;
             for(float i = 1f; i < distance; i++)
             {
                 currentPos = Vector3.Lerp(sourcePosition, targetPosition, i/ distance);
-                if (!FindGroundPosition(currentPos, out GroundPosition))
-                    if (!FindGroundPositionUP(currentPos, out GroundPosition))
+                if (!FindRawGroundPosition(currentPos, out GroundPosition))
+                    if (!FindRawGroundPositionUP(currentPos, out GroundPosition))
                         return null;
-
+                if (Vector3.Distance(GroundPosition, StraightPath[i - 1f]) > 2) return null;
                 if (Physics.Linecast(StraightPath[i - 1f] + jumpPosition, GroundPosition + jumpPosition, blockLayer)) return null;
                 StraightPath[i] = GroundPosition;
             }
-            StraightPath[distance] = targetPosition;
+            if (!FindRawGroundPosition(targetPosition, out GroundPosition))
+                if (!FindRawGroundPositionUP(targetPosition, out GroundPosition))
+                    return null;
+            StraightPath[distance] = GroundPosition;
             StraightPath.Remove(0f);
             
             List<Vector3> straightPath = new List<Vector3>();
