@@ -36,41 +36,33 @@ namespace Oxide.Plugins
             public Quaternion rotation;
             public bool isGoal = false;
 
-            public PathfindNode(Vector3 position, Quaternion rotation)
+            /// 
+            /// PathfindNode()
+            /// Raw pathfind creation
+            public PathfindNode()
             {
-                this.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
-                this.positionEyes = this.position + new Vector3(0f, 0.5f, 0f);
-                this.rotation = rotation;
-                this.H = 0;
-                CalculateManhattanDistance(this);
-                this.F = this.H + this.G;
-                AddToPriorityList(this); 
-                Debug.Log("First Node is " + this.position.ToString());
             }
 
-            public PathfindNode(Vector3 position)
-            {
-                this.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
-                isGoal = true;
-                NodeList[this.position] = this; 
-                Debug.Log("Goal is " + this.position.ToString());
-            } 
-
+            /// 
+            /// PathfindNode(PathfindNode parentnode, Vector3 position, bool diagonal)
+            /// This is called by all new pathnodes
             public PathfindNode(PathfindNode parentnode, Vector3 position, bool diagonal)
-            { 
-                this.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
-                this.positionEyes = this.position + new Vector3(0f, 0.5f, 0f);
+            {
+                this.position = new Vector3(position.x, position.y, position.z);
+                this.positionEyes = this.position + EyesPosition;
                 this.rotation = parentnode.rotation;
                 this.parentNode = parentnode;
                 CalculateManhattanDistance(this);
-                CalculateFromDistance(this,diagonal);
-                if (this.H < 10) { isGoal = true;  Debug.Log("SHOULD BE THIS ONE"); }
+                CalculateMovementCost(this,diagonal);
                 this.F = this.H + this.G;
                 AddToPriorityList(this);
             }
-             
+
+
             // METHODS
-             
+
+            // DetectAdjacentNodes()
+            // This automatically creates the surrounding pathnodes
             public void DetectAdjacentNodes()
             {
                 if (!Physics.Linecast(this.position, this.positionEyes + VectorForward, blockLayer))
@@ -82,54 +74,35 @@ namespace Oxide.Plugins
                 if (!Physics.Linecast(this.position, this.positionEyes + VectorLeft, blockLayer))
                     west = FindPathNodeOrCreate(this, this.positionEyes + VectorLeft, false);
 
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorForward + VectorRight, blockLayer))
-                    northeast = FindPathNodeOrCreate(this, this.positionEyes + VectorForward + VectorRight, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorForward + VectorLeft, blockLayer))
-                    northwest = FindPathNodeOrCreate(this, this.positionEyes + VectorForward + VectorLeft, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorBack + VectorLeft, blockLayer))
-                    southeast = FindPathNodeOrCreate(this, this.positionEyes + VectorBack + VectorLeft, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorBack + VectorRight, blockLayer))
-                    southwest = FindPathNodeOrCreate(this, this.positionEyes + VectorBack + VectorRight, true);
+                if (!Physics.Linecast(this.position, this.positionEyes + VectorForwardRight, blockLayer))
+                    northeast = FindPathNodeOrCreate(this, this.positionEyes + VectorForwardRight, true);
+                if (!Physics.Linecast(this.position, this.positionEyes + VectorForwardLeft, blockLayer))
+                    northwest = FindPathNodeOrCreate(this, this.positionEyes + VectorForwardLeft, true);
+                if (!Physics.Linecast(this.position, this.positionEyes + VectorBackLeft, blockLayer))
+                    southeast = FindPathNodeOrCreate(this, this.positionEyes + VectorBackLeft, true);
+                if (!Physics.Linecast(this.position, this.positionEyes + VectorBackRight, blockLayer))
+                    southwest = FindPathNodeOrCreate(this, this.positionEyes + VectorBackRight, true);
             }
-            public bool HasGoal()
-            {
-                if (north != null && north.isGoal) return true;
-                if (south != null && south.isGoal) return true;
-                if (east != null && east.isGoal) return true;
-                if (west != null && west.isGoal) return true;
-                if (northeast != null && northeast.isGoal) return true;
-                if (northwest != null && northwest.isGoal) return true;
-                if (southwest != null && southwest.isGoal) return true;
-                if (southeast != null && southeast.isGoal) return true;
-                return false;
-            } 
         }
+        // Here we calculate the movement cost between 2 points.
+        private static void CalculateMovementCost(PathfindNode currentNode, bool diagonal) { currentNode.G = currentNode.parentNode.G + (diagonal ? 14 : 10); }
+        // Here we calculate the distance between the current node and the target node
+        private static void CalculateManhattanDistance(PathfindNode currentNode) { currentNode.H = (int)((Mathf.Abs(currentNode.position.x - targetNode.position.x) + Mathf.Abs(currentNode.position.z - targetNode.position.z) + Mathf.Abs(currentNode.position.y - targetNode.position.y)) * 10); }
+
+        // Create a new node or get the node information
         public static PathfindNode FindPathNodeOrCreate(PathfindNode parentnode, Vector3 position, bool diagonal)
         {
-            Vector3 groundPos = GroundPosition;
-            if (GetGroundYPos(position, out groundPos))
-            {
-                if (NodeList[groundPos] == null)
-                {
-                    NodeList[groundPos] = new PathfindNode(parentnode, groundPos, diagonal);
-                    return NodeList[groundPos];
-                }
-                return NodeList[groundPos];
-            }
-            else return null;
-        }
-        private static void CalculateFromDistance(PathfindNode currentNode, bool diagonal)
-        {
-            currentNode.G = currentNode.parentNode.G + (diagonal?14:10);
+            if (!FindGroundPosition(position, out GroundPosition)) return null;
+            if (NodeList[GroundPosition] == null) NodeList[GroundPosition] = new PathfindNode(parentnode, GroundPosition, diagonal);
+            else if (NodeList[GroundPosition].isGoal) { targetNode.parentNode = parentnode; parentnode.isGoal = true; }
+
+            return NodeList[GroundPosition];
         }
         
-    	
-        public static bool GetGroundYPos(Vector3 sourcePos, out Vector3 groundPos)
+        public static bool FindGroundPosition(Vector3 sourcePos, out Vector3 groundPos)
         {
-            groundPos = GroundPosition;
-            if (Physics.Raycast(sourcePos, Vector3Down, out hitinfo, groundLayer))
-            { 
-                groundPos = sourcePos;
+            groundPos = sourcePos;
+            if (Physics.Raycast(sourcePos, Vector3Down, out hitinfo, groundLayer)) {
                 groundPos.y = Mathf.Ceil(hitinfo.point.y);
                 return true;
             } 
@@ -141,32 +114,30 @@ namespace Oxide.Plugins
             if (!TempSortNode.ContainsKey(currentNode.F)) TempSortNode.Add(currentNode.F, new List<PathfindNode>());
             ((List<PathfindNode>)TempSortNode[currentNode.F]).Add(currentNode);
         } 
-        private static void CalculateManhattanDistance(PathfindNode currentNode)
-        {
-            float x1 = currentNode.position.x;
-            float x2 = targetNode.position.x;
-            float y1 = currentNode.position.y;
-            float y2 = targetNode.position.y;
-            float z1 = currentNode.position.z;
-            float z2 = targetNode.position.z;
-            float h = (Mathf.Abs(x1 - x2) + Mathf.Abs(z1 - z2) + Mathf.Abs(y1 - y2))*10;
-            currentNode.H = (int)h;
-        } 
+        
 
         public static RaycastHit hitinfo;
-        public static Vector3 GroundPosition = new Vector3(0f, 0f, 0f);
+        
         public static Hash<Vector3, PathfindNode> NodeList = new Hash<Vector3, PathfindNode>();
         public static PathfindNode targetNode;
-        public static bool ReachedGoal;
-        public static Vector3 VectorForward;
-        public static Vector3 VectorBack;
-        public static Vector3 VectorRight;
-        public static Vector3 VectorLeft;
 
+        public static Vector3 GroundPosition = new Vector3(0f, 0f, 0f);
+        public static Vector3 EyesPosition = new Vector3(0f, 0.5f, 0f);
+        public static Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
+        public static Vector3 VectorForward = new Vector3(0f, 0f, 1f);
+        public static Vector3 VectorBack = new Vector3(0f, 0f, -1f);
+        public static Vector3 VectorRight = new Vector3(1f, 0f, 0f);
+        public static Vector3 VectorLeft = new Vector3(-1f, 0f, 0f);
+        public static Vector3 VectorForwardRight = VectorForward + VectorRight;
+        public static Vector3 VectorForwardLeft = VectorForward + VectorLeft;
+        public static Vector3 VectorBackRight = VectorBack + VectorRight;
+        public static Vector3 VectorBackLeft = VectorBack + VectorLeft;
 
         public static int groundLayer;
         public static int blockLayer;
-        public static Vector3 Vector3Down = new Vector3(0f,-1f,0f);
+
+
+        
         public static SortedList<int, List<PathfindNode>> SortNode = new SortedList<int, List<PathfindNode>>();
         public static SortedList<int, List<PathfindNode>> TempSortNode = new SortedList<int, List<PathfindNode>>();
         public object closestEnt;
@@ -193,17 +164,13 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
 
-            VectorForward = new Vector3(0f,0f, 1f);
-            VectorBack = new Vector3(0f, 0f, -1f);
-            VectorRight = new Vector3(1f, 0f, 0f);
-            VectorLeft = new Vector3(-1f, 0f, 0f);
-
             SortNode = new SortedList<int, List<PathfindNode>>();
             NodeList = new Hash<Vector3, PathfindNode>();
             TempSortNode = new SortedList<int, List<PathfindNode>>();
             List<PathfindNode> CurrentDelete = new List<PathfindNode>();
-            targetNode = new PathfindNode(closestHitpoint);
-            new PathfindNode(player.transform.position, currentRot);
+            targetNode = new PathfindNode();
+            PathfindGoal(targetNode, closestHitpoint);
+            PathfindFirst(new PathfindNode(), player.transform.position, currentRot);
             int currentPriority = 0;
             int Loops = 0;
             bool shouldBreak = false;
@@ -225,11 +192,11 @@ namespace Oxide.Plugins
                 {
                     CurrentDelete.Add(pathnode);
                     pathnode.DetectAdjacentNodes();
-                    if (pathnode.HasGoal() != false) { targetNode.parentNode = pathnode; shouldBreak = true; }
+                    if (pathnode.isGoal) { targetNode.parentNode = pathnode; shouldBreak = true; }
                 }
                 SortNode.Remove(currentPriority);
                 Loops++;
-                if (Loops > 3000) { Debug.Log("FAIL"); return; }
+                if (Loops > 5000) { Debug.Log("FAIL"); NodeList.Clear();  return; }
                 if (shouldBreak) break;
             }
             Puts(string.Format("SUCCESS WITH {0} LOOPS",Loops.ToString()));
@@ -247,8 +214,37 @@ namespace Oxide.Plugins
             Puts("ADD");
             var pathfollower = player.gameObject.AddComponent<PathFollower>();
             pathfollower.Paths = PlayerPath;
+            NodeList.Clear();
+            CurrentDelete.Clear();
+            TempSortNode.Clear();
+            SortNode.Clear();
         }
-         
+        /// 
+        /// PathfindNode(Vector3 position, Quaternion rotation)
+        /// This is called by the First Path
+
+        public static void PathfindFirst(PathfindNode pathfindnode, Vector3 position, Quaternion rotation)
+        {
+            pathfindnode.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
+            pathfindnode.positionEyes = pathfindnode.position + new Vector3(0f, 0.5f, 0f);
+            pathfindnode.rotation = rotation;
+            pathfindnode.H = 0;
+            CalculateManhattanDistance(pathfindnode);
+            pathfindnode.F = pathfindnode.H + pathfindnode.G;
+            AddToPriorityList(pathfindnode);
+            Debug.Log("First Node is " + pathfindnode.position.ToString());
+        }
+
+        /// 
+        /// PathfindNode(Vector3 position)
+        /// This is called by the Goal
+        public static void PathfindGoal(PathfindNode pathfindnode, Vector3 position)
+        {
+            pathfindnode.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
+            pathfindnode.isGoal = true;
+            NodeList[pathfindnode.position] = pathfindnode;
+            Debug.Log("Goal is " + pathfindnode.position.ToString());
+        }
         static float GetGroundY(Vector3 position)
         {
             position = position + jumpPosition;
