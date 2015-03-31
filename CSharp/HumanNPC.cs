@@ -33,17 +33,20 @@ namespace Oxide.Plugins
         StoredData storedData;
         static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
         Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
-        
-        [PluginReference] Plugin Kits;
+
+        [PluginReference]
+        Plugin Kits;
+        [PluginReference]
+        public static Plugin PathFinding;
 
         ////////////////////////////////////////////////////// 
         ///  Cached Fields
         //////////////////////////////////////////////////////
         private Quaternion currentRot;
-        
+
         private Vector3 closestHitpoint;
         private static Vector3 eyesPosition;
-        
+
 
         private static RaycastHit hitinfo;
 
@@ -56,37 +59,37 @@ namespace Oxide.Plugins
         ///  non public => won't be saved in the data file
         //////////////////////////////////////////////////////
         class WaypointInfo
-		{
-			public string x;
-			public string y;
-			public string z;
-			public string s;
-			Vector3 position;
-			float speed;
+        {
+            public string x;
+            public string y;
+            public string z;
+            public string s;
+            Vector3 position;
+            float speed;
 
-			public WaypointInfo(Vector3 position, float speed)
-			{
-				x = position.x.ToString();
-				y = position.y.ToString();
-				z = position.z.ToString();
-				s = speed.ToString();
-			
-				this.position = position;
-				this.speed = speed;
-			}
+            public WaypointInfo(Vector3 position, float speed)
+            {
+                x = position.x.ToString();
+                y = position.y.ToString();
+                z = position.z.ToString();
+                s = speed.ToString();
 
-			public Vector3 GetPosition()
-			{
-				if (position == Vector3.zero)
-					position = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
-				return position;
-			}
-			public float GetSpeed()
-			{
- 			    speed = Convert.ToSingle(s);
-				return speed;
-			}
-		}
+                this.position = position;
+                this.speed = speed;
+            }
+
+            public Vector3 GetPosition()
+            {
+                if (position == Vector3.zero)
+                    position = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
+                return position;
+            }
+            public float GetSpeed()
+            {
+                speed = Convert.ToSingle(s);
+                return speed;
+            }
+        }
 
         ////////////////////////////////////////////////////// 
         ///  class SpawnInfo
@@ -95,76 +98,76 @@ namespace Oxide.Plugins
         ///  non public => won't be saved in the data file
         //////////////////////////////////////////////////////
         class SpawnInfo
-		{
-			public string x;
-			public string y;
-			public string z;
-			public string rx;
+        {
+            public string x;
+            public string y;
+            public string z;
+            public string rx;
             public string ry;
             public string rz;
             public string rw;
-			Vector3 position;
+            Vector3 position;
             Quaternion rotation;
 
-			public SpawnInfo(Vector3 position, Quaternion rotation)
-			{
-				x = position.x.ToString();
-				y = position.y.ToString();
-				z = position.z.ToString();
-				
+            public SpawnInfo(Vector3 position, Quaternion rotation)
+            {
+                x = position.x.ToString();
+                y = position.y.ToString();
+                z = position.z.ToString();
+
                 rx = rotation.x.ToString();
-				ry = rotation.y.ToString();
-				rz = rotation.z.ToString();
-			    rw = rotation.w.ToString();
+                ry = rotation.y.ToString();
+                rz = rotation.z.ToString();
+                rw = rotation.w.ToString();
 
-				this.position = position;
-				this.rotation = rotation;
-			}
+                this.position = position;
+                this.rotation = rotation;
+            }
 
-			public Vector3 GetPosition()
-			{
-				if (position == Vector3.zero)
-					position = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
-				return position;
-			}
-			public Quaternion GetRotation()
-			{
-                if(rotation.x == 0f)
-				    rotation = new Quaternion(Convert.ToSingle(rx), Convert.ToSingle(ry), Convert.ToSingle(rz), Convert.ToSingle(rw));
-				return rotation;
-			}
+            public Vector3 GetPosition()
+            {
+                if (position == Vector3.zero)
+                    position = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
+                return position;
+            }
+            public Quaternion GetRotation()
+            {
+                if (rotation.x == 0f)
+                    rotation = new Quaternion(Convert.ToSingle(rx), Convert.ToSingle(ry), Convert.ToSingle(rz), Convert.ToSingle(rw));
+                return rotation;
+            }
             public string String()
             {
-                return string.Format("Pos({0},{1},{2}) - Rot({3},{4},{5},{6})",x,y,z,rx,ry,rz,rw);
+                return string.Format("Pos({0},{1},{2}) - Rot({3},{4},{5},{6})", x, y, z, rx, ry, rz, rw);
             }
             public string ShortString()
             {
-                return string.Format("Pos({0},{1},{2})",Math.Ceiling(position.x).ToString(),Math.Ceiling(position.y).ToString(),Math.Ceiling(position.z).ToString());
+                return string.Format("Pos({0},{1},{2})", Math.Ceiling(position.x).ToString(), Math.Ceiling(position.y).ToString(), Math.Ceiling(position.z).ToString());
             }
             public SpawnInfo Clone()
-	        {
-		        var clone = (SpawnInfo)MemberwiseClone();
-		        return clone;
-	        }
-		}
+            {
+                var clone = (SpawnInfo)MemberwiseClone();
+                return clone;
+            }
+        }
 
         ////////////////////////////////////////////////////// 
         ///  class Waypoint
         ///  Waypoint List information
         //////////////////////////////////////////////////////
-    	class Waypoint
+        class Waypoint
         {
-        	public string Name;
-        	public List<WaypointInfo> Waypoints;
-        	
-        	public Waypoint()
-        	{
-        		Waypoints = new List<WaypointInfo>();
-        	}
-        	public void AddWaypoint(Vector3 position, float speed)
-        	{
-        		Waypoints.Add(new WaypointInfo( position, speed ));
-        	}
+            public string Name;
+            public List<WaypointInfo> Waypoints;
+
+            public Waypoint()
+            {
+                Waypoints = new List<WaypointInfo>();
+            }
+            public void AddWaypoint(Vector3 position, float speed)
+            {
+                Waypoints.Add(new WaypointInfo(position, speed));
+            }
         }
 
         ////////////////////////////////////////////////////// 
@@ -200,6 +203,9 @@ namespace Oxide.Plugins
             private Vector3 nextPos;
             private float stopandtalkSeconds;
 
+            public List<Vector3> pathFinding;
+            public float lastPathFindingCall;
+
             // Cached Values for entity collisions
             Collider[] colliderArray;
             float lastTick;
@@ -210,7 +216,7 @@ namespace Oxide.Plugins
             public float lastMessage;
             public BaseEntity attackEntity;
             private Vector3 LastPos;
-            private float lastHit;
+            public float lastHit;
             private float c_attackDistance;
             private Vector3 targetPos;
             private int noPath;
@@ -226,22 +232,22 @@ namespace Oxide.Plugins
             public void SetInfo(HumanNPCInfo info)
             {
                 this.info = info;
-                if(info == null) return;
+                if (info == null) return;
                 player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
-                player.userID = ulong.Parse( info.userid );
+                player.userID = ulong.Parse(info.userid);
                 player.displayName = info.displayName;
-                hostile = bool.Parse( info.hostile );
-                stopandtalk = bool.Parse( info.stopandtalk );
-                invulnerability = bool.Parse( info.invulnerability );
-                damageAmount = float.Parse( info.damageAmount );
-                damageDistance = float.Parse( info.damageDistance );
-                collisionRadius = float.Parse( info.collisionRadius );
-                attackDistance = float.Parse( info.attackDistance );
-                maxDistance = float.Parse( info.maxDistance );
-                damageInterval = float.Parse( info.damageInterval );
-                speed = float.Parse( info.speed );
-                stopandtalkSeconds = float.Parse( info.stopandtalkSeconds );
-                player.InitializeHealth(float.Parse( info.health ),float.Parse( info.health ));
+                hostile = bool.Parse(info.hostile);
+                stopandtalk = bool.Parse(info.stopandtalk);
+                invulnerability = bool.Parse(info.invulnerability);
+                damageAmount = float.Parse(info.damageAmount);
+                damageDistance = float.Parse(info.damageDistance);
+                collisionRadius = float.Parse(info.collisionRadius);
+                attackDistance = float.Parse(info.attackDistance);
+                maxDistance = float.Parse(info.maxDistance);
+                damageInterval = float.Parse(info.damageInterval);
+                speed = float.Parse(info.speed);
+                stopandtalkSeconds = float.Parse(info.stopandtalkSeconds);
+                player.InitializeHealth(float.Parse(info.health), float.Parse(info.health));
                 player.syncPosition = true;
                 player.transform.position = info.spawnInfo.GetPosition();
                 player.TransformChanged();
@@ -249,30 +255,32 @@ namespace Oxide.Plugins
                 player.EndSleeping();
                 player.UpdateNetworkGroup();
                 lastTick = Time.realtimeSinceStartup;
+                lastPathFindingCall = Time.realtimeSinceStartup;
                 Interface.CallHook("OnNPCRespawn", player);
                 attackEntity = null;
                 enabled = true;
                 canMove = true;
                 lastMessage = Time.realtimeSinceStartup;
+                pathFinding = new List<Vector3>();
             }
             void FindNextWaypoint()
             {
                 LastPos = Vector3.zero;
-                if(info.waypoint == "" || info.waypoint == null) 
+                if (info.waypoint == "" || info.waypoint == null)
                 {
                     StartPos = EndPos = Vector3.zero;
                     return;
                 }
                 Interface.CallHook("OnNPCPosition", player, player.transform.position);
                 cachedWaypoints = GetWayPoints(info.waypoint);
-                if(lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count-1))
+                if (lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count - 1))
                     currentWaypoint = -1;
                 currentWaypoint++;
-                SetMovementPoint(cachedWaypoints[currentWaypoint].GetPosition(),cachedWaypoints[currentWaypoint].GetSpeed());
-                if(StartPos == EndPos) 
+                SetMovementPoint(cachedWaypoints[currentWaypoint].GetPosition(), cachedWaypoints[currentWaypoint].GetSpeed());
+                if (StartPos == EndPos)
                 {
                     enabled = false;
-                    Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}",player.userID.ToString()));
+                    Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}", player.userID.ToString()));
                     return;
                 }
                 lastWaypoint = info.waypoint;
@@ -280,18 +288,18 @@ namespace Oxide.Plugins
             public void SetMovementPoint(Vector3 endpos, float s)
             {
                 StartPos = player.transform.position;
-                EndPos = endpos; 
+                EndPos = endpos;
                 secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
                 LookTowards(player, EndPos);
                 secondsTaken = 0f;
-                waypointDone = 0f; 
+                waypointDone = 0f;
             }
-            
+
             void Move()
             {
-                if(player.IsWounded()) return;
-                if(attackEntity != null) { AttackEntity(attackEntity); return; }
-                if(!canMove) return;
+                if (player.IsWounded()) return;
+                if (attackEntity != null) { AttackEntity(attackEntity); return; }
+                if (!canMove) return;
                 if (secondsTaken == 0f) FindNextWaypoint();
                 Execute_Move();
                 if (waypointDone >= 1f)
@@ -299,15 +307,15 @@ namespace Oxide.Plugins
             }
             void Execute_Move()
             {
-                if(StartPos != EndPos)
+                if (StartPos != EndPos)
                 {
                     secondsTaken += Time.deltaTime;
                     waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
-                    nextPos = Vector3.Lerp(StartPos,EndPos, waypointDone);
+                    nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
                     nextPos.y = GetGroundY(nextPos);
-                    if(attackEntity != null)
+                    if (attackEntity != null)
                     {
-                        if(Vector3.Distance(nextPos,player.transform.position) < 0.005f) noPath++;
+                        if (Vector3.Distance(nextPos, player.transform.position) < 0.005f) noPath++;
                         else noPath = 0;
                     }
                     player.transform.position = nextPos;
@@ -343,29 +351,38 @@ namespace Oxide.Plugins
             void AttackEntity(BaseEntity entity)
             {
                 c_attackDistance = Vector3.Distance(entity.transform.position, player.transform.position);
-                if(((BaseCombatEntity)entity).IsAlive() && c_attackDistance < attackDistance && Vector3.Distance(LastPos, player.transform.position) < maxDistance && noPath < 20)
+                if (((BaseCombatEntity)entity).IsAlive() && c_attackDistance < attackDistance && Vector3.Distance(LastPos, player.transform.position) < maxDistance && noPath < 5)
                 {
-                    
-                    SetMovementPoint(entity.transform.position,speed);
-
-                    if(c_attackDistance < damageDistance && CanSee(player,entity))
+                    if (c_attackDistance < damageDistance && CanSee(player, entity))
                     {
-                        if(Time.realtimeSinceStartup > lastHit+damageInterval)
-                            Hit((BaseCombatEntity)entity);
+                        if (Time.realtimeSinceStartup > lastHit + damageInterval)
+                            DoHit(this, (BaseCombatEntity)entity);
                         return;
-                        
                     }
-                    Execute_Move(); 
+
+                    if (Time.realtimeSinceStartup - lastPathFindingCall > 2)
+                    {
+                        pathFinding = (List<Vector3>)Interface.CallHook("FindBestPath", player.transform.position, entity.transform.position);
+                        lastPathFindingCall = Time.realtimeSinceStartup;
+                        if (pathFinding == null) noPath++;
+                    }
+                    if (pathFinding == null) return;
+                    if (pathFinding.Count > 0)
+                    {
+                        if (Vector3.Distance(player.transform.position, pathFinding[0]) < 2) pathFinding.RemoveAt(0);
+                        SetMovementPoint(pathFinding[0], speed);
+                        Execute_Move();
+                    }
                 }
                 else
                     EndAttackingEntity();
             }
             public void StartAttackingEntity(BaseEntity entity)
             {
-                if( Interface.CallHook("OnNPCStartTarget", player, entity) == null )
+                if (Interface.CallHook("OnNPCStartTarget", player, entity) == null)
                 {
                     attackEntity = entity;
-                    if(LastPos == Vector3.zero) LastPos = player.transform.position;
+                    if (LastPos == Vector3.zero) LastPos = player.transform.position;
                 }
             }
             public void EndAttackingEntity()
@@ -373,57 +390,46 @@ namespace Oxide.Plugins
                 noPath = 0;
                 Interface.CallHook("OnNPCStopTarget", player, attackEntity);
                 attackEntity = null;
-                player.health = float.Parse( info.health );
+                player.health = float.Parse(info.health);
                 GetBackToLastPos();
             }
             void GetBackToLastPos()
             {
-                SetMovementPoint( LastPos, 7f );
+                SetMovementPoint(LastPos, 7f);
                 secondsTaken = 0.1f;
             }
-            void Hit(BaseCombatEntity target)
-            {
-                lastHit  = Time.realtimeSinceStartup;
 
-                    HitInfo info = new HitInfo( player, DamageType.Bite, damageAmount, target.transform.position ) {
-                        PointStart = player.transform.position,
-                        PointEnd = target.transform.position
-                    };
-                    target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver );
-                
-                    player.SignalBroadcast(BaseEntity.Signal.Attack,null);
-
-            }
             void OnEnterCollision(BasePlayer targetplayer)
-            { 
+            {
                 addPlayers.Add(targetplayer);
-                if(targetplayer != null)
+                if (targetplayer != null)
                     Interface.CallHook("OnEnterNPC", player, targetplayer);
-             }
+            }
             void OnLeaveCollision(BasePlayer targetplayer)
             {
                 collidePlayers.Remove(targetplayer);
-                if(targetplayer != null)
+                if (targetplayer != null)
                     Interface.CallHook("OnLeaveNPC", player, targetplayer);
             }
-            void AllowMove() {
-                if(EndPos != Vector3.zero) LookTowards(player, EndPos);
+            void AllowMove()
+            {
+                if (EndPos != Vector3.zero) LookTowards(player, EndPos);
                 else SetViewAngle(player, info.spawnInfo.GetRotation());
-                canMove = true; 
+                canMove = true;
             }
             void DisableMove() { canMove = false; }
             public void TemporaryDisableMove(float thetime = -1f)
             {
-                if(thetime == -1f) thetime = stopandtalkSeconds;
-                DisableMove();  
-                if(IsInvoking("AllowMove")) CancelInvoke("AllowMove");
-                Invoke("AllowMove",thetime);
+                if (thetime == -1f) thetime = stopandtalkSeconds;
+                DisableMove();
+                if (IsInvoking("AllowMove")) CancelInvoke("AllowMove");
+                Invoke("AllowMove", thetime);
             }
             void FixedUpdate()
             {
-                if(info == null) enabled = false;
-                 LookUp();
-                 Move();
+                if (info == null) enabled = false;
+                LookUp();
+                Move();
             }
         }
 
@@ -463,10 +469,10 @@ namespace Oxide.Plugins
             public List<string> message_kill;
 
             public HumanNPCInfo(ulong userid, Vector3 position, Quaternion rotation)
-			{
-				this.userid = userid.ToString();
+            {
+                this.userid = userid.ToString();
                 displayName = "NPC";
-                invulnerability = "true"; 
+                invulnerability = "true";
                 health = "50";
                 hostile = "false";
                 respawn = "true";
@@ -483,11 +489,11 @@ namespace Oxide.Plugins
                 enable = "true";
                 lootable = "true";
                 damageInterval = "2";
-			}
+            }
 
             public HumanNPCInfo Clone(ulong userid)
-	        {
-		        var clone = new HumanNPCInfo(userid, this.spawnInfo.GetPosition(), this.spawnInfo.GetRotation());
+            {
+                var clone = new HumanNPCInfo(userid, this.spawnInfo.GetPosition(), this.spawnInfo.GetRotation());
                 clone.userid = userid.ToString();
                 clone.displayName = this.displayName;
                 clone.invulnerability = this.invulnerability;
@@ -512,11 +518,11 @@ namespace Oxide.Plugins
                 clone.message_use = this.message_use;
                 clone.message_hurt = this.message_hurt;
                 clone.message_kill = this.message_kill;
-		        return clone;
-	        }
+                return clone;
+            }
         }
-    	
-    	class WaypointEditor : MonoBehaviour
+
+        class WaypointEditor : MonoBehaviour
         {
             public Waypoint targetWaypoint;
 
@@ -524,7 +530,7 @@ namespace Oxide.Plugins
             {
             }
         }
-    	class NPCEditor : MonoBehaviour
+        class NPCEditor : MonoBehaviour
         {
             public BasePlayer player;
             public HumanPlayer targetNPC;
@@ -534,7 +540,7 @@ namespace Oxide.Plugins
             }
         }
 
-    	class StoredData
+        class StoredData
         {
             public HashSet<Waypoint> WayPoints = new HashSet<Waypoint>();
             public HashSet<HumanNPCInfo> HumanNPCs = new HashSet<HumanNPCInfo>();
@@ -543,28 +549,28 @@ namespace Oxide.Plugins
             {
             }
         }
-    	static float GetGroundY(Vector3 position)
+        static float GetGroundY(Vector3 position)
         {
             position = position + jumpPosition;
-            if(Physics.Raycast(position, Vector3Down, out hitinfo, 1.5f, groundLayer))
+            if (Physics.Raycast(position, Vector3Down, out hitinfo, 1.5f, groundLayer))
             {
                 return hitinfo.point.y;
             }
-             return position.y - 1.5f;
+            return position.y - 1.5f;
         }
-    	
-    	void Loaded()
+
+        void Loaded()
         {
             LoadData();
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             viewangles = typeof(BasePlayer).GetField("viewAngles", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             TimersList = new List<Oxide.Plugins.Timer>();
-            eyesPosition = new Vector3(0f,0.5f,0f);
-            jumpPosition = new Vector3(0f,1f,0f);
-            Vector3Down = new Vector3(0f,-1f,0f);
-            Vector3Forward = new Vector3(0f,0f,1f);
+            eyesPosition = new Vector3(0f, 0.5f, 0f);
+            jumpPosition = new Vector3(0f, 1f, 0f);
+            Vector3Down = new Vector3(0f, -1f, 0f);
+            Vector3Forward = new Vector3(0f, 0f, 1f);
         }
-        
+
         void Unloaded()
         {
             SaveData();
@@ -585,13 +591,13 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             foreach (Oxide.Plugins.Timer timers in TimersList)
                 timers.Destroy();
-            TimersList.Clear(); 
-        } 
+            TimersList.Clear();
+        }
         void SaveData()
         {
             Interface.GetMod().DataFileSystem.WriteObject("HumanNPC", storedData);
         }
-		void LoadData()
+        void LoadData()
         {
             waypoints.Clear();
             try
@@ -617,9 +623,9 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnServerInitialized()
         {
-            playerLayer = LayerMask.GetMask( new string[] { "Player (Server)", "AI" });
-            groundLayer = LayerMask.GetMask( new string[] { "Construction", "Terrain", "World" });
-            blockshootLayer = LayerMask.GetMask( new string[] { "Construction", "Terrain", "World" });
+            playerLayer = LayerMask.GetMask(new string[] { "Player (Server)", "AI" });
+            groundLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
+            blockshootLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
             RefreshAllNPC();
             emptyDamage = new DamageTypeList();
         }
@@ -628,7 +634,7 @@ namespace Oxide.Plugins
         ///  OnServerSave() 
         ///  called when a server performs a save
         //////////////////////////////////////////////////////
-    	void OnServerSave()
+        void OnServerSave()
         {
             SaveData();
         }
@@ -642,7 +648,7 @@ namespace Oxide.Plugins
             if (input.WasJustPressed(BUTTON.USE))
             {
                 TryGetPlayerView(player, out currentRot);
-                if(Physics.Raycast( new Ray(player.transform.position + eyesPosition, currentRot*Vector3.forward) , out hitinfo, 5f, playerLayer))
+                if (Physics.Raycast(new Ray(player.transform.position + eyesPosition, currentRot * Vector3.forward), out hitinfo, 5f, playerLayer))
                     if (hitinfo.collider.GetComponentInParent<HumanPlayer>() != null)
                         Interface.CallHook("OnUseNPC", hitinfo.collider.GetComponentInParent<BasePlayer>(), player);
             }
@@ -677,7 +683,7 @@ namespace Oxide.Plugins
                 if (entity.GetComponent<HumanPlayer>().info.respawn == "true")
                 {
                     var userid = entity.GetComponent<HumanPlayer>().info.userid;
-                    TimersList.Add( timer.Once(float.Parse(entity.GetComponent<HumanPlayer>().info.respawnSeconds), () => SpawnNPC(userid,false)) );
+                    TimersList.Add(timer.Once(float.Parse(entity.GetComponent<HumanPlayer>().info.respawnSeconds), () => SpawnNPC(userid, false)));
                 }
             }
         }
@@ -686,7 +692,7 @@ namespace Oxide.Plugins
         void OnPlayerLoot(PlayerLoot loot, BaseEntity target)
         {
             var userid = GetIDFromLoot(target);
-            if(userid != 0L && humannpcs[userid.ToString()] != null)
+            if (userid != 0L && humannpcs[userid.ToString()] != null)
             {
                 Interface.CallHook("OnLootNPC", loot, target, userid.ToString());
             }
@@ -696,8 +702,8 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         ulong GetIDFromLoot(BaseEntity target)
         {
-            if(target is PlayerCorpse) return (target as PlayerCorpse).playerSteamID;
-            if(target is BasePlayer) return (target as BasePlayer).userID;
+            if (target is PlayerCorpse) return (target as PlayerCorpse).playerSteamID;
+            if (target is BasePlayer) return (target as BasePlayer).userID;
             return 0L;
         }
 
@@ -706,7 +712,7 @@ namespace Oxide.Plugins
             var allBasePlayer = UnityEngine.Resources.FindObjectsOfTypeAll<HumanPlayer>();
             foreach (HumanPlayer humanplayer in allBasePlayer)
             {
-                if(humanplayer.player.userID == userid) return humanplayer;
+                if (humanplayer.player.userID == userid) return humanplayer;
             }
             return null;
         }
@@ -715,9 +721,20 @@ namespace Oxide.Plugins
             var allBasePlayer = UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>();
             foreach (BasePlayer player in allBasePlayer)
             {
-                if(player.userID == userid) return player;
+                if (player.userID == userid) return player;
             }
             return null;
+        }
+        static void DoHit(HumanPlayer npc, BaseCombatEntity target)
+        {
+            npc.lastHit = Time.realtimeSinceStartup;
+            HitInfo info = new HitInfo(npc.player, DamageType.Stab, npc.damageAmount, target.transform.position)
+            {
+                PointStart = npc.player.transform.position,
+                PointEnd = target.transform.position
+            };
+            target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver);
+            npc.player.SignalBroadcast(BaseEntity.Signal.Attack, null);
         }
         static void SetViewAngle(BasePlayer player, Quaternion ViewAngles)
         {
@@ -729,64 +746,64 @@ namespace Oxide.Plugins
             List<string> npcspawned = new List<string>();
             foreach (KeyValuePair<string, HumanNPCInfo> pair in humannpcs)
             {
-                if(pair.Value.enable == "true")
+                if (pair.Value.enable == "true")
                 {
                     BasePlayer findplayer = FindPlayerByID(Convert.ToUInt64(pair.Key));
                     npcspawned.Add(pair.Key);
-                    if(findplayer == null) SpawnNPC(pair.Key,false);
-                    else RefreshNPC(findplayer,false);
+                    if (findplayer == null) SpawnNPC(pair.Key, false);
+                    else RefreshNPC(findplayer, false);
                 }
             }
-            foreach(BasePlayer player in UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>())
+            foreach (BasePlayer player in UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>())
             {
                 if (player.userID < 76560000000000000L && player.userID > 0L)
-                    if(!npcspawned.Contains(player.userID.ToString())) { player.KillMessage(); Puts(string.Format("Detected a HumanNPC with no data or disabled, deleting him: {0} {1}", player.userID.ToString(), player.displayName)); }
+                    if (!npcspawned.Contains(player.userID.ToString())) { player.KillMessage(); Puts(string.Format("Detected a HumanNPC with no data or disabled, deleting him: {0} {1}", player.userID.ToString(), player.displayName)); }
             }
 
         }
         void SpawnNPC(string userid, bool isediting)
         {
-            if(humannpcs[userid] == null) return;
-            if(!isediting && humannpcs[userid].enable == "false") return;
+            if (humannpcs[userid] == null) return;
+            if (!isediting && humannpcs[userid].enable == "false") return;
             var newplayer = GameManager.server.CreateEntity("player/player", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
             newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
             newplayer.displayName = (humannpcs[userid]).displayName;
-            newplayer.Spawn(true); 
-            humanplayer.SetInfo( humannpcs[userid] );
-            Puts("Spawned NPC: "+userid);
+            newplayer.Spawn(true);
+            humanplayer.SetInfo(humannpcs[userid]);
+            Puts("Spawned NPC: " + userid);
         }
         void RefreshNPC(BasePlayer player, bool isediting)
         {
-            if(player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
+            if (player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
             var humanplayer = player.gameObject.AddComponent<HumanPlayer>();
-            humanplayer.SetInfo( humannpcs[player.userID.ToString()] );
-            if(humannpcs[player.userID.ToString()].enable == "false" && !isediting) { player.KillMessage(); Puts("NPC was refreshed and Killed because he is disabled: "+player.userID.ToString()); return; }
-            Puts("Refreshed NPC: "+player.userID.ToString());
+            humanplayer.SetInfo(humannpcs[player.userID.ToString()]);
+            if (humannpcs[player.userID.ToString()].enable == "false" && !isediting) { player.KillMessage(); Puts("NPC was refreshed and Killed because he is disabled: " + player.userID.ToString()); return; }
+            Puts("Refreshed NPC: " + player.userID.ToString());
         }
-    	bool hasAccess(BasePlayer player)
+        bool hasAccess(BasePlayer player)
         {
-			if(player.net.connection.authLevel < 1) { SendReply(player, "You don't have access to this command"); return false; }
-			return true;
+            if (player.net.connection.authLevel < 1) { SendReply(player, "You don't have access to this command"); return false; }
+            return true;
         }
         bool isEditingWP(BasePlayer player, int ttype)
         {
-        	if(player.GetComponent<WaypointEditor>() != null)
-        	{
-        		if(ttype == 0) SendReply(player, string.Format("You are already editing {0}",player.GetComponent<WaypointEditor>().targetWaypoint.Name.ToString()));
-        		return true;
-        	}
-        	else
-        	{
-        		if(ttype == 1) SendReply(player, string.Format("You are not editing any waypoints, say /waypoints_new or /waypoints_edit NAME"));
-        		return false;
-        	}
+            if (player.GetComponent<WaypointEditor>() != null)
+            {
+                if (ttype == 0) SendReply(player, string.Format("You are already editing {0}", player.GetComponent<WaypointEditor>().targetWaypoint.Name.ToString()));
+                return true;
+            }
+            else
+            {
+                if (ttype == 1) SendReply(player, string.Format("You are not editing any waypoints, say /waypoints_new or /waypoints_edit NAME"));
+                return false;
+            }
         }
         bool hasNoArguments(BasePlayer player, string[] args, int Number)
         {
-        	if(args.Length < Number) { SendReply(player, "Not enough Arguments"); return true; }
-        	return false;
+            if (args.Length < Number) { SendReply(player, "Not enough Arguments"); return true; }
+            return false;
         }
         bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
         {
@@ -820,27 +837,27 @@ namespace Oxide.Plugins
         }
         static bool CanSee(BasePlayer source, BaseEntity target)
         {
-            if(UnityEngine.Physics.Linecast(source.transform.position + jumpPosition, target.transform.position + jumpPosition, blockshootLayer))
+            if (UnityEngine.Physics.Linecast(source.transform.position + jumpPosition, target.transform.position + jumpPosition, blockshootLayer))
                 return false;
             return true;
-        } 
-        string GetRandomMessage(List<string> messagelist) { return messagelist[GetRandom(0,messagelist.Count)]; }
-        int GetRandom(int min,int max) { return UnityEngine.Random.Range(min,max); }
-        
-         
+        }
+        string GetRandomMessage(List<string> messagelist) { return messagelist[GetRandom(0, messagelist.Count)]; }
+        int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
+
+
         static List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
 
         List<string> ListFromArgs(string[] args, int from)
         {
             var newlist = new List<string>();
-            for(var i = from; i < args.Length ; i++) { newlist.Add(args[i]); }
+            for (var i = from; i < args.Length; i++) { newlist.Add(args[i]); }
             return newlist;
         }
 
         public static void LookTowards(BasePlayer player, Vector3 pos)
         {
-            if(pos != player.transform.position)
-                SetViewAngle(player, Quaternion.LookRotation( pos - player.transform.position ));
+            if (pos != player.transform.position)
+                SetViewAngle(player, Quaternion.LookRotation(pos - player.transform.position));
         }
 
         //////////////////////////////////////////////////////////////////////////////
@@ -849,7 +866,7 @@ namespace Oxide.Plugins
         [ChatCommand("npc_add")]
         void cmdChatNPCAdd(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
+            if (!hasAccess(player)) return;
             if (player.GetComponent<NPCEditor>() != null) { SendReply(player, "NPC Editor: Already editing an NPC, say /npc_end first"); return; }
             if (!TryGetPlayerView(player, out currentRot)) return;
 
@@ -859,14 +876,14 @@ namespace Oxide.Plugins
             newplayer.Spawn(true);
             var humannpcinfo = new HumanNPCInfo(newplayer.userID, player.transform.position, currentRot);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
-            
-            if(args.Length > 0)
+
+            if (args.Length > 0)
             {
-                if(humannpcs[args[0]] != null)
+                if (humannpcs[args[0]] != null)
                 {
                     humannpcinfo = humannpcs[args[0]].Clone(newplayer.userID);
                     humannpcinfo.userid = newplayer.userID.ToString();
-                    humannpcinfo.spawnInfo = new SpawnInfo(player.transform.position, currentRot); 
+                    humannpcinfo.spawnInfo = new SpawnInfo(player.transform.position, currentRot);
                     humanplayer.SetInfo(humannpcinfo);
                 }
             }
@@ -877,8 +894,8 @@ namespace Oxide.Plugins
 
             var npceditor = player.gameObject.AddComponent<NPCEditor>();
             npceditor.targetNPC = humanplayer;
-            
-            if(humannpcs[newplayer.userID.ToString()] != null) storedData.HumanNPCs.Remove(humannpcs[newplayer.userID.ToString()]);
+
+            if (humannpcs[newplayer.userID.ToString()] != null) storedData.HumanNPCs.Remove(humannpcs[newplayer.userID.ToString()]);
 
             humannpcs[newplayer.userID.ToString()] = humannpcinfo;
             storedData.HumanNPCs.Add(humannpcs[newplayer.userID.ToString()]);
@@ -887,44 +904,46 @@ namespace Oxide.Plugins
         [ChatCommand("npc_edit")]
         void cmdChatNPCEdit(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
+            if (!hasAccess(player)) return;
             if (player.GetComponent<NPCEditor>() != null) { SendReply(player, "NPC Editor: Already editing an NPC, say /npc_end first"); return; }
-            
+
             HumanPlayer targetnpc;
             ulong userid;
-            if(args.Length == 0) {
+            if (args.Length == 0)
+            {
                 if (!TryGetPlayerView(player, out currentRot)) return;
                 if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
                 if (((Collider)closestEnt).GetComponentInParent<HumanPlayer>() == null) { SendReply(player, "This is not an NPC"); return; }
                 targetnpc = ((Collider)closestEnt).GetComponentInParent<HumanPlayer>();
             }
-            else if(humannpcs[args[0]] != null) {
-                if(!ulong.TryParse(args[0], out userid)) { SendReply(player, "/npc_edit TARGETID"); return; }
-                targetnpc = FindHumanPlayerByID( userid );
-                if(targetnpc == null) { SpawnNPC(args[0],true); }
-                targetnpc = FindHumanPlayerByID( userid );
-                if(targetnpc == null) { SendReply(player, "Couldn't Spawn the NPC"); return; }
+            else if (humannpcs[args[0]] != null)
+            {
+                if (!ulong.TryParse(args[0], out userid)) { SendReply(player, "/npc_edit TARGETID"); return; }
+                targetnpc = FindHumanPlayerByID(userid);
+                if (targetnpc == null) { SpawnNPC(args[0], true); }
+                targetnpc = FindHumanPlayerByID(userid);
+                if (targetnpc == null) { SendReply(player, "Couldn't Spawn the NPC"); return; }
             }
             else { SendReply(player, "You are not looking at an NPC or this userid doesn't exist"); return; }
 
             var npceditor = player.gameObject.AddComponent<NPCEditor>();
             npceditor.targetNPC = targetnpc;
-            SendReply(player, string.Format("NPC Editor: Start Editing {0} - {1}",npceditor.targetNPC.player.displayName,npceditor.targetNPC.player.userID.ToString()));
+            SendReply(player, string.Format("NPC Editor: Start Editing {0} - {1}", npceditor.targetNPC.player.displayName, npceditor.targetNPC.player.userID.ToString()));
         }
         [ChatCommand("npc_list")]
         void cmdChatNPCList(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(humannpcs.Count == 0) { SendReply(player, "No NPC created yet"); return; }
+            if (!hasAccess(player)) return;
+            if (humannpcs.Count == 0) { SendReply(player, "No NPC created yet"); return; }
 
             SendReply(player, "==== NPCs ====");
-            foreach (KeyValuePair<string, HumanNPCInfo> pair in humannpcs) SendReply(player, string.Format("{0} - {1} - {2} {3}",pair.Key,pair.Value.displayName,pair.Value.spawnInfo.ShortString(),pair.Value.enable=="true"?"":"- Disabled"));
+            foreach (KeyValuePair<string, HumanNPCInfo> pair in humannpcs) SendReply(player, string.Format("{0} - {1} - {2} {3}", pair.Key, pair.Value.displayName, pair.Value.spawnInfo.ShortString(), pair.Value.enable == "true" ? "" : "- Disabled"));
         }
 
         [ChatCommand("npc")]
         void cmdChatNPC(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
+            if (!hasAccess(player)) return;
             if (player.GetComponent<NPCEditor>() == null) { SendReply(player, "NPC Editor: You need to be editing an NPC, say /npc_add or /npc_edit"); return; }
             var npceditor = player.GetComponent<NPCEditor>();
             if (args.Length == 0)
@@ -954,73 +973,73 @@ namespace Oxide.Plugins
                 SendReply(player, "<color=#81F781>/npc waypoints</color> <color=#F6CECE>reset</color>/<color=#F2F5A9>\"Waypoint list Name\" </color>=> <color=#D8D8D8>To set waypoints of an NPC, /npc_help for more informations</color>");
                 return;
             }
-            switch (args[0].ToLower()) 
+            switch (args[0].ToLower())
             {
                 case "name":
-                    if (args.Length == 1) { SendReply(player,string.Format("This NPC name is: {0}",npceditor.targetNPC.info.displayName)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This NPC name is: {0}", npceditor.targetNPC.info.displayName)); return; }
                     npceditor.targetNPC.info.displayName = args[1];
-                break;
+                    break;
                 case "enable":
                 case "enabled":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC Respawn enabled: {0}", npceditor.targetNPC.info.enable)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.enable = "true";
                     else
                         npceditor.targetNPC.info.enable = "false";
-                break;
+                    break;
                 case "invulnerable":
                 case "invulnerability":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC invulnerability is set to: {0}", npceditor.targetNPC.info.invulnerability)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.invulnerability = "true";
                     else
                         npceditor.targetNPC.info.invulnerability = "false";
-                break;
+                    break;
                 case "lootable":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC lootable is set to: {0}", npceditor.targetNPC.info.lootable)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.lootable = "true";
                     else
                         npceditor.targetNPC.info.lootable = "false";
-                break;
+                    break;
                 case "hostile":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC hostility is set to: {0}", npceditor.targetNPC.info.hostile)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.hostile = "true";
                     else
                         npceditor.targetNPC.info.hostile = "false";
-                break;
+                    break;
                 case "health":
-                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Initial health is set to: {0}",  npceditor.targetNPC.info.health)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Initial health is set to: {0}", npceditor.targetNPC.info.health)); return; }
                     npceditor.targetNPC.info.health = args[1];
-                break;
+                    break;
                 case "attackdistance":
-                    if (args.Length == 1) { SendReply(player, string.Format("This Max Attack Distance is: {0}",  npceditor.targetNPC.info.attackDistance)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This Max Attack Distance is: {0}", npceditor.targetNPC.info.attackDistance)); return; }
                     npceditor.targetNPC.info.attackDistance = args[1];
-                break;
+                    break;
                 case "damageamount":
-                    if (args.Length == 1) { SendReply(player, string.Format("This Damage amount is: {0}",  npceditor.targetNPC.info.damageAmount)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This Damage amount is: {0}", npceditor.targetNPC.info.damageAmount)); return; }
                     npceditor.targetNPC.info.damageAmount = args[1];
-                break;
+                    break;
                 case "damageinterval":
-                    if (args.Length == 1) { SendReply(player, string.Format("This Damage interval is: {0} seconds",  npceditor.targetNPC.info.damageInterval)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This Damage interval is: {0} seconds", npceditor.targetNPC.info.damageInterval)); return; }
                     npceditor.targetNPC.info.damageInterval = args[1];
-                break;
+                    break;
                 case "maxdistance":
-                    if (args.Length == 1) { SendReply(player, string.Format("The Max Distance from spawn is: {0}",  npceditor.targetNPC.info.maxDistance)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("The Max Distance from spawn is: {0}", npceditor.targetNPC.info.maxDistance)); return; }
                     npceditor.targetNPC.info.maxDistance = args[1];
-                break;
+                    break;
                 case "damagedistance":
-                    if (args.Length == 1) { SendReply(player, string.Format("This Damage distance is: {0}",  npceditor.targetNPC.info.damageDistance)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This Damage distance is: {0}", npceditor.targetNPC.info.damageDistance)); return; }
                     npceditor.targetNPC.info.damageDistance = args[1];
-                break;
+                    break;
                 case "radius":
-                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Collision radius is set to: {0}",  npceditor.targetNPC.info.collisionRadius)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Collision radius is set to: {0}", npceditor.targetNPC.info.collisionRadius)); return; }
                     npceditor.targetNPC.info.collisionRadius = args[1];
-                break;
+                    break;
                 case "respawn":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC Respawn is set to: {0} after {1} seconds", npceditor.targetNPC.info.respawn, npceditor.targetNPC.info.respawnSeconds)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.respawn = "true";
                     else
                         npceditor.targetNPC.info.respawn = "false";
@@ -1028,21 +1047,21 @@ namespace Oxide.Plugins
                     npceditor.targetNPC.info.respawnSeconds = "60";
                     if (args.Length > 2)
                         npceditor.targetNPC.info.respawnSeconds = args[2];
-                break;
-                case "spawn": 
+                    break;
+                case "spawn":
                     if (args.Length == 1) { SendReply(player, string.Format("This NPC Spawn is set to: {0}", npceditor.targetNPC.info.spawnInfo.String())); return; }
                     TryGetPlayerView(player, out currentRot);
-                    var newSpawn = new SpawnInfo(player.transform.position, currentRot); 
+                    var newSpawn = new SpawnInfo(player.transform.position, currentRot);
                     npceditor.targetNPC.info.spawnInfo = newSpawn;
                     SendReply(player, string.Format("This NPC Spawn now is set to: {0}", newSpawn.String()));
-                break;
+                    break;
                 case "speed":
-                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Chasing speed is: {0}",  npceditor.targetNPC.info.speed)); return; }
+                    if (args.Length == 1) { SendReply(player, string.Format("This NPC Chasing speed is: {0}", npceditor.targetNPC.info.speed)); return; }
                     npceditor.targetNPC.info.speed = args[1];
-                break;
+                    break;
                 case "stopandtalk":
-                    if (args.Length == 1) { SendReply(player, string.Format("This NPC stop to talk is set to: {0} for {1} seconds",  npceditor.targetNPC.info.stopandtalk,  npceditor.targetNPC.info.stopandtalkSeconds)); return; }
-                    if(args[1] == "true" || args[1] == "1")
+                    if (args.Length == 1) { SendReply(player, string.Format("This NPC stop to talk is set to: {0} for {1} seconds", npceditor.targetNPC.info.stopandtalk, npceditor.targetNPC.info.stopandtalkSeconds)); return; }
+                    if (args[1] == "true" || args[1] == "1")
                         npceditor.targetNPC.info.stopandtalk = "true";
                     else
                         npceditor.targetNPC.info.stopandtalk = "false";
@@ -1050,79 +1069,86 @@ namespace Oxide.Plugins
                     npceditor.targetNPC.info.stopandtalkSeconds = "3";
                     if (args.Length > 2)
                         npceditor.targetNPC.info.stopandtalkSeconds = args[2];
-                break;
+                    break;
                 case "waypoints":
                 case "waypoint":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.waypoint == null || npceditor.targetNPC.info.waypoint == "" ) SendReply(player, "No waypoints set for this NPC yet");
-                        else SendReply(player, string.Format("This NPC waypoints are: {0}",npceditor.targetNPC.info.waypoint));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.waypoint == null || npceditor.targetNPC.info.waypoint == "") SendReply(player, "No waypoints set for this NPC yet");
+                        else SendReply(player, string.Format("This NPC waypoints are: {0}", npceditor.targetNPC.info.waypoint));
                         return;
                     }
-                    if(args[1] == "reset") npceditor.targetNPC.info.waypoint = "";
-                    else if(waypoints[args[1]] == null) { SendReply(player, "This waypoint doesn't exist"); return; }
+                    if (args[1] == "reset") npceditor.targetNPC.info.waypoint = "";
+                    else if (waypoints[args[1]] == null) { SendReply(player, "This waypoint doesn't exist"); return; }
                     else npceditor.targetNPC.info.waypoint = args[1];
-                break;
+                    break;
                 case "kit":
                 case "kits":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.spawnkit == null || npceditor.targetNPC.info.spawnkit == "" ) SendReply(player, "No spawn kits set for this NPC yet");
-                        else SendReply(player, string.Format("This NPC spawn kit is: {0}",npceditor.targetNPC.info.spawnkit));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.spawnkit == null || npceditor.targetNPC.info.spawnkit == "") SendReply(player, "No spawn kits set for this NPC yet");
+                        else SendReply(player, string.Format("This NPC spawn kit is: {0}", npceditor.targetNPC.info.spawnkit));
                         return;
                     }
                     npceditor.targetNPC.info.spawnkit = args[1];
-                break;
+                    break;
                 case "hello":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.message_hello == null || (npceditor.targetNPC.info.message_hello.Count == 0) ) SendReply(player, "No hello message set yet");
-                        else SendReply(player, string.Format("This NPC will say hi: {0} different messages",npceditor.targetNPC.info.message_hello.Count.ToString()));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.message_hello == null || (npceditor.targetNPC.info.message_hello.Count == 0)) SendReply(player, "No hello message set yet");
+                        else SendReply(player, string.Format("This NPC will say hi: {0} different messages", npceditor.targetNPC.info.message_hello.Count.ToString()));
                         return;
                     }
-                    if(args[1] == "reset") npceditor.targetNPC.info.message_hello = new List<string>();
-                    else npceditor.targetNPC.info.message_hello = ListFromArgs(args,1);
-                break;
+                    if (args[1] == "reset") npceditor.targetNPC.info.message_hello = new List<string>();
+                    else npceditor.targetNPC.info.message_hello = ListFromArgs(args, 1);
+                    break;
                 case "bye":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.message_bye == null || npceditor.targetNPC.info.message_bye.Count == 0  ) SendReply(player, "No bye message set yet");
-                        else SendReply(player, string.Format("This NPC will say bye: {0} difference messages ",npceditor.targetNPC.info.message_bye.Count.ToString()));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.message_bye == null || npceditor.targetNPC.info.message_bye.Count == 0) SendReply(player, "No bye message set yet");
+                        else SendReply(player, string.Format("This NPC will say bye: {0} difference messages ", npceditor.targetNPC.info.message_bye.Count.ToString()));
                         return;
-                    } 
-                    if(args[1] == "reset") npceditor.targetNPC.info.message_bye = new List<string>();
-                    else npceditor.targetNPC.info.message_bye = ListFromArgs(args,1);
-                break;
+                    }
+                    if (args[1] == "reset") npceditor.targetNPC.info.message_bye = new List<string>();
+                    else npceditor.targetNPC.info.message_bye = ListFromArgs(args, 1);
+                    break;
                 case "use":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.message_use == null || npceditor.targetNPC.info.message_use.Count == 0 ) SendReply(player, "No bye message set yet");
-                        else SendReply(player, string.Format("This NPC will say bye: {0} different messages",npceditor.targetNPC.info.message_use.Count.ToString()));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.message_use == null || npceditor.targetNPC.info.message_use.Count == 0) SendReply(player, "No bye message set yet");
+                        else SendReply(player, string.Format("This NPC will say bye: {0} different messages", npceditor.targetNPC.info.message_use.Count.ToString()));
                         return;
                     }
-                    if(args[1] == "reset") npceditor.targetNPC.info.message_use = new List<string>();
-                    else npceditor.targetNPC.info.message_use = ListFromArgs(args,1);
-                break;
+                    if (args[1] == "reset") npceditor.targetNPC.info.message_use = new List<string>();
+                    else npceditor.targetNPC.info.message_use = ListFromArgs(args, 1);
+                    break;
                 case "hurt":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.message_hurt == null || npceditor.targetNPC.info.message_hurt.Count == 0 ) SendReply(player, "No hurt message set yet");
-                        else SendReply(player, string.Format("This NPC will say ouch: {0} different messages",npceditor.targetNPC.info.message_hurt.Count.ToString()));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.message_hurt == null || npceditor.targetNPC.info.message_hurt.Count == 0) SendReply(player, "No hurt message set yet");
+                        else SendReply(player, string.Format("This NPC will say ouch: {0} different messages", npceditor.targetNPC.info.message_hurt.Count.ToString()));
                         return;
                     }
-                    if(args[1] == "reset") npceditor.targetNPC.info.message_hurt = new List<string>();
-                    else npceditor.targetNPC.info.message_hurt = ListFromArgs(args,1);
-                break;
+                    if (args[1] == "reset") npceditor.targetNPC.info.message_hurt = new List<string>();
+                    else npceditor.targetNPC.info.message_hurt = ListFromArgs(args, 1);
+                    break;
                 case "kill":
-                    if (args.Length == 1) {
-                        if( npceditor.targetNPC.info.message_kill == null || npceditor.targetNPC.info.message_kill.Count == 0 ) SendReply(player, "No kill message set yet");
-                        else SendReply(player, string.Format("This NPC will say a death message: {0} different messages",npceditor.targetNPC.info.message_kill.Count.ToString()));
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.message_kill == null || npceditor.targetNPC.info.message_kill.Count == 0) SendReply(player, "No kill message set yet");
+                        else SendReply(player, string.Format("This NPC will say a death message: {0} different messages", npceditor.targetNPC.info.message_kill.Count.ToString()));
                         return;
                     }
-                    if(args[1] == "reset") npceditor.targetNPC.info.message_kill = new List<string>();
-                    else npceditor.targetNPC.info.message_kill = ListFromArgs(args,1);
-                break;
+                    if (args[1] == "reset") npceditor.targetNPC.info.message_kill = new List<string>();
+                    else npceditor.targetNPC.info.message_kill = ListFromArgs(args, 1);
+                    break;
                 default:
                     SendReply(player, "Wrong Argument, /npc for more informations");
                     return;
-                break;
+                    break;
             }
-            
-            if(args.Length > 1) 
+
+            if (args.Length > 1)
             {
                 SendReply(player, string.Format("NPC Editor: Set {0} to {1}", args[0], args[1]));
                 SaveData();
@@ -1132,11 +1158,11 @@ namespace Oxide.Plugins
 
         [ChatCommand("npc_end")]
         void cmdChatNPCEnd(BasePlayer player, string command, string[] args)
-        { 
-            if(!hasAccess(player)) return;
+        {
+            if (!hasAccess(player)) return;
             if (player.GetComponent<NPCEditor>() == null) { SendReply(player, "NPC Editor: You are not editing any NPC"); return; }
             var npceditor = player.GetComponent<NPCEditor>();
-            if(npceditor.targetNPC.info.enable == "false")
+            if (npceditor.targetNPC.info.enable == "false")
             {
                 npceditor.targetNPC.player.KillMessage();
                 SendReply(player, "NPC Editor: The NPC you edited is disabled, killing him");
@@ -1144,25 +1170,38 @@ namespace Oxide.Plugins
             GameObject.Destroy(player.GetComponent<NPCEditor>());
             SendReply(player, "NPC Editor: Ended");
         }
+        [ChatCommand("npc_pathtest")]
+        void cmdChatNPCPathTest(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) return;
+            if (player.GetComponent<NPCEditor>() == null) { SendReply(player, "NPC Editor: You are not editing any NPC"); return; }
+            if (!TryGetPlayerView(player, out currentRot)) return;
+            if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
+            var npceditor = player.GetComponent<NPCEditor>();
+            Puts(PathFinding.ToString());
+            PathFinding?.Call("FindAndFollowPath", npceditor.targetNPC.player, npceditor.targetNPC.player.transform.position, closestHitpoint);
+        }
         [ChatCommand("npc_remove")]
         void cmdChatNPCRemove(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            
+            if (!hasAccess(player)) return;
+
 
             HumanPlayer targetnpc;
             ulong userid;
-            if(args.Length == 0) {
+            if (args.Length == 0)
+            {
                 if (!TryGetPlayerView(player, out currentRot)) return;
                 if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
                 if (((Collider)closestEnt).GetComponentInParent<HumanPlayer>() == null) { SendReply(player, "This is not an NPC"); return; }
-                
+
                 targetnpc = ((Collider)closestEnt).GetComponentInParent<HumanPlayer>();
             }
-            else if(humannpcs[args[0]] != null) {
-                if(!ulong.TryParse(args[0], out userid)) { SendReply(player, "/npc_remove TARGETID"); return; }
-                targetnpc = FindHumanPlayerByID( userid );
-                if(targetnpc == null) { SendReply(player, "This NPC doesn't exist"); return; }
+            else if (humannpcs[args[0]] != null)
+            {
+                if (!ulong.TryParse(args[0], out userid)) { SendReply(player, "/npc_remove TARGETID"); return; }
+                targetnpc = FindHumanPlayerByID(userid);
+                if (targetnpc == null) { SendReply(player, "This NPC doesn't exist"); return; }
             }
             else { SendReply(player, "You are not looking at an NPC or this userid doesn't exist"); return; }
 
@@ -1170,12 +1209,12 @@ namespace Oxide.Plugins
             storedData.HumanNPCs.Remove(humannpcs[targetid]);
             humannpcs[targetid] = null;
             RefreshAllNPC();
-            SendReply(player, string.Format("NPC {0} Removed",targetid));
+            SendReply(player, string.Format("NPC {0} Removed", targetid));
         }
         [ChatCommand("npc_reset")]
         void cmdChatNPCReset(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
+            if (!hasAccess(player)) return;
             if (player.GetComponent<NPCEditor>() != null) GameObject.Destroy(player.GetComponent<NPCEditor>());
             humannpcs.Clear();
             storedData.HumanNPCs.Clear();
@@ -1187,18 +1226,18 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////// 
         // Waypoints manager
         ////////////////////////////////////////////////////// 
-        
-    	[ChatCommand("waypoints_new")]
+
+        [ChatCommand("waypoints_new")]
         void cmdWaypointsNew(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(isEditingWP(player,0)) return;
-            
+            if (!hasAccess(player)) return;
+            if (isEditingWP(player, 0)) return;
+
             var newWaypoint = new Waypoint();
-            if(newWaypoint == null)
+            if (newWaypoint == null)
             {
-            	SendReply(player, "Waypoints: Something went wrong while making a new waypoint");
-            	return;
+                SendReply(player, "Waypoints: Something went wrong while making a new waypoint");
+                return;
             }
             var newWaypointEditor = player.gameObject.AddComponent<WaypointEditor>();
             newWaypointEditor.targetWaypoint = newWaypoint;
@@ -1207,25 +1246,25 @@ namespace Oxide.Plugins
         [ChatCommand("waypoints_add")]
         void cmdWaypointsAdd(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(!isEditingWP(player,1)) return;
+            if (!hasAccess(player)) return;
+            if (!isEditingWP(player, 1)) return;
             var WaypointEditor = player.GetComponent<WaypointEditor>();
-            if(WaypointEditor.targetWaypoint == null)
+            if (WaypointEditor.targetWaypoint == null)
             {
-            	SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
-            	return;
+                SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
+                return;
             }
             float speed = 3f;
-            if(args.Length > 0) float.TryParse(args[0], out speed);
-            WaypointEditor.targetWaypoint.AddWaypoint(player.transform.position,speed);
-            
-            SendReply(player, string.Format("Waypoint Added: {0} {1} {2} - Speed: {3}",player.transform.position.x.ToString(),player.transform.position.y.ToString(),player.transform.position.z.ToString(),speed.ToString()));
+            if (args.Length > 0) float.TryParse(args[0], out speed);
+            WaypointEditor.targetWaypoint.AddWaypoint(player.transform.position, speed);
+
+            SendReply(player, string.Format("Waypoint Added: {0} {1} {2} - Speed: {3}", player.transform.position.x.ToString(), player.transform.position.y.ToString(), player.transform.position.z.ToString(), speed.ToString()));
         }
         [ChatCommand("waypoints_list")]
         void cmdWaypointsList(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(waypoints.Count == 0)
+            if (!hasAccess(player)) return;
+            if (waypoints.Count == 0)
             {
                 SendReply(player, "No waypoints created yet");
                 return;
@@ -1240,44 +1279,44 @@ namespace Oxide.Plugins
         [ChatCommand("waypoints_save")]
         void cmdWaypointsSave(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(!isEditingWP(player,1)) return;
-            if(args.Length == 0)
+            if (!hasAccess(player)) return;
+            if (!isEditingWP(player, 1)) return;
+            if (args.Length == 0)
             {
                 SendReply(player, "Waypoints: /waypoints_save NAMEOFWAYPOINT");
                 return;
             }
             var WaypointEditor = player.GetComponent<WaypointEditor>();
-            if(WaypointEditor.targetWaypoint == null)
+            if (WaypointEditor.targetWaypoint == null)
             {
-            	SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
-            	return;
+                SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
+                return;
             }
-            
+
             WaypointEditor.targetWaypoint.Name = args[0];
-            
-            if(waypoints[args[0]] != null) storedData.WayPoints.Remove(waypoints[args[0]]);
+
+            if (waypoints[args[0]] != null) storedData.WayPoints.Remove(waypoints[args[0]]);
             waypoints[args[0]] = WaypointEditor.targetWaypoint;
             storedData.WayPoints.Add(waypoints[args[0]]);
-            SendReply(player, string.Format("Waypoints: New waypoint saved with: {0} with {1} waypoints stored",WaypointEditor.targetWaypoint.Name, WaypointEditor.targetWaypoint.Waypoints.Count.ToString()));
-        	GameObject.Destroy(player.GetComponent<WaypointEditor>());
+            SendReply(player, string.Format("Waypoints: New waypoint saved with: {0} with {1} waypoints stored", WaypointEditor.targetWaypoint.Name, WaypointEditor.targetWaypoint.Waypoints.Count.ToString()));
+            GameObject.Destroy(player.GetComponent<WaypointEditor>());
             SaveData();
         }
         [ChatCommand("waypoints_close")]
         void cmdWaypointsClose(BasePlayer player, string command, string[] args)
         {
-            if(!hasAccess(player)) return;
-            if(!isEditingWP(player,1)) return;
+            if (!hasAccess(player)) return;
+            if (!isEditingWP(player, 1)) return;
             SendReply(player, "Waypoints: Closed without saving");
-        	GameObject.Destroy(player.GetComponent<WaypointEditor>());
+            GameObject.Destroy(player.GetComponent<WaypointEditor>());
         }
 
 
         void SendMessage(HumanPlayer npc, BasePlayer target, string message)
         {
-            if(Time.realtimeSinceStartup > npc.lastMessage + 0.1f )
+            if (Time.realtimeSinceStartup > npc.lastMessage + 0.1f)
             {
-                target.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.player.displayName, message) , 1.0 });
+                target.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", npc.player.displayName, message), 1.0 });
                 npc.lastMessage = Time.realtimeSinceStartup;
             }
         }
@@ -1293,9 +1332,9 @@ namespace Oxide.Plugins
         void OnHitNPC(BasePlayer npc, HitInfo hinfo)
         {
             npc.GetComponent<HumanPlayer>().StartAttackingEntity(hinfo.Initiator);
-            if(npc.GetComponent<HumanPlayer>().info.message_hurt != null && npc.GetComponent<HumanPlayer>().info.message_hurt.Count != 0)
-                if(hinfo.Initiator != null)
-                    if(hinfo.Initiator.ToPlayer() != null)
+            if (npc.GetComponent<HumanPlayer>().info.message_hurt != null && npc.GetComponent<HumanPlayer>().info.message_hurt.Count != 0)
+                if (hinfo.Initiator != null)
+                    if (hinfo.Initiator.ToPlayer() != null)
                         SendMessage(npc.GetComponent<HumanPlayer>(), hinfo.Initiator.ToPlayer(), GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hurt));
         }
 
@@ -1307,8 +1346,8 @@ namespace Oxide.Plugins
         void OnUseNPC(BasePlayer npc, BasePlayer player)
         {
             var usenpc = npc.GetComponent<HumanPlayer>();
-            if(usenpc.stopandtalk) { LookTowards(npc, player.transform.position); usenpc.TemporaryDisableMove(  ); }
-            if(usenpc.info.message_use != null && usenpc.info.message_use.Count != 0)
+            if (usenpc.stopandtalk) { LookTowards(npc, player.transform.position); usenpc.TemporaryDisableMove(); }
+            if (usenpc.info.message_use != null && usenpc.info.message_use.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_use));
         }
 
@@ -1316,13 +1355,13 @@ namespace Oxide.Plugins
         ///  OnEnterNPC(BasePlayer npc, BasePlayer player)
         ///  called when a player gets close to an NPC (default is in 10m radius)
         //////////////////////////////////////////////////////
-        void OnEnterNPC(BasePlayer npc, BasePlayer player) 
+        void OnEnterNPC(BasePlayer npc, BasePlayer player)
         {
-            if(npc.GetComponent<HumanPlayer>().hostile)
+            /*if(npc.GetComponent<HumanPlayer>().hostile)
                 if(npc.GetComponent<HumanPlayer>().attackEntity == null)
                     if(player.net.connection.authLevel < 1)
-                        npc.GetComponent<HumanPlayer>().StartAttackingEntity(player);
-            if(npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello.Count != 0)
+                        npc.GetComponent<HumanPlayer>().StartAttackingEntity(player);*/
+            if (npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hello));
         }
         ////////////////////////////////////////////////////// 
@@ -1331,7 +1370,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnLeaveNPC(BasePlayer npc, BasePlayer player)
         {
-            if(npc.GetComponent<HumanPlayer>().info.message_bye != null && npc.GetComponent<HumanPlayer>().info.message_bye.Count != 0)
+            if (npc.GetComponent<HumanPlayer>().info.message_bye != null && npc.GetComponent<HumanPlayer>().info.message_bye.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_bye));
         }
 
@@ -1341,9 +1380,9 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnKillNPC(BasePlayer npc, HitInfo hinfo)
         {
-            if(npc.GetComponent<HumanPlayer>().info.message_kill != null && npc.GetComponent<HumanPlayer>().info.message_kill.Count != 0)
-                if(hinfo.Initiator != null)
-                    if(hinfo.Initiator.ToPlayer() != null)
+            if (npc.GetComponent<HumanPlayer>().info.message_kill != null && npc.GetComponent<HumanPlayer>().info.message_kill.Count != 0)
+                if (hinfo.Initiator != null)
+                    if (hinfo.Initiator.ToPlayer() != null)
                         SendMessage(npc.GetComponent<HumanPlayer>(), hinfo.Initiator.ToPlayer(), GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_kill));
         }
 
@@ -1352,7 +1391,7 @@ namespace Oxide.Plugins
         ///  Called when an npc reachs a position
         //////////////////////////////////////////////////////
         void OnNPCPosition(BasePlayer npc, Vector3 pos)
-        { 
+        {
             return;
         }
 
@@ -1362,12 +1401,12 @@ namespace Oxide.Plugins
         ///  here it will give an NPC a kit and set the first tool in the belt as the active weapon
         //////////////////////////////////////////////////////
         void OnNPCRespawn(BasePlayer npc)
-        { 
-            if(npc.GetComponent<HumanPlayer>().info.spawnkit != null && npc.GetComponent<HumanPlayer>().info.spawnkit != "")
+        {
+            if (npc.GetComponent<HumanPlayer>().info.spawnkit != null && npc.GetComponent<HumanPlayer>().info.spawnkit != "")
             {
                 npc.inventory.Strip();
                 Kits.Call("GiveKit", npc, npc.GetComponent<HumanPlayer>().info.spawnkit);
-                if(npc.inventory.containerBelt.GetSlot(0) != null)
+                if (npc.inventory.containerBelt.GetSlot(0) != null)
                 {
                     npc.svActiveItem = npc.inventory.containerBelt.GetSlot(0);
                     HeldEntity entity2 = npc.svActiveItem.GetHeldEntity() as HeldEntity;
@@ -1396,9 +1435,14 @@ namespace Oxide.Plugins
             return;
         }
 
+        ////////////////////////////////////////////////////// 
+        ///  OnLootNPC(PlayerLoot loot, BaseEntity target, string npcuserID)
+        ///  Called when an NPC gets looted
+        ///  no return;
+        //////////////////////////////////////////////////////
         void OnLootNPC(PlayerLoot loot, BaseEntity target, string npcuserID)
         {
-            if( humannpcs[npcuserID].lootable == "false" )
+            if (humannpcs[npcuserID].lootable == "false")
                 timer.Once(0.01f, () => loot.Clear());
         }
     }
