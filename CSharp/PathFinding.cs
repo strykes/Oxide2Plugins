@@ -52,7 +52,7 @@ namespace Oxide.Plugins
                     foreach (PathfindNode pathnode in RunDetection)
                     {
                         pathnode.DetectAdjacentNodes();
-                        if (pathnode.isGoal) { Debug.Log("GOAL");  targetNode.parentNode = pathnode; shouldBreak = true; }
+                        if (pathnode.isGoal) { targetNode.parentNode = pathnode; shouldBreak = true; }
                     }
                     RunDetection.Clear();
                     Loops++;
@@ -258,8 +258,7 @@ namespace Oxide.Plugins
                     secondsTaken += Time.deltaTime;
                     waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                     nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
-                    nextPos.y = GetPlayerGround(nextPos);
-                    entity.transform.position = nextPos;
+                    entity.transform.position = nextPos; 
                     if (player != null) player.ClientRPC(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
                 }
