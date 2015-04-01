@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.0.13", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.0.14", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
          
@@ -372,7 +372,6 @@ namespace Oxide.Plugins
                     if (pathFinding == null) return;
                     if (pathFinding.Count > 0)
                     {
-                        Debug.Log(waypointDone.ToString());
                         if(waypointDone == 0f) SetMovementPoint(pathFinding[0], speed);
                         Execute_Move();
                         if (waypointDone >= 1f) { pathFinding.RemoveAt(0); waypointDone = 0f; }
