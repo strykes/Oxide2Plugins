@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PathFinding", "Reneb", "0.0.1")]
+    [Info("PathFinding", "Reneb", "0.0.2")]
     class PathFinding : RustPlugin
     {
         public class Pathfinder
@@ -52,7 +52,7 @@ namespace Oxide.Plugins
                     foreach (PathfindNode pathnode in RunDetection)
                     {
                         pathnode.DetectAdjacentNodes();
-                        if (pathnode.isGoal) { targetNode.parentNode = pathnode; shouldBreak = true; }
+                        if (pathnode.isGoal) { Debug.Log("GOAL");  targetNode.parentNode = pathnode; shouldBreak = true; }
                     }
                     RunDetection.Clear();
                     Loops++;
@@ -123,8 +123,8 @@ namespace Oxide.Plugins
             public PathfindNode(Pathfinder pathfinder, PathfindNode parentnode, Vector3 position, bool diagonal)
             {
                 this.pathfinder = pathfinder;
-                this.position = new Vector3(position.x, position.y, position.z);
-                this.positionEyes = this.position + EyesPosition;
+                this.position = position;
+                this.positionEyes = new Vector3(position.x, Mathf.Ceil(position.y) + 0.5f, position.z);
                 this.parentNode = parentnode;
                 CalculateManhattanDistance(this, pathfinder.targetNode);
                 CalculateMovementCost(this, diagonal);
@@ -132,28 +132,28 @@ namespace Oxide.Plugins
                 pathfinder.AddToPriorityList(this);
             }
 
-            // METHODS
+            // METHODS 
 
             // DetectAdjacentNodes()
             // This automatically creates the surrounding pathnodes
             public void DetectAdjacentNodes()
             {
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorForward, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForward, blockLayer))
                     north = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForward, false);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorRight, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorRight, blockLayer))
                     east = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorRight, false);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorBack, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBack, blockLayer))
                     south = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBack, false);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorLeft, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorLeft, blockLayer))
                     west = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorLeft, false);
 
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorForwardRight, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardRight, blockLayer))
                     northeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardRight, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorForwardLeft, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardLeft, blockLayer))
                     northwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardLeft, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorBackLeft, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackLeft, blockLayer))
                     southeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackLeft, true);
-                if (!Physics.Linecast(this.position, this.positionEyes + VectorBackRight, blockLayer))
+                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackRight, blockLayer))
                     southwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackRight, true);
             }
         }
@@ -161,24 +161,24 @@ namespace Oxide.Plugins
         private static void CalculateMovementCost(PathfindNode currentNode, bool diagonal) { currentNode.G = currentNode.parentNode.G + (diagonal ? 14f : 10f); }
 
         // Here we calculate the distance between the current node and the target node
-        private static void CalculateManhattanDistance(PathfindNode currentNode, PathfindNode targetNode) { currentNode.H = ((Mathf.Abs(currentNode.position.x - targetNode.position.x) + Mathf.Abs(currentNode.position.z - targetNode.position.z) + Mathf.Abs(currentNode.position.y - targetNode.position.y)) * 10); }
+        private static void CalculateManhattanDistance(PathfindNode currentNode, PathfindNode targetNode) { currentNode.H = ((Mathf.Abs(currentNode.positionEyes.x - targetNode.positionEyes.x) + Mathf.Abs(currentNode.positionEyes.z - targetNode.positionEyes.z) + Mathf.Abs(currentNode.positionEyes.y - targetNode.positionEyes.y)) * 10); }
 
         // Create a new node or get the node information
         public static PathfindNode FindPathNodeOrCreate(Pathfinder pathfinder, PathfindNode parentnode, Vector3 position, bool diagonal)
         {
-            if (!FindGroundPosition(position, out GroundPosition)) return null;
-            if (pathfinder.NodeList[GroundPosition] == null) pathfinder.NodeList[GroundPosition] = new PathfindNode(pathfinder, parentnode, GroundPosition, diagonal);
-            else if (pathfinder.NodeList[GroundPosition].isGoal) { pathfinder.targetNode.parentNode = parentnode; parentnode.isGoal = true; }
-
-            return pathfinder.NodeList[GroundPosition];
+            if (!FindGroundPosition(position, out GroundPosition, out FixedGroundPosition)) return null;
+            if (pathfinder.NodeList[FixedGroundPosition] == null) pathfinder.NodeList[FixedGroundPosition] = new PathfindNode(pathfinder, parentnode, GroundPosition, diagonal);
+            else if (pathfinder.NodeList[FixedGroundPosition].isGoal) { pathfinder.targetNode.parentNode = parentnode; parentnode.isGoal = true; }
+            return null;
         }
 
-        public static bool FindGroundPosition(Vector3 sourcePos, out Vector3 groundPos)
+        public static bool FindGroundPosition(Vector3 sourcePos, out Vector3 groundPos, out Vector3 fixedPos)
         {
-            groundPos = sourcePos;
+            groundPos = fixedPos = sourcePos;
             if (Physics.Raycast(sourcePos, Vector3Down, out hitinfo, groundLayer))
             {
-                groundPos.y = Mathf.Ceil(hitinfo.point.y);
+                groundPos.y = hitinfo.point.y;
+                fixedPos.y = Mathf.Ceil(hitinfo.point.y);
                 return true;
             }
             return false;
@@ -221,7 +221,9 @@ namespace Oxide.Plugins
         /// This is called by the Goal
         public static void PathfindGoal(Pathfinder pathfinder, PathfindNode pathfindnode, Vector3 position)
         {
-            pathfindnode.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
+            pathfindnode.position = position;
+            pathfindnode.positionEyes = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y) + 0.5f, Mathf.Floor(position.z));
+
             pathfindnode.isGoal = true;
             pathfinder.NodeList[pathfindnode.position] = pathfindnode;
         }
@@ -299,6 +301,7 @@ namespace Oxide.Plugins
 
         public static Vector3 jumpPosition = new Vector3(0f, 1f, 0f);
         public static Vector3 GroundPosition = new Vector3(0f, 0f, 0f);
+        public static Vector3 FixedGroundPosition = new Vector3(0f, 0f, 0f);
         public static Vector3 EyesPosition = new Vector3(0f, 0.5f, 0f);
         public static Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         public static Vector3 Vector3UP = new Vector3(0f, 1f, 0f);
@@ -385,10 +388,7 @@ namespace Oxide.Plugins
         {
             float distance = (int)Mathf.Ceil(Vector3.Distance(sourcePosition, targetPosition));
             Hash<float,Vector3> StraightPath = new Hash<float, Vector3>();
-            if (!FindRawGroundPosition(sourcePosition, out GroundPosition))
-                if (!FindRawGroundPositionUP(sourcePosition, out GroundPosition))
-                    return null;
-            StraightPath[0f] = GroundPosition;
+            StraightPath[0f] = sourcePosition;
             Vector3 currentPos;
             for(float i = 1f; i < distance; i++)
             {
@@ -400,15 +400,12 @@ namespace Oxide.Plugins
                 if (Physics.Linecast(StraightPath[i - 1f] + jumpPosition, GroundPosition + jumpPosition, blockLayer)) return null;
                 StraightPath[i] = GroundPosition;
             }
-            if (!FindRawGroundPosition(targetPosition, out GroundPosition))
-                if (!FindRawGroundPositionUP(targetPosition, out GroundPosition))
-                    return null;
-            StraightPath[distance] = GroundPosition;
+            StraightPath[distance] = targetPosition;
             StraightPath.Remove(0f);
             
             List<Vector3> straightPath = new List<Vector3>();
             foreach (KeyValuePair<float, Vector3> pair in StraightPath) { straightPath.Add(pair.Value); }
-            StraightPath.Clear();
+            StraightPath.Clear(); 
             return straightPath;
         }
 
