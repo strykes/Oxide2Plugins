@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.0.14", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.1", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
          
@@ -171,63 +171,224 @@ namespace Oxide.Plugins
         }
 
         ////////////////////////////////////////////////////// 
+        ///  class HumanTrigger
+        /// MonoBehaviour: managed by UnityEngine
+        ///  This takes care of all collisions and area management of humanNPCs
+        //////////////////////////////////////////////////////
+        class HumanTrigger : MonoBehaviour
+        {
+            HumanPlayer npc;
+
+            Collider[] colliderArray;
+
+            List<BasePlayer> collidePlayers = new List<BasePlayer>();
+            List<BasePlayer> triggerPlayers = new List<BasePlayer>();
+            List<BasePlayer> removePlayers = new List<BasePlayer>();
+
+            BasePlayer cachedPlayer;
+            public float collisionRadius;
+
+            void Awake()
+            {
+                npc = GetComponent<HumanPlayer>();
+                collisionRadius = float.Parse(npc.info.collisionRadius);
+                InvokeRepeating("UpdateTriggerArea", 2, 2);
+
+            }
+            void UpdateTriggerArea()
+            {
+                colliderArray = Physics.OverlapSphere(npc.player.transform.position, collisionRadius, playerLayer);
+                foreach (Collider collider in colliderArray)
+                {
+                    cachedPlayer = collider.GetComponentInParent<BasePlayer>();
+                    if (cachedPlayer == null) continue;
+                    if (cachedPlayer == npc.player) continue;
+                    collidePlayers.Add(cachedPlayer);
+                    if (!triggerPlayers.Contains(cachedPlayer)) OnEnterCollision(cachedPlayer);
+                }
+
+                foreach (BasePlayer player in triggerPlayers) { if (!collidePlayers.Contains(player)) removePlayers.Add(player); }
+                foreach (BasePlayer player in removePlayers) { OnLeaveCollision(player); }
+               
+                collidePlayers.Clear();
+                removePlayers.Clear();
+            }
+            void OnEnterCollision(BasePlayer targetplayer)
+            {
+                triggerPlayers.Add(targetplayer);
+                Interface.CallHook("OnEnterNPC", npc.player, targetplayer);
+            }
+            void OnLeaveCollision(BasePlayer targetplayer)
+            {
+                triggerPlayers.Remove(targetplayer);
+                Interface.CallHook("OnLeaveNPC", npc.player, targetplayer);
+            }
+        }
+
+        ////////////////////////////////////////////////////// 
+        ///  class HumanLocomotion
+        /// MonoBehaviour: managed by UnityEngine
+        ///  This takes care of all movements and attacks of HumanNPCs
+        //////////////////////////////////////////////////////
+        class HumanLocomotion : MonoBehaviour
+        {
+            public HumanPlayer npc;
+            public Vector3 StartPos = new Vector3(0f, 0f, 0f);
+            public Vector3 EndPos = new Vector3(0f, 0f, 0f);
+            public Vector3 LastPos = new Vector3(0f, 0f, 0f);
+            public Vector3 nextPos = new Vector3(0f, 0f, 0f);
+            public float waypointDone = 0f;
+            public float secondsTaken = 0f;
+            public float secondsToTake = 0f;
+
+            public List<WaypointInfo> cachedWaypoints;
+            public int currentWaypoint = -1;
+
+            public float c_attackDistance = 0f;
+            public float attackDistance = 0f;
+            public float maxDistance = 0f;
+            public float damageDistance = 0f;
+            public float damageInterval = 0f;
+            public float damageAmount = 0f;
+            public float lastHit = 0f;
+            public float speed = 4f;
+
+            public int noPath = 0;
+            public bool shouldMove = true;
+
+            public BaseEntity attackEntity = null;
+
+            public List<Vector3> pathFinding;
+            public List<Vector3> temppathFinding;
+
+            void Awake()
+            {
+                npc = GetComponent<HumanPlayer>();
+                cachedWaypoints = GetWayPoints(npc.info.waypoint);
+                attackDistance = float.Parse(npc.info.attackDistance);
+                maxDistance = float.Parse(npc.info.maxDistance);
+                damageDistance = float.Parse(npc.info.damageDistance);
+                damageInterval = float.Parse(npc.info.damageInterval);
+                damageAmount = float.Parse(npc.info.damageAmount);
+                speed = float.Parse(npc.info.speed);
+                if (cachedWaypoints == null || cachedWaypoints.Count == 0) enabled = false;
+            }
+            void FixedUpdate()
+            {
+                TryToMove();
+            }
+            void TryToMove()
+            {
+                if (npc.player.IsWounded()) return;
+                if(attackEntity != null) MoveOrAttack(attackEntity);
+                else if(secondsTaken == 0f) GetNextPath();
+                if (StartPos != EndPos) Execute_Move();
+                if (waypointDone >= 1f) secondsTaken = 0f;
+            }
+            void Execute_Move()
+            {
+                if (!shouldMove) return;
+                secondsTaken += Time.deltaTime;
+                waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
+                nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
+                npc.player.transform.position = nextPos;
+                npc.player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
+            }
+            void GetNextPath()
+            {
+                LastPos = Vector3.zero;
+                shouldMove = true;
+                if (cachedWaypoints == null) { enabled = false; return; }
+                Interface.CallHook("OnNPCPosition", npc.player, npc.player.transform.position);
+                if (currentWaypoint +1 >= cachedWaypoints.Count)
+                    currentWaypoint = -1;
+                currentWaypoint++;
+                SetMovementPoint(npc.player.transform.position, cachedWaypoints[currentWaypoint].GetPosition(), cachedWaypoints[currentWaypoint].GetSpeed());
+                if (StartPos == EndPos) { enabled = false; Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}", npc.player.userID.ToString())); return; }
+            }
+            public void SetMovementPoint(Vector3 startpos, Vector3 endpos, float s)
+            { 
+                StartPos = startpos;
+                EndPos = endpos;
+                secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
+                LookTowards(npc.player, EndPos);
+                secondsTaken = 0f;
+                waypointDone = 0f;
+            }
+            void MoveOrAttack(BaseEntity entity)
+            {
+                c_attackDistance = Vector3.Distance(entity.transform.position, npc.player.transform.position);
+                shouldMove = false;
+                if (((BaseCombatEntity)entity).IsAlive() && c_attackDistance < attackDistance && Vector3.Distance(LastPos, npc.player.transform.position) < maxDistance && noPath < 5)
+                {
+                    if (waypointDone >= 1f) {
+                        if (pathFinding != null && pathFinding.Count > 0) pathFinding.RemoveAt(0);
+                        waypointDone = 0f;
+                    }
+                    if (c_attackDistance < damageDistance && CanSee(npc.player, entity))
+                    {
+                        if (Time.realtimeSinceStartup > lastHit + damageInterval)
+                            DoHit(this, (BaseCombatEntity)entity);
+                        return;
+                    }
+                    if (pathFinding == null || pathFinding.Count < 1) return;
+                    shouldMove = true;
+                    if (waypointDone == 0f) SetMovementPoint(npc.player.transform.position, pathFinding[0], speed);
+                }
+                else
+                    npc.EndAttackingEntity();
+            }
+            public void PathFinding()
+            {
+                temppathFinding = (List<Vector3>)Interface.CallHook("FindBestPath", npc.player.transform.position, attackEntity.transform.position);
+                if (temppathFinding == null)
+                {
+                    if (pathFinding == null || pathFinding.Count == 0)
+                        noPath++;
+                    else noPath = 0; 
+                }
+                else
+                {
+                    noPath = 0;
+                    pathFinding = temppathFinding;
+                    waypointDone = 0f;
+                }
+            }  
+            
+            public void GetBackToLastPos()
+            {
+                SetMovementPoint(npc.player.transform.position, LastPos, 7f);
+                secondsTaken = 0.01f;
+            } 
+            public void Enable() { this.enabled = true; }
+            public void Disable() { this.enabled = false; }
+        }
+
+        ////////////////////////////////////////////////////// 
         ///  class HumanPlayer : MonoBehaviour
         ///  MonoBehaviour: managed by UnityEngine
-        ///  makes it able to create it's own system so it can loop via Update()
+        /// Takes care of all the sub categories of the HumanNPCs
         //////////////////////////////////////////////////////
         class HumanPlayer : MonoBehaviour
         {
             public HumanNPCInfo info;
-            public BasePlayer player;
+            public HumanLocomotion locomotion;
+            public HumanTrigger trigger;
 
+            public BasePlayer player;
+             
             public bool hostile;
             public bool invulnerability;
-            public float collisionRadius;
-            public float damageDistance;
-            public float damageAmount;
-            public float attackDistance;
-            public float maxDistance;
-            public float speed;
+
             public bool stopandtalk;
-            public float damageInterval;
-
-            // Cached Values for Waypoints
-            private float secondsToTake;
-            private float secondsTaken;
-            private Vector3 EndPos;
-            private Vector3 StartPos;
-            private string lastWaypoint;
-            private float waypointDone;
-            private List<WaypointInfo> cachedWaypoints;
-            private int currentWaypoint;
-            private Vector3 nextPos;
-            private float stopandtalkSeconds;
-
-            public List<Vector3> pathFinding;
-            public float lastPathFindingCall;
-
-            // Cached Values for entity collisions
-            Collider[] colliderArray;
-            float lastTick;
-            List<BasePlayer> deletePlayers;
-            List<BasePlayer> collidePlayers;
-            List<BasePlayer> addPlayers;
+            public float stopandtalkSeconds;
 
             public float lastMessage;
-            public BaseEntity attackEntity;
-            private Vector3 LastPos;
-            public float lastHit;
-            private float c_attackDistance;
-            private Vector3 targetPos;
-            private int noPath;
-            public bool canMove;
+
 
             void Awake()
             {
                 player = GetComponent<BasePlayer>();
-                deletePlayers = new List<BasePlayer>();
-                collidePlayers = new List<BasePlayer>();
-                addPlayers = new List<BasePlayer>();
             }
             public void SetInfo(HumanNPCInfo info)
             {
@@ -236,16 +397,9 @@ namespace Oxide.Plugins
                 player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
                 player.userID = ulong.Parse(info.userid);
                 player.displayName = info.displayName;
-                hostile = bool.Parse(info.hostile);
-                stopandtalk = bool.Parse(info.stopandtalk);
                 invulnerability = bool.Parse(info.invulnerability);
-                damageAmount = float.Parse(info.damageAmount);
-                damageDistance = float.Parse(info.damageDistance);
-                collisionRadius = float.Parse(info.collisionRadius);
-                attackDistance = float.Parse(info.attackDistance);
-                maxDistance = float.Parse(info.maxDistance);
-                damageInterval = float.Parse(info.damageInterval);
-                speed = float.Parse(info.speed);
+                stopandtalk = bool.Parse(info.stopandtalk);
+                hostile = bool.Parse(info.hostile);
                 stopandtalkSeconds = float.Parse(info.stopandtalkSeconds);
                 player.InitializeHealth(float.Parse(info.health), float.Parse(info.health));
                 player.syncPosition = true;
@@ -254,173 +408,16 @@ namespace Oxide.Plugins
                 SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.EndSleeping();
                 player.UpdateNetworkGroup();
-                lastTick = Time.realtimeSinceStartup;
-                lastPathFindingCall = Time.realtimeSinceStartup;
                 Interface.CallHook("OnNPCRespawn", player);
-                attackEntity = null;
+
+                locomotion = player.gameObject.AddComponent<HumanLocomotion>();
+                trigger = player.gameObject.AddComponent<HumanTrigger>();
+
                 enabled = true;
-                canMove = true;
                 lastMessage = Time.realtimeSinceStartup;
-                pathFinding = new List<Vector3>();
             }
-            void FindNextWaypoint()
-            {
-                LastPos = Vector3.zero;
-                if (info.waypoint == "" || info.waypoint == null)
-                {
-                    StartPos = EndPos = Vector3.zero;
-                    return;
-                }
-                Interface.CallHook("OnNPCPosition", player, player.transform.position);
-                cachedWaypoints = GetWayPoints(info.waypoint);
-                if (lastWaypoint != info.waypoint || currentWaypoint >= (cachedWaypoints.Count - 1))
-                    currentWaypoint = -1;
-                currentWaypoint++;
-                SetMovementPoint(cachedWaypoints[currentWaypoint].GetPosition(), cachedWaypoints[currentWaypoint].GetSpeed());
-                if (StartPos == EndPos)
-                {
-                    enabled = false;
-                    Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}", player.userID.ToString()));
-                    return;
-                }
-                lastWaypoint = info.waypoint;
-            }
-            public void SetMovementPoint(Vector3 endpos, float s)
-            {
-                StartPos = player.transform.position;
-                EndPos = endpos;
-                secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
-                LookTowards(player, EndPos);
-                secondsTaken = 0f;
-                waypointDone = 0f;
-            }
-
-            void Move()
-            {
-                if (player.IsWounded()) return;
-
-                if (attackEntity != null) { AttackEntity(attackEntity); return; }
-
-                if (!canMove) return;
-
-                if (secondsTaken == 0f) FindNextWaypoint();
-                Execute_Move();
-                if (waypointDone >= 1f) secondsTaken = 0f;
-            }
-            void Execute_Move()
-            {
-                if (StartPos != EndPos)
-                {
-                    secondsTaken += Time.deltaTime;
-                    waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
-                    nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
-                    nextPos.y = GetGroundY(nextPos);
-                    if (attackEntity != null)
-                    {
-                        if (Vector3.Distance(nextPos, player.transform.position) < 0.005f) noPath++;
-                        else noPath = 0;
-                    }
-                    player.transform.position = nextPos;
-                    player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
-                }
-            }
-            void LookUp()
-            {
-                if (Time.realtimeSinceStartup > (lastTick + 2))
-                {
-                    colliderArray = Physics.OverlapSphere(player.transform.position, collisionRadius, playerLayer);
-                    foreach (BasePlayer targetplayer in collidePlayers)
-                        deletePlayers.Add(targetplayer);
-                    foreach (Collider collider in colliderArray)
-                    {
-                        if (collider.GetComponentInParent<BasePlayer>())
-                        { 
-                            if (collidePlayers.Contains(collider.GetComponentInParent<BasePlayer>()))
-                                deletePlayers.Remove(collider.GetComponentInParent<BasePlayer>());
-                            else if (player != collider.GetComponentInParent<BasePlayer>())
-                                OnEnterCollision(collider.GetComponentInParent<BasePlayer>());
-                        }
-                    }
-                    foreach (BasePlayer targetplayer in deletePlayers)
-                        OnLeaveCollision(targetplayer);
-                    foreach (BasePlayer targetplayer in addPlayers)
-                        collidePlayers.Add(targetplayer);
-                    addPlayers.Clear();
-                    deletePlayers.Clear();
-                    lastTick = Time.realtimeSinceStartup;
-                }
-            }
-            void AttackEntity(BaseEntity entity)
-            {
-                c_attackDistance = Vector3.Distance(entity.transform.position, player.transform.position);
-                if (((BaseCombatEntity)entity).IsAlive() && c_attackDistance < attackDistance && Vector3.Distance(LastPos, player.transform.position) < maxDistance && noPath < 5)
-                {
-                    if (c_attackDistance < damageDistance && CanSee(player, entity))
-                    {
-                        if (Time.realtimeSinceStartup > lastHit + damageInterval)
-                            DoHit(this, (BaseCombatEntity)entity);
-                        return;
-                    }
-
-                    if (Time.realtimeSinceStartup - lastPathFindingCall > 1)
-                    {
-                        pathFinding = (List<Vector3>)Interface.CallHook("FindBestPath", player.transform.position, entity.transform.position);
-                        lastPathFindingCall = Time.realtimeSinceStartup;
-                        if (pathFinding == null) noPath++;
-                        else noPath = 0;
-                    }
-                    if (pathFinding == null) return;
-                    if (pathFinding.Count > 0)
-                    {
-                        if(waypointDone == 0f) SetMovementPoint(pathFinding[0], speed);
-                        Execute_Move();
-                        if (waypointDone >= 1f) { pathFinding.RemoveAt(0); waypointDone = 0f; }
-                    }
-                }
-                else
-                    EndAttackingEntity();
-            }
-            public void StartAttackingEntity(BaseEntity entity)
-            {
-                if (Interface.CallHook("OnNPCStartTarget", player, entity) == null)
-                {
-                    attackEntity = entity;
-                    if (LastPos == Vector3.zero) LastPos = player.transform.position;
-                }
-            }
-            public void EndAttackingEntity()
-            {
-                noPath = 0;
-                Interface.CallHook("OnNPCStopTarget", player, attackEntity);
-                attackEntity = null;
-                player.health = float.Parse(info.health);
-                GetBackToLastPos();
-            }
-            void GetBackToLastPos()
-            {
-                SetMovementPoint(LastPos, 7f);
-                secondsTaken = 0.1f;
-            }
-
-            void OnEnterCollision(BasePlayer targetplayer)
-            {
-                addPlayers.Add(targetplayer);
-                if (targetplayer != null)
-                    Interface.CallHook("OnEnterNPC", player, targetplayer);
-            }
-            void OnLeaveCollision(BasePlayer targetplayer)
-            {
-                collidePlayers.Remove(targetplayer);
-                if (targetplayer != null)
-                    Interface.CallHook("OnLeaveNPC", player, targetplayer);
-            }
-            void AllowMove()
-            {
-                if (EndPos != Vector3.zero) LookTowards(player, EndPos);
-                else SetViewAngle(player, info.spawnInfo.GetRotation());
-                canMove = true;
-            }
-            void DisableMove() { canMove = false; }
+            void AllowMove() { locomotion.Enable(); }
+            void DisableMove() { locomotion.Disable(); } 
             public void TemporaryDisableMove(float thetime = -1f)
             {
                 if (thetime == -1f) thetime = stopandtalkSeconds;
@@ -428,11 +425,32 @@ namespace Oxide.Plugins
                 if (IsInvoking("AllowMove")) CancelInvoke("AllowMove");
                 Invoke("AllowMove", thetime);
             }
-            void FixedUpdate()
+            public void EndAttackingEntity()
             {
-                if (info == null) enabled = false;
-                LookUp();
-                Move();
+                if (locomotion.IsInvoking("PathFinding")) locomotion.CancelInvoke("PathFinding");
+                locomotion.noPath = 0;
+                locomotion.shouldMove = true;
+                
+                Interface.CallHook("OnNPCStopTarget", player, locomotion.attackEntity);
+                locomotion.attackEntity = null;
+                player.health = float.Parse(info.health);
+                locomotion.GetBackToLastPos();
+            }
+            public void StartAttackingEntity(BaseEntity entity)
+            {
+                if (Interface.CallHook("OnNPCStartTarget", player, entity) == null)
+                {
+                    locomotion.attackEntity = entity;
+                    locomotion.pathFinding = null;
+                    locomotion.temppathFinding = null;
+                    if (locomotion.LastPos == Vector3.zero) locomotion.LastPos = player.transform.position;
+                    locomotion.InvokeRepeating("PathFinding", 0, 1);
+                }
+            }
+            void OnDestroy()
+            {
+                GameObject.Destroy(locomotion);
+                GameObject.Destroy(trigger);
             }
         }
 
@@ -470,7 +488,7 @@ namespace Oxide.Plugins
             public List<string> message_use;
             public List<string> message_hurt;
             public List<string> message_kill;
-
+               
             public HumanNPCInfo(ulong userid, Vector3 position, Quaternion rotation)
             {
                 this.userid = userid.ToString();
@@ -626,7 +644,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnServerInitialized()
         {
-            playerLayer = LayerMask.GetMask(new string[] { "Player (Server)", "AI" });
+            playerLayer = LayerMask.GetMask(new string[] { "Player (Server)" });
             groundLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
             blockshootLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
             RefreshAllNPC();
@@ -728,16 +746,16 @@ namespace Oxide.Plugins
             }
             return null;
         }
-        static void DoHit(HumanPlayer npc, BaseCombatEntity target)
+        static void DoHit(HumanLocomotion loc, BaseCombatEntity target)
         {
-            npc.lastHit = Time.realtimeSinceStartup;
-            HitInfo info = new HitInfo(npc.player, DamageType.Stab, npc.damageAmount, target.transform.position)
+            loc.lastHit = Time.realtimeSinceStartup;
+            HitInfo info = new HitInfo(loc.npc.player, DamageType.Stab, loc.damageAmount, target.transform.position)
             {
-                PointStart = npc.player.transform.position,
+                PointStart = loc.npc.player.transform.position,
                 PointEnd = target.transform.position
             };
             target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver);
-            npc.player.SignalBroadcast(BaseEntity.Signal.Attack, null);
+            loc.npc.player.SignalBroadcast(BaseEntity.Signal.Attack, null);
         }
         static void SetViewAngle(BasePlayer player, Quaternion ViewAngles)
         {
@@ -1359,10 +1377,10 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnEnterNPC(BasePlayer npc, BasePlayer player)
         {
-            /*if(npc.GetComponent<HumanPlayer>().hostile)
-                if(npc.GetComponent<HumanPlayer>().attackEntity == null)
+            if(npc.GetComponent<HumanPlayer>().hostile)
+                if(npc.GetComponent<HumanPlayer>().locomotion.attackEntity == null)
                     if(player.net.connection.authLevel < 1)
-                        npc.GetComponent<HumanPlayer>().StartAttackingEntity(player);*/
+                        npc.GetComponent<HumanPlayer>().StartAttackingEntity(player);
             if (npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hello));
         }
