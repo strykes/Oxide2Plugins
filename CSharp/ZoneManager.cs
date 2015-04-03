@@ -115,6 +115,8 @@ namespace Oxide.Plugins
         {
             public ZoneDefinition info;
             public List<BasePlayer> inTrigger = new List<BasePlayer>();
+            public List<BasePlayer> whiteList = new List<BasePlayer>();
+            public List<BasePlayer> keepInList = new List<BasePlayer>();
             RadiationZone radiationzone;
             float radiationamount;
 
@@ -133,7 +135,7 @@ namespace Oxide.Plugins
                 radiationamount = 0f;
                 if (float.TryParse(info.radiation, out radiationamount))
                     radiationzone = gameObject.AddComponent<RadiationZone>();
-            }
+            } 
             void OnDestroy()
             {
                 if (radiationzone != null)
@@ -370,7 +372,7 @@ namespace Oxide.Plugins
                         CancelDamage(hitinfo);
                 }
             }
-            else if (entity is BuildingBlock || entity is WorldItem)
+            else if ((entity is BuildingBlock) || (entity is WorldItem))
             {
                 if (hitinfo != null && hitinfo.Initiator != null)
                 {
@@ -422,7 +424,16 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         // External calls to this plugin
         /////////////////////////////////////////
-        bool CreateOrUpdateZone(string ZoneID, object[] args)
+
+        /////////////////////////////////////////
+        // CreateOrUpdateZone(string ZoneID, object[] args)
+        // Create or Update a zone from an external plugin
+        // ZoneID should be a name, like Arena (for an arena plugin) (even if it's called an ID :p)
+        // args are the same a the /zone command
+        // args[0] = "radius" args[1] = "50" args[2] = "eject" args[3] = "true", etc
+        // Third parameter is obviously need if you create a NEW zone (or want to update the position)
+        /////////////////////////////////////////
+        bool CreateOrUpdateZone(string ZoneID, string[] args, Vector3 position = default(Vector3))
         {
             ZoneDefinition zonedef;
             if (zonedefinitions[ZoneID] == null) zonedef = new ZoneDefinition();
@@ -432,11 +443,11 @@ namespace Oxide.Plugins
             string editvalue;
             for (int i = 0; i < args.Length; i = i + 2)
             {
-                if(args[i].ToString() == "location") { zonedef.Location = new ZoneLocation((Vector3)args[i + 1], (zonedef.radius != null)?zonedef.radius :"20"); continue; }
-                cachedField = GetZoneField(args[i].ToString());
+                
+                cachedField = GetZoneField(args[i]);
                 if (cachedField == null) continue;
 
-                switch (args[i + 1].ToString())
+                switch (args[i + 1])
                 {
                     case "true":
                     case "1":
@@ -453,22 +464,106 @@ namespace Oxide.Plugins
                         break;
                 }
                 cachedField.SetValue(zonedef, editvalue);
-                if (args[i].ToString().ToLower() == "radius") { if(zonedef.Location != null) zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue); }
-            }
+                if (args[i].ToLower() == "radius") { if(zonedef.Location != null) zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue); }
+            } 
+
+            if (position != default(Vector3)) { zonedef.Location = new ZoneLocation((Vector3)position, (zonedef.radius != null) ? zonedef.radius : "20"); }
+
             if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
             zonedefinitions[ZoneID] = zonedef;
             storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
             SaveData();
             if (zonedef.Location == null) return false;
+            RefreshZone(ZoneID);
             return true;
         }
-
-
+        bool EraseZone(string ZoneID)
+        {
+            if (zonedefinitions[ZoneID] == null) return false;
+            zonedefinitions[ZoneID] = null;
+            storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            SaveData();
+            RefreshZone(ZoneID);
+            return true;
+        }
+        List<BasePlayer> GetPlayersInZone(string ZoneID)
+        {
+            List<BasePlayer> baseplayers = new List<BasePlayer>();
+            foreach (KeyValuePair<BasePlayer, List<Zone>> pair in playerZones)
+            {
+                foreach(Zone zone in pair.Value)
+                {
+                    if (zone.info.ID == ZoneID)
+                    {
+                        baseplayers.Add(pair.Key);
+                    }
+                }
+            }
+            return baseplayers;
+        }
+        bool isPlayerInZone(string ZoneID, BasePlayer player)
+        {
+            if (playerZones[player] == null) return false;
+            foreach (Zone zone in playerZones[player])
+            {
+                if (zone.info.ID == ZoneID)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        bool AddPlayerToZoneWhitelist(string ZoneID, BasePlayer player)
+        {
+            Zone targetZone = GetZoneByID(ZoneID);
+            if (targetZone == null) return false;
+            AddToWhitelist(targetZone, player);
+            return true;
+        }
+        bool AddPlayerToZoneKeepinlist(string ZoneID, BasePlayer player)
+        {
+            Zone targetZone = GetZoneByID(ZoneID);
+            if (targetZone == null) return false;
+            AddToKeepinlist(targetZone, player);
+            return true;
+        }
+        bool RemovePlayerFromZoneWhitelist(string ZoneID, BasePlayer player)
+        {
+            Zone targetZone = GetZoneByID(ZoneID);
+            if (targetZone == null) return false;
+            RemoveFromWhitelist(targetZone, player);
+            return true;
+        }
+        bool RemovePlayerFromZoneKeepinlist(string ZoneID, BasePlayer player)
+        {
+            Zone targetZone = GetZoneByID(ZoneID);
+            if (targetZone == null) return false;
+            RemoveFromKeepinlist(targetZone, player);
+            return true;
+        }
         /////////////////////////////////////////
         // Random Commands
         /////////////////////////////////////////
+        void AddToWhitelist(Zone zone, BasePlayer player) { if(!zone.whiteList.Contains(player)) zone.whiteList.Add(player); }
+        void RemoveFromWhitelist(Zone zone, BasePlayer player) { if (zone.whiteList.Contains(player)) zone.whiteList.Remove(player); }
+        void AddToKeepinlist(Zone zone, BasePlayer player) { if (!zone.keepInList.Contains(player)) zone.keepInList.Add(player); }
+        void RemoveFromKeepinlist(Zone zone, BasePlayer player) { if (zone.keepInList.Contains(player)) zone.keepInList.Remove(player); }
+
+        Zone GetZoneByID(string ZoneID)
+        {
+            var objects = GameObject.FindObjectsOfType(typeof(Zone));
+            if (objects != null)
+                foreach (Zone gameObj in objects)
+                {
+                    if (gameObj.info.ID == ZoneID) return gameObj;
+                }
+
+            return null;
+        }
+
         void NewZone(ZoneDefinition zonedef)
         {
+            if (zonedef == null) return;
             var newgameObject = new UnityEngine.GameObject();
             var newZone = newgameObject.AddComponent<Zone>();
             newZone.SetInfo(zonedef);
@@ -553,15 +648,16 @@ namespace Oxide.Plugins
         {
             if (playerZones[player] == null) playerZones[player] = new List<Zone>();
             if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
-            //RefreshBuildPermission(player);
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
-            if (zone.info.eject != null && !isAdmin(player)) EjectPlayer(zone, player);
+            if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player)) EjectPlayer(zone, player);
+            Interface.CallHook("OnEnterZone", zone.info.ID, player);
         }
         static void OnExitZone(Zone zone, BasePlayer player)
         {
             if(playerZones[player].Contains(zone)) playerZones[player].Remove(zone);
-            //RefreshBuildPermission(player);
             if (zone.info.leave_message != null) SendMessage(player, zone.info.leave_message);
+            if(zone.keepInList.Contains(player)) AttractPlayer(zone, player);
+            Interface.CallHook("OnExitZone", zone.info.ID, player);
         }
 
         static void EjectPlayer(Zone zone, BasePlayer player)
@@ -570,6 +666,13 @@ namespace Oxide.Plugins
             player.transform.position = zone.transform.position + ( cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
             player.ClientRPC(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged(); 
+        }
+        static void AttractPlayer(Zone zone, BasePlayer player)
+        {
+            cachedDirection = player.transform.position - zone.transform.position;
+            player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius - 1f));
+            player.ClientRPC(null, player, "ForcePositionTo", new object[] { player.transform.position });
+            player.TransformChanged();
         }
         static bool isAdmin(BasePlayer player)
         {
@@ -619,7 +722,7 @@ namespace Oxide.Plugins
             zonedefinitions[args[0]] = null;
             storedData.ZoneDefinitions.Remove(zonedefinitions[args[0]]);
             SaveData();
-            SendMessage(player, "All Zones were removed");
+            SendMessage(player, "Zone " + args[0] + " was removed");
         }
         [ChatCommand("zone_edit")]
         void cmdChatZoneEdit(BasePlayer player, string command, string[] args)
