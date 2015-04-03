@@ -10,10 +10,12 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.3")]
+    [Info("ZoneManager", "Reneb", "2.0.4")]
     class ZoneManager : RustPlugin
     {
-
+        ////////////////////////////////////////////
+        /// FIELDS
+        ////////////////////////////////////////////
         StoredData storedData;
 
         static Hash<string, ZoneDefinition> zonedefinitions = new Hash<string, ZoneDefinition>();
@@ -27,12 +29,18 @@ namespace Oxide.Plugins
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
 
+        /////////////////////////////////////////
+        /// Cached Fields, used to make the plugin faster
+        /////////////////////////////////////////
         public static Vector3 cachedDirection;
         public Collider[] cachedColliders;
         public DamageTypeList emptyDamageType;
-
         public BasePlayer cachedPlayer;
 
+        /////////////////////////////////////////
+        // ZoneLocation
+        // Stored information for the zone location and radius
+        /////////////////////////////////////////
         public class ZoneLocation
         {
             public string x;
@@ -73,6 +81,11 @@ namespace Oxide.Plugins
                 return string.Format("Pos({0},{1},{2}) - Rad({3})",x,y,z,r);
             }
         }
+        /////////////////////////////////////////
+        // RadiationZone
+        // is a MonoBehaviour
+        // This is needed for zones that use radiations only
+        /////////////////////////////////////////
         public class RadiationZone : MonoBehaviour
         {
             public TriggerRadiation radiation;
@@ -92,6 +105,12 @@ namespace Oxide.Plugins
             }
              
         }
+        /////////////////////////////////////////
+        // Zone
+        // is a Monobehavior
+        // used to detect the colliders with players
+        // and created everything on it's own (radiations, locations, etc)
+        /////////////////////////////////////////
         public class Zone : MonoBehaviour
         {
             public ZoneDefinition info;
@@ -107,7 +126,7 @@ namespace Oxide.Plugins
                 gameObject.SetActive(true);
             }
             public void SetInfo(ZoneDefinition info)
-            { 
+            {
                 this.info = info;
                 GetComponent<UnityEngine.Transform>().position = info.Location.GetPosition();
                 GetComponent<UnityEngine.SphereCollider>().radius = info.Location.GetRadius();
@@ -138,7 +157,10 @@ namespace Oxide.Plugins
             }
         }
 
-
+        /////////////////////////////////////////
+        // ZoneDefinition
+        // Stored informations on the zones
+        /////////////////////////////////////////
         public class ZoneDefinition
         {
 
@@ -162,7 +184,9 @@ namespace Oxide.Plugins
             public string enter_message;
             public string leave_message;
 
-            public ZoneDefinition() { }
+            public ZoneDefinition() {
+
+            }
 
             public ZoneDefinition(Vector3 position)
             {
@@ -170,7 +194,10 @@ namespace Oxide.Plugins
                 Location = new ZoneLocation(position, this.radius);
             }
              
-        } 
+        }
+        /////////////////////////////////////////
+        // Data Management
+        /////////////////////////////////////////
         class StoredData
         {
             public HashSet<ZoneDefinition> ZoneDefinitions = new HashSet<ZoneDefinition>();
@@ -194,8 +221,252 @@ namespace Oxide.Plugins
             }
             foreach (var zonedef in storedData.ZoneDefinitions)
                 zonedefinitions[zonedef.ID] = zonedef;
-             
         }
+        /////////////////////////////////////////
+        // OXIDE HOOKS
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // Loaded()
+        // Called when the plugin is loaded
+        /////////////////////////////////////////
+        void Loaded()
+        {
+            permission.RegisterPermission("zone", this);
+            permission.RegisterPermission("candeploy", this);
+            permission.RegisterPermission("canbuild", this);
+            triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
+            playersMask = LayerMask.GetMask(new string[] { "Player (Server)" });
+            LoadData();
+        }
+        /////////////////////////////////////////
+        // Unload()
+        // Called when the plugin is unloaded
+        /////////////////////////////////////////
+        void Unload()
+        {
+            var objects = GameObject.FindObjectsOfType(typeof(Zone));
+            if (objects != null)
+                foreach (var gameObj in objects)
+                    GameObject.Destroy(gameObj);
+        }
+        void Unloaded()
+        {
+            SaveData();
+        }
+        /////////////////////////////////////////
+        // OnServerInitialized()
+        // Called when the server is initialized
+        /////////////////////////////////////////
+        void OnServerInitialized()
+        {
+            allZoneFields = typeof(ZoneDefinition).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+            emptyDamageType = new DamageTypeList();
+            foreach (KeyValuePair<string, ZoneDefinition> pair in zonedefinitions)
+            {
+                NewZone(pair.Value);
+            }
+        }
+
+        /////////////////////////////////////////
+        // OnEntityBuilt(Planner planner, GameObject gameobject)
+        // Called when a buildingblock was created
+        /////////////////////////////////////////
+        void OnEntityBuilt(Planner planner, GameObject gameobject)
+        {
+            if (planner.ownerPlayer == null) return;
+            if (hasTag(planner.ownerPlayer, "nobuild"))
+            {
+                if (!hasPermission(planner.ownerPlayer, "canbuild"))
+                {
+                    gameobject.GetComponentInParent<BuildingBlock>().Kill(BaseNetworkable.DestroyMode.Gib);
+                    SendMessage(planner.ownerPlayer, "You are not allowed to build here");
+                }
+            }
+        }
+        /////////////////////////////////////////
+        // OnItemDeployed(Deployer deployer, BaseEntity deployedEntity)
+        // Called when an item was deployed
+        /////////////////////////////////////////
+        void OnItemDeployed(Deployer deployer, BaseEntity deployedEntity)
+        {
+            if (deployer.ownerPlayer == null) return;
+            if (hasTag(deployer.ownerPlayer, "nodeploy"))
+            {
+                if (!hasPermission(deployer.ownerPlayer, "candeploy"))
+                {
+                    deployedEntity.Kill(BaseNetworkable.DestroyMode.Gib);
+                    SendMessage(deployer.ownerPlayer, "You are not allowed to deploy here");
+                }
+            }
+        }
+
+        /////////////////////////////////////////
+        // OnPlayerChat(ConsoleSystem.Arg arg)
+        // Called when a user writes something in the chat, doesn't take in count the commands
+        /////////////////////////////////////////
+        object OnPlayerChat(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection == null) return null;
+            if (arg.connection.player == null) return null;
+            if (hasTag((BasePlayer)arg.connection.player, "nochat"))
+            {
+                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to chat here");
+                return false;
+            }
+            return null;
+        }
+
+        /////////////////////////////////////////
+        // OnRunCommand(ConsoleSystem.Arg arg)
+        // Called when a user executes a command
+        /////////////////////////////////////////
+        object OnRunCommand(ConsoleSystem.Arg arg)
+        {
+            if (arg == null) return null;
+            if (arg.connection == null) return null;
+            if (arg.connection.player == null) return null;
+            if (arg.cmd == null) return null;
+            if (arg.cmd.name == null) return null;
+            if ((string)arg.cmd.name == "kill" && hasTag((BasePlayer)arg.connection.player, "nosuicide"))
+            {
+                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to suicide here");
+                return false;
+            }
+            return null;
+        }
+
+        /////////////////////////////////////////
+        // OnPlayerDisconnected(BasePlayer player)
+        // Called when a user disconnects
+        /////////////////////////////////////////
+        void OnPlayerDisconnected(BasePlayer player)
+        {
+            if (hasTag(player, "killsleepers")) player.Die();
+        }
+
+        /////////////////////////////////////////
+        // OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
+        // Called when any entity is attacked
+        /////////////////////////////////////////
+        void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
+        {
+            if (entity is BasePlayer)
+            {
+                cachedPlayer = entity as BasePlayer;
+                if (cachedPlayer.IsSleeping())
+                {
+                    if (hasTag(cachedPlayer, "sleepgod"))
+                        CancelDamage(hitinfo);
+                }
+                else if (hitinfo.Initiator != null)
+                {
+                    if (hitinfo.Initiator is BasePlayer)
+                    {
+                        if (hasTag(cachedPlayer, "pvpgod"))
+                            CancelDamage(hitinfo);
+                    }
+                    else if (hasTag(cachedPlayer, "pvegod"))
+                        CancelDamage(hitinfo);
+                }
+            }
+            else if (entity is BuildingBlock || entity is WorldItem)
+            {
+                if (hitinfo != null && hitinfo.Initiator != null)
+                {
+                    if (hitinfo.Initiator is BasePlayer)
+                    {
+                        if (hasTag(hitinfo.Initiator as BasePlayer, "undestr"))
+                            CancelDamage(hitinfo);
+                    }
+                }
+            }
+        }
+
+        /////////////////////////////////////////
+        // OnEntitySpawned(BaseNetworkable basenet)
+        // Called when any entity is spawned
+        /////////////////////////////////////////
+        void OnEntitySpawned(BaseNetworkable basenet)
+        {
+            if (basenet is TimedExplosive)
+            {
+                timer.Once(4f, () => CheckExplosivePosition(basenet as TimedExplosive));
+            }
+        }
+
+        /////////////////////////////////////////
+        // Outside Plugin Hooks
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // canRedeemKit(BasePlayer player)
+        // Called from the Kits plugin (Reneb) when trying to redeem a kit
+        /////////////////////////////////////////
+        object canRedeemKit(BasePlayer player)
+        {
+            if (hasTag(player, "nokits")) { return "You may not redeem a kit inside this area"; }
+            return null;
+        }
+
+        /////////////////////////////////////////
+        // canTeleport(BasePlayer player)
+        // Called from Teleportation System (Mughisi) when a player tries to teleport
+        /////////////////////////////////////////
+        object canTeleport(BasePlayer player)
+        {
+            if (hasTag(player, "notp")) { return "You may not teleport in this area"; }
+            return null;
+        }
+
+        /////////////////////////////////////////
+        // External calls to this plugin
+        /////////////////////////////////////////
+        bool CreateOrUpdateZone(string ZoneID, object[] args)
+        {
+            ZoneDefinition zonedef;
+            if (zonedefinitions[ZoneID] == null) zonedef = new ZoneDefinition();
+            else zonedef = zonedefinitions[ZoneID];
+            zonedef.ID = ZoneID;
+
+            string editvalue;
+            for (int i = 0; i < args.Length; i = i + 2)
+            {
+                if(args[i].ToString() == "location") { zonedef.Location = new ZoneLocation((Vector3)args[i + 1], (zonedef.radius != null)?zonedef.radius :"20"); continue; }
+                cachedField = GetZoneField(args[i].ToString());
+                if (cachedField == null) continue;
+
+                switch (args[i + 1].ToString())
+                {
+                    case "true":
+                    case "1":
+                        editvalue = "true";
+                        break;
+                    case "null":
+                    case "0":
+                    case "false":
+                    case "reset":
+                        editvalue = null;
+                        break;
+                    default:
+                        editvalue = (string)args[i + 1];
+                        break;
+                }
+                cachedField.SetValue(zonedef, editvalue);
+                if (args[i].ToString().ToLower() == "radius") { if(zonedef.Location != null) zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue); }
+            }
+            if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            zonedefinitions[ZoneID] = zonedef;
+            storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
+            SaveData();
+            if (zonedef.Location == null) return false;
+            return true;
+        }
+
+
+        /////////////////////////////////////////
+        // Random Commands
+        /////////////////////////////////////////
         void NewZone(ZoneDefinition zonedef)
         {
             var newgameObject = new UnityEngine.GameObject();
@@ -223,36 +494,7 @@ namespace Oxide.Plugins
                     }
                 }
         }
-
-        void Loaded()
-        {
-            permission.RegisterPermission("zone", this);
-            permission.RegisterPermission("candeploy", this);
-            permission.RegisterPermission("canbuild", this);
-            triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
-            playersMask = LayerMask.GetMask(new string[] { "Player (Server)" });
-            LoadData();
-        }
-        void Unload()
-        {
-            var objects = GameObject.FindObjectsOfType(typeof(Zone));
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
-        }
-        void Unloaded()
-        {
-            SaveData();
-        } 
-        void OnServerInitialized()
-        {
-            allZoneFields = typeof(ZoneDefinition).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
-            emptyDamageType = new DamageTypeList();
-            foreach (KeyValuePair<string, ZoneDefinition> pair in zonedefinitions)
-            {
-                NewZone(pair.Value); 
-            } 
-        }
+        
         int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
 
         FieldInfo GetZoneField(string name)
@@ -273,103 +515,9 @@ namespace Oxide.Plugins
             }
             return false;
         }
-        void OnEntityBuilt(Planner planner, GameObject gameobject)
-        {
-            if (planner.ownerPlayer == null) return;
-            if (hasTag(planner.ownerPlayer,"nobuild"))
-            {
-                if (!hasPermission(planner.ownerPlayer, "canbuild"))
-                {
-                    gameobject.GetComponentInParent<BuildingBlock>().Kill(BaseNetworkable.DestroyMode.Gib);
-                    SendMessage(planner.ownerPlayer, "You are not allowed to build here");
-                }
-            }
-        }
-        void OnItemDeployed(Deployer deployer, BaseEntity deployedEntity)
-        {
-            if (deployer.ownerPlayer == null) return;
-            if (hasTag(deployer.ownerPlayer, "nodeploy"))
-            {
-                if (!hasPermission(deployer.ownerPlayer, "candeploy"))
-                {
-                    deployedEntity.Kill(BaseNetworkable.DestroyMode.Gib);
-                    SendMessage(deployer.ownerPlayer, "You are not allowed to deploy here");
-                }
-            }
-        }
-        object canRedeemKit(BasePlayer player)
-        {
-            if (hasTag(player, "nokits")) { return "You may not redeem a kit inside this area"; }
-            return null;
-        }
-        object canTeleport(BasePlayer player)
-        {
-            if (hasTag(player, "notp")) { return "You may not teleport in this area"; }
-            return null;
-        }
-        object OnPlayerChat( ConsoleSystem.Arg arg )
-        {
-            if (arg.connection == null) return null;
-            if (arg.connection.player == null) return null;
-            if(hasTag((BasePlayer)arg.connection.player,"nochat"))
-            {
-                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to chat here");
-                return false;
-            }
-            return null;
-        }
-        object OnRunCommand(ConsoleSystem.Arg arg)
-        {
-            if (arg == null) return null;
-            if (arg.connection == null) return null;
-            if (arg.connection.player == null) return null;
-            if (arg.cmd == null) return null;
-            if (arg.cmd.name == null) return null;
-            if((string)arg.cmd.name == "kill" && hasTag((BasePlayer)arg.connection.player,"nosuicide"))
-            {
-                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to suicide here");
-                return false;
-            }
-            return null;
-        }
-
-        void OnPlayerDisconnected(BasePlayer player)
-        {
-            if(hasTag(player, "killsleepers")) player.Die();
-        }
-        void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
-        {
-            if(entity is BasePlayer)
-            {
-                cachedPlayer = entity as BasePlayer;
-                if (cachedPlayer.IsSleeping())
-                {
-                    if (hasTag(cachedPlayer, "sleepgod"))
-                        CancelDamage(hitinfo);
-                }
-                else if (hitinfo.Initiator != null)
-                {
-                    if (hitinfo.Initiator is BasePlayer)
-                    {
-                        if (hasTag(cachedPlayer, "pvpgod"))
-                            CancelDamage(hitinfo);
-                    }
-                    else if(hasTag(cachedPlayer, "pvegod"))
-                        CancelDamage(hitinfo);
-                } 
-            }
-            else if(entity is BuildingBlock || entity is WorldItem)
-            {
-                if (hitinfo != null && hitinfo.Initiator != null)
-                {
-                    if(hitinfo.Initiator is BasePlayer)
-                    {
-                        if(hasTag(hitinfo.Initiator as BasePlayer, "undestr"))
-                            CancelDamage(hitinfo);
-                    }
-                }
-            }
-        }
+        
+        
+        
         BasePlayer FindPlayerByRadius(Vector3 position, float rad)
         {
             cachedColliders = Physics.OverlapSphere(position, rad, playersMask);
@@ -394,13 +542,7 @@ namespace Oxide.Plugins
                     }
                 }
         }
-        void OnEntitySpawned(BaseNetworkable basenet)
-        {
-            if(basenet is TimedExplosive)
-            {
-                timer.Once(4f, () => CheckExplosivePosition(basenet as TimedExplosive));
-            }
-        }
+        
         void CancelDamage(HitInfo hitinfo)
         {
             hitinfo.damageTypes = emptyDamageType;
