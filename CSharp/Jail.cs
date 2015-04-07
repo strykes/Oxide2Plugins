@@ -11,14 +11,13 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Jail", "Reneb", 2.0)]
+    [Info("Jail", "Reneb", "2.0.1")]
     class Jail : RustPlugin
     {
-        [PluginReference]
-        Plugin ZoneManager;
+        [PluginReference] Plugin ZoneManager;
 
-        [PluginReference]
-        Plugin spawns;
+        [PluginReference] Plugin spawns;
+
         ////////////////////////////////////////////
         /// FIELDS
         ////////////////////////////////////////////
@@ -27,6 +26,7 @@ namespace Oxide.Plugins
         public DateTime epoch = new System.DateTime(1970, 1, 1);
         bool hasSpawns = false;
         private Hash<BasePlayer, Plugins.Timer> TimersList = new Hash<BasePlayer, Plugins.Timer>();
+
         /////////////////////////////////////////
         /// Cached Fields, used to make the plugin faster
         /////////////////////////////////////////
@@ -35,6 +35,7 @@ namespace Oxide.Plugins
         public int cachedCount;
         public JailInmate cachedJail;
         public int cachedInterval;
+
         /////////////////////////////////////////
         // Data Management
         /////////////////////////////////////////
@@ -64,7 +65,10 @@ namespace Oxide.Plugins
                 jailinmates[jaildef.userid] = jaildef;
         }
 
-
+        /////////////////////////////////////////
+        // class JailInmate
+        // Where all informations about a jail inmate is stored in the database
+        /////////////////////////////////////////
 
         public class JailInmate
         {
@@ -119,14 +123,30 @@ namespace Oxide.Plugins
             }
         }
 
+        /////////////////////////////////////////
+        // Oxide Hooks
+        /////////////////////////////////////////
 
-        bool hasPermission(BasePlayer player) { if (player.net.connection.authLevel > 1) return true; return permission.UserHasPermission(player.userID.ToString(), "canjail"); }
-
+        /////////////////////////////////////////
+        // Loaded()
+        // Called when the plugin is loaded
+        /////////////////////////////////////////
         void Loaded()
         {
             LoadData();
             permission.RegisterPermission("canjail", this);
         }
+
+        /////////////////////////////////////////
+        // LoadDefaultConfig()
+        // Called first when the plugin loads to load the default config
+        /////////////////////////////////////////
+        void LoadDefaultConfig() { }
+
+        /////////////////////////////////////////
+        // Unload()
+        // Called when the plugin is unloaded (via oxide.unload or oxide.reload or when the server shutsdown)
+        /////////////////////////////////////////
         void Unload()
         {
             foreach (KeyValuePair<BasePlayer, Plugins.Timer> pair in TimersList)
@@ -135,8 +155,166 @@ namespace Oxide.Plugins
             }
             TimersList.Clear();
         }
+
+        /////////////////////////////////////////
+        // OnPlayerSleepEnded(BasePlayer player)
+        // Called when a player wakesup
+        /////////////////////////////////////////
+        void OnPlayerSleepEnded(BasePlayer player)
+        {
+            if (jailinmates[player.userID.ToString()] != null)
+            {
+                CheckPlayerExpireTime(player);
+                if (!isInZone(player))
+                    ForcePlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
+            }
+        }
+
+        /////////////////////////////////////////
+        // Oxide Permission system
+        /////////////////////////////////////////
+        bool hasPermission(BasePlayer player) { if (player.net.connection.authLevel > 1) return true; return permission.UserHasPermission(player.userID.ToString(), "canjail"); }
+
+        /////////////////////////////////////////
+        // ZoneManager Hooks
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // bool isPlayerInZone(string ZoneID, BasePlayer player)
+        // Called to see if a player is inside a zone or not
+        /////////////////////////////////////////
+        bool isInZone(BasePlayer player)
+        {
+            if (ZoneManager == null) return false;
+            return (bool)ZoneManager.Call("isPlayerInZone", "Jail", player);
+        }
+
+        /////////////////////////////////////////
+        // OnEnterZone(string ZoneID, BasePlayer player)
+        // Called when a player enters a Zone managed by ZoneManager
+        /////////////////////////////////////////
+        void OnEnterZone(string ZoneID, BasePlayer player)
+        {
+            if (ZoneID == "Jail")
+            {
+                if (hasPermission(player)) { SendReply(player, string.Format(WelcomeJail, player.displayName)); }
+                else if (jailinmates[player.userID.ToString()] == null) { SendReply(player, KeepOut); }
+            }
+        }
+
+        /////////////////////////////////////////
+        // OnExitZone(string ZoneID, BasePlayer player)
+        // Called when a player leaves a Zone managed by ZoneManager
+        /////////////////////////////////////////
+        void OnExitZone(string ZoneID, BasePlayer player)
+        {
+            if (ZoneID == "Jail")
+            {
+                if (jailinmates[player.userID.ToString()] != null) { SendReply(player, KeepIn); }
+            }
+        }
+
+        /////////////////////////////////////////
+        // Spawns Database Hooks
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // int GetSpawnsCount(string spawnfilename)
+        // returns the number of spawns in the file
+        //
+        // Vector3 GetRandomSpawnVector3(string spawnfilename, int max)
+        // returns a random spawn between index 1 and index MAX (here is the number of spawns in the file)
+        /////////////////////////////////////////
+        object FindCell(string userid)
+        {
+            if (spawns == null) { Puts(NoSpawnDatabase); return null; }
+            if (spawnfile == null) { Puts(NoSpawnFile); return null; }
+            var count = spawns.Call("GetSpawnsCount", spawnfile);
+            if (count is bool) return null;
+            if ((int)count == 0) { Puts(EmptySpawnFile); return null; }
+            return spawns.Call("GetRandomSpawnVector3", spawnfile, count);
+        }
+
+        void LoadSpawnfile()
+        {
+            if (spawnfile == null) { Puts(NoSpawnFile); return; }
+            var count = spawns.Call("GetSpawnsCount", spawnfile);
+            if (count is bool)
+            {
+                Puts("{0} is not a valid spawnfile", spawnfile.ToString());
+                Config["spawnfile"] = null;
+                spawnfile = null;
+                SaveConfig();
+                return;
+            }
+            Puts(JailsLoaded, count.ToString());
+        }
+
+        /////////////////////////////////////////
+        // Random functions
+        /////////////////////////////////////////
+        void ForcePlayerPosition(BasePlayer player, Vector3 destination)
+        {
+            player.transform.position = destination;
+            player.ClientRPC(null, player, "ForcePositionTo", new object[] { destination });
+            player.TransformChanged();
+        }
+
         int CurrentTime() { return System.Convert.ToInt32(System.DateTime.UtcNow.Subtract(epoch).TotalSeconds); }
 
+        
+        private object FindPlayer(string tofind)
+        {
+            if (tofind.Length == 17)
+            {
+                ulong steamid;
+                if (ulong.TryParse(tofind.ToString(), out steamid))
+                {
+                    return FindPlayerByID(steamid);
+                }
+            }
+            List<BasePlayer> onlineplayers = BasePlayer.activePlayerList as List<BasePlayer>;
+            object targetplayer = null;
+            foreach (BasePlayer player in onlineplayers.ToArray())
+            {
+
+                if (player.displayName.ToString() == tofind)
+                    return player;
+                else if (player.displayName.ToString().Contains(tofind))
+                {
+                    if (targetplayer == null)
+                        targetplayer = player;
+                    else
+                        return multiplePlayersFound;
+                }
+            }
+            if (targetplayer == null)
+                return noPlayersFound;
+            return targetplayer;
+        }
+
+        private object FindPlayerByID(ulong steamid)
+        {
+            BasePlayer targetplayer = BasePlayer.FindByID(steamid);
+            if (targetplayer != null)
+            {
+                return targetplayer;
+            }
+            targetplayer = BasePlayer.FindSleeping(steamid);
+            if (targetplayer != null)
+            {
+                return targetplayer;
+            }
+            return null;
+        }
+        /////////////////////////////////////////
+        // Jail functions
+        /////////////////////////////////////////
+
+        /////////////////////////////////////////
+        // AddPlayerToJail(BasePlayer player, int expiretime)
+        // Adds a player to the jail, and saves him in the database
+        /////////////////////////////////////////
         void AddPlayerToJail(BasePlayer player, int expiretime)
         {
             var tempPoint = FindCell(player.userID.ToString());
@@ -149,20 +327,11 @@ namespace Oxide.Plugins
             storedData.JailInmates.Add(jailinmates[player.userID.ToString()]);
             SaveData();
         }
-        void RemovePlayerFromJail(BasePlayer player)
-        {
-            if (jailinmates[player.userID.ToString()] != null) storedData.JailInmates.Remove(jailinmates[player.userID.ToString()]);
-            jailinmates[player.userID.ToString()] = null;
-            SaveData();
-        }
-        object FindCell(string userid)
-        {
-            if (spawns == null) { Puts(NoSpawnDatabase); return null; }
-            if(spawnfile == null) { Puts(NoSpawnFile); return null; }
-            var count = spawns.Call("GetSpawnsCount", spawnfile);
-            if (count is bool) return null;
-            return spawns.Call("GetRandomSpawnVector3", spawnfile, count);
-        }
+
+        /////////////////////////////////////////
+        // SendPlayerToJail(BasePlayer player)
+        // Sends a player to the jail
+        /////////////////////////////////////////
         void SendPlayerToJail(BasePlayer player)
         {
             if (jailinmates[player.userID.ToString()] == null) return;
@@ -170,6 +339,22 @@ namespace Oxide.Plugins
             ForcePlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
             SendReply(player, YouAreInJail);
         }
+
+        /////////////////////////////////////////
+        // RemovePlayerFromJail(BasePlayer player)
+        // Removes a player from the jail (need to be called after SendPlayerOutOfJail, because we need the return point)
+        /////////////////////////////////////////
+        void RemovePlayerFromJail(BasePlayer player)
+        {
+            if (jailinmates[player.userID.ToString()] != null) storedData.JailInmates.Remove(jailinmates[player.userID.ToString()]);
+            jailinmates[player.userID.ToString()] = null;
+            SaveData();
+        }
+
+        /////////////////////////////////////////
+        // SendPlayerOutOfJail(BasePlayer player)
+        // Send player out of the jail
+        /////////////////////////////////////////
         void SendPlayerOutOfJail(BasePlayer player)
         {
             if (jailinmates[player.userID.ToString()] == null) return;
@@ -178,41 +363,11 @@ namespace Oxide.Plugins
             ForcePlayerPosition(player, cachedJail.GetFreePosition());
             SendReply(player, YouAreFree);
         }
-        void ForcePlayerPosition(BasePlayer player, Vector3 destination)
-        {
-            player.transform.position = destination;
-            player.ClientRPC(null, player, "ForcePositionTo", new object[] { destination });
-            player.TransformChanged();
-        }
-        bool isInZone(BasePlayer player)
-        {
-            if (ZoneManager == null) return false;
-            return (bool)ZoneManager.Call("isPlayerInZone", "Jail", player);
-        }
-        void OnEnterZone( string ZoneID, BasePlayer player )
-        {
-            if(ZoneID == "Jail")
-            {
-                if(hasPermission(player)) { SendReply(player, string.Format(WelcomeJail,player.displayName)); }
-                else if (jailinmates[player.userID.ToString()] == null) { SendReply(player, KeepOut); }
-            }
-        }
-        void OnExitZone(string ZoneID, BasePlayer player)
-        {
-            if (ZoneID == "Jail")
-            {
-                if (jailinmates[player.userID.ToString()] != null) { SendReply(player, KeepIn); }
-            }
-        }
-        void OnPlayerSleepEnded(BasePlayer player)
-        {
-            if (jailinmates[player.userID.ToString()] != null)
-            {
-                CheckPlayerExpireTime(player);
-                if (!isInZone(player))
-                    ForcePlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
-            }
-        }
+
+        /////////////////////////////////////////
+        // CheckPlayerExpireTime(BasePlayer player)
+        // One function to take care of the timer, calls himself.
+        /////////////////////////////////////////
         void CheckPlayerExpireTime(BasePlayer player)
         {
             if (TimersList[player] != null) { TimersList[player].Destroy(); TimersList[player] = null; }
@@ -229,6 +384,10 @@ namespace Oxide.Plugins
             else
                 TimersList[player] = timer.Once( (float)(cachedInterval + 1), () => CheckPlayerExpireTime(player));
         }
+
+        /////////////////////////////////////////
+        // Chat commands
+        /////////////////////////////////////////
         [ChatCommand("jail_config")]
         void cmdChatJailConfig(BasePlayer player, string command, string[] args)
         {
@@ -316,6 +475,11 @@ namespace Oxide.Plugins
             SendReply(player, string.Format("{0} was freed from jail", cachedPlayer.displayName.ToString()));
         }
 
+
+        /////////////////////////////////////////
+        // Config handler
+        // Thx to Bombardir and his code in Pets, stole his way! Much better and cleaner than my old one
+        /////////////////////////////////////////
         private static string NoPermission = "You don't have the permission to use this command";
         private static string NoZoneManager = "You can't use the Jail plugin without ZoneManager";
         private static string JailCreated = "You successfully created/updated the jail zone, use /zone_list for more informations";
@@ -330,8 +494,7 @@ namespace Oxide.Plugins
         private static string KeepOut = "Keep out, no visitors allowed in the jail";
         private static string WelcomeJail = "Welcome to the jail {0}";
         private static string KeepIn = "You are not allowed to leave the Jail";
-
-        void LoadDefaultConfig() { }
+        private static string EmptySpawnFile = "The spawnfile is empty, can't find any spawn points. Make sure to create a valid Spawn Database first";
 
         private void CheckCfg<T>(string Key, ref T var)
         {
@@ -340,8 +503,6 @@ namespace Oxide.Plugins
             else
                 Config[Key] = var;
         }
-
-
 
         void Init()
         {
@@ -358,72 +519,8 @@ namespace Oxide.Plugins
             CheckCfg<string>("Message: Welcome ADMIN", ref WelcomeJail);
             CheckCfg<string>("spawnfile", ref spawnfile);
             CheckCfg<string>("Message: KeepIn", ref KeepIn);
+            CheckCfg<string>("Message: Empty Spawn file", ref EmptySpawnFile);
             SaveConfig();
-        }
-
-
-        void LoadSpawnfile()
-        {
-            if (spawnfile == null) { Puts(NoSpawnFile); return; }
-            var count = spawns.Call("GetSpawnsCount", spawnfile);
-            if(count is bool)
-            {
-                Puts("{0} is not a valid spawnfile", spawnfile.ToString());
-                Config["spawnfile"] = null;
-                spawnfile = null;
-                SaveConfig();
-                return;
-            }
-            Puts(JailsLoaded, count.ToString());
-        }
-
-
-
-
-
-
-        private object FindPlayer(string tofind)
-        {
-            if (tofind.Length == 17)
-            {
-                ulong steamid;
-                if (ulong.TryParse(tofind.ToString(), out steamid))
-                {
-                    return FindPlayerByID(steamid);
-                }
-            }
-            List<BasePlayer> onlineplayers = BasePlayer.activePlayerList as List<BasePlayer>;
-            object targetplayer = null;
-            foreach (BasePlayer player in onlineplayers.ToArray())
-            {
-
-                if (player.displayName.ToString() == tofind)
-                    return player;
-                else if (player.displayName.ToString().Contains(tofind))
-                {
-                    if (targetplayer == null)
-                        targetplayer = player;
-                    else
-                        return multiplePlayersFound;
-                }
-            }
-            if (targetplayer == null)
-                return noPlayersFound;
-            return targetplayer;
-        }
-        private object FindPlayerByID(ulong steamid)
-        {
-            BasePlayer targetplayer = BasePlayer.FindByID(steamid);
-            if (targetplayer != null)
-            {
-                return targetplayer;
-            }
-            targetplayer = BasePlayer.FindSleeping(steamid);
-            if (targetplayer != null)
-            {
-                return targetplayer;
-            }
-            return null;
         }
     }
 }
