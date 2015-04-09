@@ -10,7 +10,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Save", "Reneb", 2.0)]
+    [Info("Save", "Reneb", "2.0.1")]
     class Save : RustPlugin
     {
         private int saveAuth;
@@ -20,7 +20,8 @@ namespace Oxide.Plugins
 
         void Loaded()
         {
-            LoadVariables();   
+            LoadVariables();
+            permission.RegisterPermission("cansave", this);
         }
         private object GetConfig(string menu, string datavalue, object defaultValue)
         {
@@ -57,6 +58,11 @@ namespace Oxide.Plugins
             Config.Clear();
             LoadVariables();
         }
+        bool hasPermission(BasePlayer player)
+        {
+            if (player.net.connection.authLevel >= saveAuth) return true;
+            return permission.UserHasPermission(player.userID.ToString(), "cansave");
+        }
         [ConsoleCommand("save.all")]
         void cmdConsoleSave(ConsoleSystem.Arg arg)
         {
@@ -70,6 +76,22 @@ namespace Oxide.Plugins
             }
             SaveRestore.Save();
             SendReply(arg, saved);
+        }
+        [ChatCommand("save")]
+        void cmdChatSave(BasePlayer player, string command, string[] args)
+        {
+            if (!hasPermission(player)) { SendReply(player, noAccess); return; }
+            SaveRestore.Save();
+            SendReply(player, saved);
+            if (args.Length > 0)
+            {
+                float value;
+                if (float.TryParse(args[0], out value))
+                {
+                    ConsoleSystem.Run.Server.Normal("server.saveinterval " + args[0], new object[] { });
+                    SendReply(player, "set: server.saveinterval " + args[0]);
+                }
+            }
         }
     }
 }
