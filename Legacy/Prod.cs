@@ -26,7 +26,6 @@ namespace Oxide.Plugins
         StructureComponent cachedStructure;
         DeployableObject cachedDeployable;
         StructureMaster cachedMaster;
-
         Facepunch.MeshBatch.MeshBatchInstance cachedhitInstance;
 
         void Loaded() { if(!permission.PermissionExists("prod")) permission.RegisterPermission("prod", this); }
