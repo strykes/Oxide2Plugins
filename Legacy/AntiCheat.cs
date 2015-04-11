@@ -13,7 +13,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb", "2.0.3")]
+    [Info("AntiCheat", "Reneb", "2.0.7")]
     class AntiCheat : RustLegacyPlugin
     {
         object OnDeny()
@@ -27,6 +27,7 @@ namespace Oxide.Plugins
         static Hash<PlayerClient, float> autoLoot = new Hash<PlayerClient, float>();
         static Hash<Inventory, NetUser> inventoryLooter = new Hash<Inventory, NetUser>();
         static Hash<NetUser, float> isWallLooting = new Hash<NetUser, float>();
+        static Hash<PlayerClient, float> wallhackLogs = new Hash<PlayerClient, float>();
 
         public static Core.Configuration.DynamicConfigFile ACData;
         private static FieldInfo getblueprints;
@@ -50,8 +51,12 @@ namespace Oxide.Plugins
         public static string cachedObjectname;
         public static float cachedDistance;
         public static Facepunch.MeshBatch.MeshBatchInstance cachedhitInstance;
+        public static Collider cachedCollider;
         public static bool cachedBoolean;
         public static Vector3 cachedvector3;
+        public static WeaponImpact cachedWeapon;
+        public static BulletWeaponImpact cachedBulletWeapon;
+        public static OverKillHandler cachedOverkill;
         /////////////////////////
         // Config Management
         /////////////////////////
@@ -89,10 +94,22 @@ namespace Oxide.Plugins
         public static bool antiAutoloot = true;
         public static bool autolootPunish = true;
 
+        public static bool antiSleepingBagHack = true;
+        public static bool sleepingbaghackPunish = true;
+
+        public static bool antiOverKill = true;
+        public static bool overkillPunish = true;
+        public static Dictionary<string,object> overkillDictionary = GetWeaponsMaxDistance();
+        public static float overkillResetTimer = 600f;
+        public static float overkillDetectionForPunish = 2f;
+
         public static bool antiMassRadiation = true;
 
         public static bool antiWallloot = true;
         public static bool walllootPunish = true;
+
+        public static bool antiWallhack = true;
+        public static bool wallhackPunish = true;
 
         public static bool antiCeilingHack = true;
         public static bool ceilinghackPunish = true;
@@ -116,6 +133,26 @@ namespace Oxide.Plugins
                 var = (T)Config[Key];
             else
                 Config[Key] = var;
+        }
+
+        static Dictionary<string,object> GetWeaponsMaxDistance()
+        {
+            var newdict = new Dictionary<string, object>();
+            newdict.Add("9mm Pistol",85f);
+            newdict.Add("Hunting Bow",255f);
+            newdict.Add("Pipe Shotgun",85f);
+            newdict.Add("HandCannon",25f);
+            newdict.Add("Revolver",85f);
+            newdict.Add("Hatchet",10f);
+            newdict.Add("Stone Hatchet", 10f);
+            newdict.Add("Rock",10f);
+            newdict.Add("M4",145f);
+            newdict.Add("MP5A4",85f);
+            newdict.Add("P250",125f);
+            newdict.Add("Shotgun",35f);
+            newdict.Add("Bolt Action Rifle",255f);
+            newdict.Add("Pick Axe", 10f);
+            return newdict;
         }
 
         void Init()
@@ -155,8 +192,17 @@ namespace Oxide.Plugins
             CheckCfg<bool>("AntiMassRadiation: activated", ref antiMassRadiation);
             CheckCfg<bool>("Wallloot: activated", ref antiWallloot);
             CheckCfg<bool>("Wallloot: Punish ", ref walllootPunish);
+            CheckCfg<bool>("OverKill: activated", ref antiOverKill);
+            CheckCfg<bool>("OverKill: Punish ", ref overkillPunish);
+            CheckCfg<Dictionary<string,object>>("OverKill: Max Distances", ref overkillDictionary);
+            CheckCfg<float>("OverKill: Reset Timer ", ref overkillResetTimer);
+            CheckCfg<float>("OverKill: Detections before punish", ref overkillDetectionForPunish);
+            CheckCfg<bool>("Wallhack: activated", ref antiWallhack);
+            CheckCfg<bool>("Wallhack: Punish ", ref wallhackPunish);
             CheckCfg<bool>("CeilingHack: activated", ref antiCeilingHack);
             CheckCfg<bool>("CeilingHack: Punish ", ref ceilinghackPunish);
+            CheckCfg<bool>("Sleeping Bag Hack: activated", ref antiSleepingBagHack);
+            CheckCfg<bool>("Sleeping Bag Hack: Punish ", ref sleepingbaghackPunish);
             CheckCfg<string>("Messages: No Access", ref noAccess);
             CheckCfg<string>("Messages: No player found", ref noPlayerFound);
             CheckCfg<string>("Messages: Player being checked", ref checkingPlayer);
@@ -164,7 +210,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages: Data Reseted", ref DataReset);
             CheckCfg<string>("Messages: Broadcast Message to Player on Hacker Punishement", ref playerHackDetectionBroadcast);
             SaveConfig();
-        }
+        } 
 
 
         /////////////////////////
@@ -299,6 +345,14 @@ namespace Oxide.Plugins
             }
         }
         static void DestroyCeilingHandler(CeilingHackHandler ceilinghandler) { GameObject.Destroy(ceilinghandler); }
+
+
+        public class OverKillHandler : MonoBehaviour
+        {
+            public float lastOverkill = Time.realtimeSinceStartup;
+            public float number = 0f;
+
+        }
         /////////////////////////
         // Oxide Hooks
         /////////////////////////
@@ -327,6 +381,7 @@ namespace Oxide.Plugins
                 phandler.timeleft = GetPlayerData(player);
                 phandler.StartCheck();
             }
+
         }
         /////////////////////////
         // OnServerSave()
@@ -381,16 +436,19 @@ namespace Oxide.Plugins
         /////////////////////////
         object ModifyDamage(TakeDamage takedamage, DamageEvent damage)
         {
-            if (takedamage.GetComponent<Controllable>() == null) return null;
-            if (damage.victim.character == null) return null;
-            if (damage.damageTypes == 0 || damage.damageTypes == DamageTypeFlags.damage_radiation)
+            if (antiMassRadiation && (damage.damageTypes == 0 || damage.damageTypes == DamageTypeFlags.damage_radiation) )
             {
+                if (takedamage.GetComponent<Controllable>() == null) return null;
+                if (damage.victim.character == null) return null;
                 if (float.IsInfinity(damage.amount)) return null;
                 if (damage.amount > 12f) { AntiCheatBroadcastAdmins(string.Format("{0} is receiving too much damage from the radiation, ignoring the damage", takedamage.GetComponent<Controllable>().playerClient.userName.ToString())); damage.amount = 0f; return damage; }
             }
+            else if(antiWallhack)
+            {
+                return CheckForWallhack(takedamage, damage);
+            }
             return null;
         }
-
         /////////////////////////
         // OnPlayerSpawn(PlayerClient player, bool useCamp, RustProto.Avatar avatar)
         // Called when a player spawns (after connection or after death)
@@ -411,9 +469,76 @@ namespace Oxide.Plugins
             if(antiCeilingHack)
                 netuser.playerClient.gameObject.AddComponent<CeilingHackHandler>();
         }
+
         /////////////////////////
-        // AntiCheat Handler functions
+        // OnPlayerConnected(NetUser netuser)
+        // Called when a player connects
         /////////////////////////
+        void OnKilled(TakeDamage takedamage, DamageEvent damage)
+        {
+            if (!antiOverKill) return;
+            if (!(damage.extraData is WeaponImpact)) return;
+            cachedWeapon = damage.extraData as WeaponImpact;
+            if (cachedWeapon.dataBlock == null) return;
+            if (!overkillDictionary.ContainsKey(cachedWeapon.dataBlock.name)) return;
+            if (damage.victim.networkView == null) return;
+            if (Vector3.Distance(damage.attacker.networkView.position, damage.victim.networkView.position) < Convert.ToSingle(overkillDictionary[cachedWeapon.dataBlock.name])) return;
+            cachedOverkill = damage.attacker.client.GetComponent<OverKillHandler>();
+            if(cachedOverkill == null) cachedOverkill = damage.attacker.client.gameObject.AddComponent<OverKillHandler>();
+            if (Time.realtimeSinceStartup - cachedOverkill.lastOverkill > overkillResetTimer) cachedOverkill.number = 0f;
+            cachedOverkill.lastOverkill = Time.realtimeSinceStartup;
+            cachedOverkill.number++;
+            AntiCheatBroadcastAdmins(string.Format("{0} did an OverKill with {1} @ {2}m", damage.attacker.client.userName, cachedWeapon.dataBlock.name, Math.Floor(Vector3.Distance(damage.attacker.networkView.position, damage.victim.networkView.position)).ToString()));
+            if (overkillPunish && cachedOverkill.number >= overkillDetectionForPunish)
+                Punish(damage.attacker.client, string.Format("rOverKill {0} ({1})", cachedWeapon.dataBlock.name, Math.Floor(Vector3.Distance(damage.attacker.networkView.position, damage.victim.networkView.position)).ToString()));
+              
+        }
+
+        void OnItemDeployedByPlayer(DeployableObject component, IDeployableItem item)
+        {
+            if (!antiSleepingBagHack) return;
+            if (component.gameObject.name == "SleepingBagA(Clone)" || component.gameObject.name == "SingleBed(Clone)")
+            {
+                if (!item.character) return;
+                if (!(MeshBatchPhysics.Linecast(item.character.eyesOrigin,component.transform.position, out cachedRaycast, out cachedBoolean, out cachedhitInstance))) return;
+                if (cachedhitInstance == null && cachedRaycast.collider.gameObject.name != "MetalDoor(Clone)") return;
+                AntiCheatBroadcastAdmins(string.Format("{0} tried to spawn a {1} @ {2} from {3}", item.character.playerClient.userName, component.gameObject.name.Replace("(Clone)",""), component.transform.position.ToString(), item.character.eyesOrigin.ToString()));
+                AntiCheatBroadcastAdmins(string.Format("{0} was on the way", (cachedhitInstance == null) ? "Metal Door" : cachedhitInstance.physicalColliderReferenceOnly.gameObject.name.Replace("(Clone)", "")));
+                Puts(string.Format("{0} tried to spawn a {1} @ {2} from {3} threw {4}", item.character.playerClient.userName, component.gameObject.name.Replace("(Clone)", ""), component.transform.position.ToString(), item.character.eyesOrigin.ToString(), (cachedhitInstance == null) ? "Metal Door" : cachedhitInstance.physicalColliderReferenceOnly.gameObject.name.Replace("(Clone)", "")));
+                NetCull.Destroy(component.gameObject);
+                if (sleepingbaghackPunish)
+                    Punish(item.character.playerClient, string.Format("rSleepHack ({0})", (cachedhitInstance == null) ? "Metal Door" : cachedhitInstance.physicalColliderReferenceOnly.gameObject.name.Replace("(Clone)", "")));
+
+            }
+        } 
+            /////////////////////////
+            // AntiCheat Handler functions
+            /////////////////////////
+
+        object CheckForWallhack(TakeDamage takedamage, DamageEvent damage)
+        {
+            //if (damage.status != LifeStatus.WasKilled) return null;
+            if (!(damage.extraData is BulletWeaponImpact)) return null;
+            cachedBulletWeapon = damage.extraData as BulletWeaponImpact;
+            if (!MeshBatchPhysics.Linecast(damage.attacker.character.eyesOrigin, cachedBulletWeapon.worldPoint, out cachedRaycast, out cachedBoolean, out cachedhitInstance)) return null;
+            if (cachedhitInstance == null) return null;
+            cachedCollider = cachedhitInstance.physicalColliderReferenceOnly;
+            if (cachedCollider == null) return null;
+            if (!(cachedCollider.gameObject.name.Contains("Wall") || cachedCollider.gameObject.name.Contains("Ceiling"))) return null;
+            Debug.Log(string.Format("Wallhack detection on {0} from: {1} to: {2}", damage.attacker.client.userName, damage.attacker.character.eyesOrigin.ToString(), cachedBulletWeapon.worldPoint.ToString()));
+            AntiCheatBroadcastAdmins(string.Format("Wallhack detection on {0} from: {1} to: {2}", damage.attacker.client.userName, damage.attacker.character.eyesOrigin.ToString(), cachedBulletWeapon.worldPoint.ToString()));
+            damage.status = LifeStatus.IsAlive;
+            damage.amount = 0f;
+            takedamage.health = 100f;
+            if (takedamage.GetComponent<HumanBodyTakeDamage>() != null) takedamage.GetComponent<HumanBodyTakeDamage>().SetBleedingLevel(0f);
+            /*if (wallhackPunish)
+            {
+                if (wallhackLogs[damage.attacker.client] == null) wallhackLogs[damage.attacker.client] = Time.realtimeSinceStartup;
+                if ((wallhackLogs[damage.attacker.client] - Time.realtimeSinceStartup) > 3) wallhackLogs[damage.attacker.client] = Time.realtimeSinceStartup;
+                if (wallhackLogs[damage.attacker.client] - Time.realtimeSinceStartup > 0.1) Punish(damage.attacker.client, "rWallhack");
+            }*/
+            return damage;
+        }
 
         NetUser GetLooter(Inventory inventory)
         {
@@ -465,8 +590,8 @@ namespace Oxide.Plugins
             if (player.distance3D == 0f) { player.flynum = 0; return; }
             if (PlayerHandlerHasGround(player)) { player.flynum = 0; return; }
             if (player.distanceHeight < -flyhackMaxDropSpeed) { player.flynum = 0; return; }
-            if( IsOnSupport(player) ) { player.flynum = 0; return; }
-            if (player.lastFly != player.lastTick) player.flynum = 0;
+            if (IsOnSupport(player)) { player.flynum = 0; return; }
+            if (player.lastFly != player.lastTick) { player.flynum = 0; player.lastFly = player.currentTick; return; }
             player.flynum++;
             player.lastFly = player.currentTick;
             AntiCheatBroadcastAdmins(string.Format("{0} - rFlyhack ({1}m/s)", player.playerclient.userName, player.distance3D.ToString()));
@@ -484,31 +609,31 @@ namespace Oxide.Plugins
             AntiCheatBroadcastAdmins(string.Format("{0} - rSuperJump ({1}m/s)", player.playerclient.userName, player.distanceHeight.ToString()));
             if (player.jumpnum < jumpDetectionsNeed) return;
             if(jumpPunish) Punish(player.playerclient, string.Format("rSuperJump ({0}m/s)", player.distanceHeight.ToString()));
-        } 
-		public static void checkWalkSpeedhack(PlayerHandler player)
+        }
+        public static void checkWalkSpeedhack(PlayerHandler player)
         {
             if (player.character.stateFlags.sprint) { player.lastSprint = true; player.walkspeednum = 0; return; }
             if (player.distanceHeight < -walkspeedDropIgnore) { player.walkspeednum = 0; return; }
             if (player.distance3D < walkspeedMinDistance) { player.walkspeednum = 0; return; }
             if (!player.character.stateFlags.grounded) { player.lastSprint = true; player.walkspeednum = 0; return; }
-			if (player.lastSprint) { player.lastSprint = false; player.walkspeednum = 0; return; }
-            if (player.lastWalkSpeed != player.lastTick) player.walkspeednum = 0;
+            if (player.lastSprint) { player.lastSprint = false; player.walkspeednum = 0; return; }
+            if (player.lastWalkSpeed != player.lastTick) { player.walkspeednum = 0; player.lastWalkSpeed = player.currentTick; return; }
             player.walkspeednum++;
             player.lastWalkSpeed = player.currentTick;
             AntiCheatBroadcastAdmins(string.Format("{0} - rWalkspeed ({1}m/s)", player.playerclient.userName, player.distance3D.ToString()));
             if (player.walkspeednum < walkspeedDetectionForPunish) return;
-            if(walkspeedPunish) Punish(player.playerclient, string.Format("rWalkspeed ({0}m/s)", player.distance3D.ToString()));
+            if (walkspeedPunish) Punish(player.playerclient, string.Format("rWalkspeed ({0}m/s)", player.distance3D.ToString()));
         }
         public static void checkSpeedhack(PlayerHandler player)
         {
             if (Math.Abs(player.distanceHeight) > speedDropIgnore) { player.speednum = 0; return; }
-			if(player.distance3D < speedMinDistance) { player.speednum = 0; return; }
-            if (player.lastSpeed != player.lastTick) player.speednum = 0;
+            if (player.distance3D < speedMinDistance) { player.speednum = 0; return; }
+            if (player.lastSpeed != player.lastTick) { player.speednum = 0; player.lastSpeed = player.currentTick; return; }
             player.speednum++;
             player.lastSpeed = player.currentTick;
             AntiCheatBroadcastAdmins(string.Format("{0} - rSpeedhack ({1}m/s)", player.playerclient.userName, player.distance3D.ToString()));
             if (player.speednum < speedDetectionForPunish) return;
-            if(speedPunish) Punish(player.playerclient, string.Format("rSpeedhack ({0}m/s)", player.distance3D.ToString()));
+            if (speedPunish) Punish(player.playerclient, string.Format("rSpeedhack ({0}m/s)", player.distance3D.ToString()));
         }
         void CheckSupplyCrateLoot(Inventory inventory)
         {
