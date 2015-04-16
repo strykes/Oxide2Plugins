@@ -9,7 +9,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "1.0.0")]
+    [Info("ZoneManager", "Reneb", "1.0.1")]
     class ZoneManager : RustLegacyPlugin
     {
         ////////////////////////////////////////////
@@ -506,8 +506,9 @@ namespace Oxide.Plugins
         bool EraseZone(string ZoneID)
         {
             if (zonedefinitions[ZoneID] == null) return false;
-            zonedefinitions[ZoneID] = null;
             storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            zonedefinitions[ZoneID] = null;
+            
             SaveData();
             RefreshZone(ZoneID);
             return true;
@@ -607,13 +608,14 @@ namespace Oxide.Plugins
                             if (pair.Value.Contains(gameObj)) playerZones[pair.Key].Remove(gameObj);
                         }
                         GameObject.Destroy(gameObj);
-                        if (zonedefinitions[zoneID] != null)
-                        {
-                            NewZone(zonedefinitions[zoneID]);
-                        }
+                        
                         break;
                     }
                 }
+            if (zonedefinitions[zoneID] != null)
+            {
+                NewZone(zonedefinitions[zoneID]);
+            }
         }
 
         int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
@@ -663,7 +665,7 @@ namespace Oxide.Plugins
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
             if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player) && !zone.keepInList.Contains(player)) EjectPlayer(zone, player);
             Interface.CallHook("OnEnterZone", zone.info.ID, player);
-        }
+        } 
         static void OnExitZone(Zone zone, PlayerClient player)
         {
             if (playerZones[player].Contains(zone)) playerZones[player].Remove(zone);
