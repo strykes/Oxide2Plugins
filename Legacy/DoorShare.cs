@@ -10,7 +10,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("DoorShare", "Reneb", "1.0.0")]
+    [Info("DoorShare", "Reneb", "1.0.1")]
     class DoorShare : RustLegacyPlugin
     {
         object cachedValue;
@@ -18,11 +18,22 @@ namespace Oxide.Plugins
         [PluginReference]
         Plugin Share;
 
+        MethodInfo toggledoor;
+
+        void Loaded()
+        {
+            foreach (MethodInfo methinfo in typeof(BasicDoor).GetMethods(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            {
+                if (methinfo.Name == "ToggleStateServer" && methinfo.GetParameters().Length == 3)
+                    toggledoor = methinfo;
+            }
+        }
+
         object OnDoorToggle(BasicDoor door, ulong timestamp, Controllable controllable)
         {
             cachedValue = Interface.CallHook("isSharing", door.GetComponent<DeployableObject>().ownerID.ToString(), controllable.playerClient.userID.ToString());
-            if (cachedValue is bool && (bool)cachedValue) return true;
+            if (cachedValue is bool && (bool)cachedValue) return toggledoor.Invoke(door, new object[] { controllable.playerClient.lastKnownPosition, timestamp, null });
             return null;
-        }
+        } 
     }
 }
