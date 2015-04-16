@@ -3,6 +3,7 @@
 // Reference: Facepunch.MeshBatch
 // Reference: Facepunch.Utility
 // Reference: Google.ProtocolBuffers
+
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -15,14 +16,13 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", "1.0.1")]
+    [Info("RemoverTool", "Reneb", "1.0.3")]
     class RemoverTool : RustLegacyPlugin
     {
         [PluginReference]
         Plugin PlayerDatabase;
         [PluginReference]
         Plugin Share;
-
 
         private static FieldInfo structureComponents;
 
@@ -135,11 +135,13 @@ namespace Oxide.Plugins
         void OnHurt(TakeDamage takedamage, DamageEvent damage)
         {
             if (damage.attacker.client == null) return;
+            if (!(damage.extraData is WeaponImpact)) return;
             if (damage.attacker.client.GetComponent<RemoveHandler>() == null) return;
             TryToRemove(takedamage, damage.attacker.client.GetComponent<RemoveHandler>());
         }
         void TryToRemove(TakeDamage takedamage, RemoveHandler rplayer)
         {
+
             cachedStructure = takedamage.GetComponent<StructureComponent>();
             cachedDeployable = takedamage.GetComponent<DeployableObject>();
             if(cachedStructure != null && cachedStructure._master != null)
