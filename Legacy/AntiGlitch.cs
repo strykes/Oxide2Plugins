@@ -13,7 +13,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiGlitch", "Reneb", "2.0.2")]
+    [Info("AntiGlitch", "Reneb", "2.0.3")]
     class AntiGlitch : RustLegacyPlugin
     {
         public static Vector3 Vector3ABitUp = new Vector3(0f, 0.1f, 0f);
@@ -145,13 +145,13 @@ namespace Oxide.Plugins
 
                     if (shouldDestroy)
                     {
-                        TakeDamage.KillSelf(structuremaster.GetComponent<IDMain>());
                         if (owner != null && owner.playerClient != null)
                             ConsoleNetworker.SendClientCommand(owner.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format("{0} is blocking the way", collider.gameObject.name)));
+                        TakeDamage.KillSelf(structuremaster.GetComponent<IDMain>());
                         return;
                     }
                 }
-                GameObject.Destroy(this);
+                if(this != null) GameObject.Destroy(this);
             }
         }
         void OnPlayerSpawn(PlayerClient player, bool useCamp, RustProto.Avatar avatar)
@@ -285,7 +285,7 @@ namespace Oxide.Plugins
                         {
                             ConsoleNetworker.SendClientCommand(item.character.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format("{0} should be closed before trying to build here", collider.gameObject.name.ToString().Replace("(Clone)", ""))));
                             item.character.GetComponent<Inventory>().AddItemAmount(item.datablock, 1);
-                            NetCull.Destroy(component.gameObject);
+                            timer.Once(0.01f, () => NetCull.Destroy(component.gameObject));
                             return;
                         }
                     }
@@ -296,7 +296,7 @@ namespace Oxide.Plugins
                     {
                         ConsoleNetworker.SendClientCommand(item.character.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format("{0} is blocking the way", collider.gameObject.name.ToString().Replace("(Clone)", ""))));
                         item.character.GetComponent<Inventory>().AddItemAmount(item.datablock, 1);
-                        NetCull.Destroy(component.gameObject);
+                        timer.Once(0.01f, () => NetCull.Destroy(component.gameObject));
                         return;
                     }
                 }
@@ -310,7 +310,7 @@ namespace Oxide.Plugins
 
                         ConsoleNetworker.SendClientCommand(item.character.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format("{0} is blocking the way", collider.gameObject.name.ToString().Replace("(Clone)", ""))));
                         item.character.GetComponent<Inventory>().AddItemAmount(item.datablock, 1);
-                        NetCull.Destroy(component.gameObject);
+                        timer.Once(0.01f, () => NetCull.Destroy(component.gameObject));
                         return;
                     }
                 }
@@ -359,7 +359,7 @@ namespace Oxide.Plugins
                                     TakeDamage.KillSelf(component.GetComponent<IDMain>());
                                     if (structurecheck.owner != null && structurecheck.owner.playerClient != null)
                                         ConsoleNetworker.SendClientCommand(structurecheck.owner.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format("You are not allowed to stack more than {0} ramps", rampstackMax.ToString())));
-                                    GameObject.Destroy(structurecheck);
+                                    timer.Once(0.01f, () => GameObject.Destroy(structurecheck));
                                     return;
                                 }
                             }
@@ -372,7 +372,7 @@ namespace Oxide.Plugins
                     structurecheck.position.y += 2f;
                 }
             }
-            timer.Once(0.01f, () => structurecheck.CheckCollision());
+            timer.Once(0.05f, () => structurecheck.CheckCollision());
         }
     }
 }
