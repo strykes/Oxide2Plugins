@@ -13,7 +13,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb", "2.0.10")]
+    [Info("AntiCheat", "Reneb", "2.0.11")]
     class AntiCheat : RustLegacyPlugin
     {
         object OnDeny()
@@ -36,6 +36,7 @@ namespace Oxide.Plugins
         public static Vector3 UnderPlayerAdjustement = new Vector3(0f, -1.15f, 0f);
         public static float distanceDown = 10f;
         public static int groundsLayer = LayerMask.GetMask(new string[] { LayerMask.LayerToName(10), "Terrain" });
+        public static ItemDataBlock wooddata;
          
         public static Vector3 Vector3ABitLeft = new Vector3(-0.03f, 0f, -0.03f);
         public static Vector3 Vector3ABitRight = new Vector3(0.03f, 0f, 0.03f);
@@ -57,6 +58,7 @@ namespace Oxide.Plugins
         public static WeaponImpact cachedWeapon;
         public static BulletWeaponImpact cachedBulletWeapon;
         public static OverKillHandler cachedOverkill;
+        public static int cachedInt;
         /////////////////////////
         // Config Management
         /////////////////////////
@@ -105,10 +107,17 @@ namespace Oxide.Plugins
 
         public static bool antiMassRadiation = true;
 
-
+		public static bool antiNoRecoil = true;
+		public static float norecoilDistance = 40f;
+        public static bool norecoilPunish = true;
+		public static int norecoilPunishMinKills = 5;
+		public static int norecoilPunishMinRatio = 1/3; 
 
         public static bool antiWallhack = true;
         public static bool wallhackPunish = true;
+
+        public static bool antiAutoGather = true;
+        public static bool autogatherPunish = true;
 
         public static bool antiCeilingHack = true;
         public static bool ceilinghackPunish = true;
@@ -200,6 +209,15 @@ namespace Oxide.Plugins
             CheckCfg<bool>("CeilingHack: Punish ", ref ceilinghackPunish);
             CheckCfg<bool>("Sleeping Bag Hack: activated", ref antiSleepingBagHack);
             CheckCfg<bool>("Sleeping Bag Hack: Punish ", ref sleepingbaghackPunish);
+            CheckCfg<bool>("NoRecoil: activated", ref antiNoRecoil);
+            CheckCfg<bool>("NoRecoil: Punish ", ref norecoilPunish);
+            CheckCfg<float>("NoRecoil: Min Distance For Check ", ref norecoilDistance);
+            CheckCfg<int>("NoRecoil: Punish Min Kills", ref norecoilPunishMinKills);
+            CheckCfg<int>("NoRecoil: Punish Min Ratio", ref norecoilPunishMinRatio);
+
+            CheckCfg<bool>("AutoGather: activated", ref antiAutoGather);
+            CheckCfg<bool>("AutoGather: Punish ", ref autogatherPunish);
+
             CheckCfg<string>("Messages: No Access", ref noAccess);
             CheckCfg<string>("Messages: No player found", ref noPlayerFound);
             CheckCfg<string>("Messages: Player being checked", ref checkingPlayer);
@@ -224,6 +242,7 @@ namespace Oxide.Plugins
             public Vector3 lastPosition;
             public PlayerClient playerclient;
             public Character character;
+            public Inventory inventory;
             public string userid;
             public float distance3D;
             public float distanceHeight;
@@ -246,6 +265,10 @@ namespace Oxide.Plugins
             public float lastFly = Time.realtimeSinceStartup;
             public int flynum = 0;
 
+			public int noRecoilDetections = 0;
+			public int noRecoilKills = 0;
+
+            public float lastWoodCount = 0;
 
             void Awake()
             {
@@ -279,6 +302,16 @@ namespace Oxide.Plugins
                     }
                     this.hasSearchedForFloor = false;
                 }
+            }
+            public Inventory GetInventory()
+            {
+                if (this.inventory == null) this.inventory = playerclient.rootControllable.idMain.GetComponent<Inventory>();
+                return this.inventory;
+            }
+            public Character GetCharacter()
+            {
+                if(this.character == null) this.character = playerclient.rootControllable.idMain.GetComponent<Character>();
+                return this.character;
             }
             void OnDestroy()
             {
@@ -342,13 +375,35 @@ namespace Oxide.Plugins
             }
         }
         static void DestroyCeilingHandler(CeilingHackHandler ceilinghandler) { GameObject.Destroy(ceilinghandler); }
-
+		
+		public class NoRecoilHandler : MonoBehaviour
+		{
+			public int Kills = 0;
+			public int NoRecoils = 0;
+			public Character character;
+			public PlayerClient playerClient;
+			
+			void Awake()
+			{
+				enabled = false;
+				this.playerClient = GetComponent<PlayerClient>();
+			}
+			public Character GetCharacter()
+			{
+				if(this.character == null) this.playerClient.controllable.GetComponent<Character>();
+				return this.character;
+			}
+		}
 
         public class OverKillHandler : MonoBehaviour
         {
             public float lastOverkill = Time.realtimeSinceStartup;
             public float number = 0f;
-
+			
+			void Awake()
+			{
+				enabled = false;
+			}
         }
         /////////////////////////
         // Oxide Hooks
@@ -371,6 +426,7 @@ namespace Oxide.Plugins
             ACData = Interface.GetMod().DataFileSystem.GetDatafile("AntiCheat");
             getblueprints = typeof(PlayerInventory).GetField("_boundBPs", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             getlooters = typeof(Inventory).GetField("_netListeners", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            wooddata = DatablockDictionary.GetByName("Wood");
             PlayerHandler phandler;
             foreach (PlayerClient player in PlayerClient.All)
             {
@@ -460,7 +516,7 @@ namespace Oxide.Plugins
                 takedamage.health = 10f;
                 if (takedamage.GetComponent<HumanBodyTakeDamage>() != null) takedamage.GetComponent<HumanBodyTakeDamage>().SetBleedingLevel(0f);
                 if (wallhackPunish) 
-                {
+                { 
                     if (wallhackLogs[damage.attacker.client] == null) wallhackLogs[damage.attacker.client] = Time.realtimeSinceStartup;
                     if ((wallhackLogs[damage.attacker.client] - Time.realtimeSinceStartup) > 3) wallhackLogs[damage.attacker.client] = Time.realtimeSinceStartup;
                     if (wallhackLogs[damage.attacker.client] - Time.realtimeSinceStartup > 0.1) Punish(damage.attacker.client, "rWallhack");
@@ -512,7 +568,7 @@ namespace Oxide.Plugins
             if (overkillPunish && cachedOverkill.number >= overkillDetectionForPunish)
                 Punish(damage.attacker.client, string.Format("rOverKill {0} ({1})", cachedWeapon.dataBlock.name, Math.Floor(Vector3.Distance(damage.attacker.networkView.position, damage.victim.networkView.position)).ToString()));
         }
-        void CheckSilenceKill(TakeDamage takedamage, DamageEvent damage)
+        /*void CheckSilenceKill(TakeDamage takedamage, DamageEvent damage)
         {
             if (damage.victim.networkView == null) return;
             
@@ -527,13 +583,44 @@ namespace Oxide.Plugins
                 return;
             }
             Debug.Log("NO HIT");
+        }*/
+        void CheckNoRecoil(TakeDamage takedamage, DamageEvent damage)
+        {
+            if (damage.victim.networkView == null) return;
+            if (damage.damageTypes != DamageTypeFlags.damage_bullet) return;
+            if (Vector3.Distance(damage.attacker.networkView.position, damage.victim.networkView.position) < norecoilDistance) return;
+            NoRecoilHandler norecoilhandler = damage.attacker.client.GetComponent<NoRecoilHandler>();
+            if(norecoilhandler == null) norecoilhandler = damage.attacker.client.gameObject.AddComponent<NoRecoilHandler>();
+            norecoilhandler.Kills++;
+            Character character = damage.attacker.character;
+            norecoilhandler.character = character;
+            var eyeangles = (Angle2)character.eyesAngles;
+            timer.Once(0.3f, () => CheckNewAngles(norecoilhandler, eyeangles, Time.realtimeSinceStartup));
         }
+        void CheckNewAngles(NoRecoilHandler norecoilhandler, Angle2 oldAngles, float lasttimestamp)
+        {
+        	Character character = norecoilhandler.GetCharacter();
+            if(character == null) return;
+            if ((lasttimestamp - Time.realtimeSinceStartup) > 0.5f) return;
+            if (oldAngles != character.eyesAngles) return;
+            norecoilhandler.NoRecoils++;
+            AntiCheatBroadcastAdmins(string.Format("{0} is suspected of having done a no recoil kill ({1} detections/{2} kills)", norecoilhandler.playerClient.userName, norecoilhandler.NoRecoils.ToString(), norecoilhandler.Kills.ToString()));
+            if (!norecoilPunish) return;
+            if (norecoilhandler.Kills < norecoilPunishMinKills) return;
+            if (norecoilhandler.NoRecoils / norecoilhandler.Kills < norecoilPunishMinRatio) return;
+            Punish(norecoilhandler.playerClient, string.Format("rNoRecoil({0}/{1})", norecoilhandler.NoRecoils.ToString(), norecoilhandler.Kills.ToString()));
+        }
+        
         void OnKilled(TakeDamage takedamage, DamageEvent damage)
         {
 
             if (antiOverKill)
             {
                 CheckOverKill(takedamage, damage);
+            }
+            if(antiNoRecoil)
+            {
+            	CheckNoRecoil(takedamage,damage);
             }
         }
 
@@ -604,6 +691,17 @@ namespace Oxide.Plugins
                 checkSuperjumphack(player);
             if (antiFlyhack)
                 checkAntiflyhack(player);
+            //if (antiAutoGather)
+             //   checkAutoGather(player);
+        }
+        public static void checkAutoGather(PlayerHandler player)
+        {
+            Inventory inv = player.GetInventory();
+            if (inv.activeItem == null) return;
+            inv.FindItem(wooddata, out cachedInt);
+            Debug.Log(cachedInt.ToString());
+            if (Physics.Raycast(player.GetCharacter().eyesRay, out cachedRaycast))
+            Debug.Log(cachedRaycast.collider.ToString());
         }
         public static void checkAntiflyhack(PlayerHandler player)
         {
