@@ -13,7 +13,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "1.0.2")]
+    [Info("Kits", "Reneb", "1.0.5")]
     class Kits : RustLegacyPlugin
     {
         private string noAccess;
@@ -24,6 +24,7 @@ namespace Oxide.Plugins
         private string unknownKit;
         private string kitredeemed;
         private string kitsreset;
+        private bool shouldstrip;
 
         private DateTime epoch;
         private Core.Configuration.DynamicConfigFile KitsConfig;
@@ -35,6 +36,8 @@ namespace Oxide.Plugins
         {
             epoch = new System.DateTime(1970, 1, 1);
             if (!permission.PermissionExists("vip")) permission.RegisterPermission("vip", this);
+            if (!permission.PermissionExists("vip+")) permission.RegisterPermission("vip+", this);
+            if (!permission.PermissionExists("vip++")) permission.RegisterPermission("vip++", this);
             LoadVariables();
             InitializeKits();
         }
@@ -94,6 +97,7 @@ namespace Oxide.Plugins
             unknownKit = Convert.ToString(GetConfig("Messages", "unknownKit", "This kit doesn't exist"));
             kitredeemed = Convert.ToString(GetConfig("Messages", "kitredeemed", "You've redeemed a kit"));
             kitsreset = Convert.ToString(GetConfig("Messages", "kitsreset", "All kits data from players were deleted"));
+            shouldstrip = Convert.ToBoolean(GetConfig("Settings", "RemoveDefaultKit", "true"));
             if (Changed)
             {
                 SaveConfig();
@@ -112,10 +116,10 @@ namespace Oxide.Plugins
                 return true;
             return false;
         }
-        bool hasVip(NetUser netuser)
+        bool hasVip(NetUser netuser, string vipname)
         {
             if (netuser.CanAdmin()) return true;
-            return permission.UserHasPermission(netuser.playerClient.userID.ToString(), "vip");
+            return permission.UserHasPermission(netuser.playerClient.userID.ToString(), vipname);
         }
         public object GiveItem(Inventory inventory, string itemname, int amount, Inventory.Slot.Preference pref)
         {
@@ -129,7 +133,9 @@ namespace Oxide.Plugins
         {
             var kitEnum = KitsConfig.GetEnumerator();
             bool isadmin = hasAccess(netuser);
-            bool isvip = hasVip(netuser);
+            bool isvip = hasVip(netuser,"vip");
+            bool isvipp = hasVip(netuser,"vip+");
+            bool isvippp = hasVip(netuser, "vip++");
 
             while (kitEnum.MoveNext())
             {
@@ -159,6 +165,16 @@ namespace Oxide.Plugins
                     options = string.Format("{0} - {1}", options, "vip");
                     if (!isvip) continue;
                 }
+                if (kitdata.ContainsKey("vip+"))
+                {
+                    options = string.Format("{0} - {1}", options, "vip+");
+                    if (!isvipp) continue;
+                }
+                if (kitdata.ContainsKey("vip++"))
+                {
+                    options = string.Format("{0} - {1}", options, "vip++");
+                    if (!isvippp) continue;
+                }
                 SendReply(netuser, string.Format("{0} - {1} {2}", kitname, kitdescription, options));
             }
         }
@@ -178,6 +194,8 @@ namespace Oxide.Plugins
             string kitname = args[1].ToString();
             string description = args[2].ToString();
             bool vip = false;
+            bool vipp = false;
+            bool vippp = false;
             bool admin = false;
             int max = -1;
             double cooldown = 0.0;
@@ -188,7 +206,7 @@ namespace Oxide.Plugins
             }
             if (args.Length > 3)
             {
-                object validoptions = VerifyOptions(args, out admin, out vip, out max, out cooldown);
+                object validoptions = VerifyOptions(args, out admin, out vip, out vipp, out vippp, out max, out cooldown);
                 if (validoptions is string)
                 {
                     SendReply(netuser, (string)validoptions);
@@ -202,6 +220,10 @@ namespace Oxide.Plugins
                 newkit.Add("admin", true);
             if (vip)
                 newkit.Add("vip", true);
+            if (vipp)
+                newkit.Add("vip+", true);
+            if (vippp)
+                newkit.Add("vip++", true);
             if (max >= 0)
                 newkit.Add("max", max);
             if (cooldown > 0.0)
@@ -226,7 +248,7 @@ namespace Oxide.Plugins
                     Dictionary<string, object> newObject = new Dictionary<string, object>();
                     newObject.Add(item.datablock.name.ToString().ToLower(), item.datablock._splittable?(int)item.uses :1);
                     if (i>=0 && i<30)
-                        wearList.Add(newObject);
+                        mainList.Add(newObject);
                     else if(i>=30 && i < 36)
                         beltList.Add(newObject);
                     else
@@ -239,11 +261,13 @@ namespace Oxide.Plugins
             kitsitems.Add("belt", beltList);
             return kitsitems;
         }
-        object VerifyOptions(string[] args, out bool admin, out bool vip, out int max, out double cooldown)
+        object VerifyOptions(string[] args, out bool admin, out bool vip, out bool vipp, out bool vippp, out int max, out double cooldown)
         {
             max = -1;
             admin = false;
             vip = false;
+            vipp = false;
+            vippp = false;
             cooldown = 0.0;
             for (int i = 3; i < args.Length; i++)
             {
@@ -260,9 +284,17 @@ namespace Oxide.Plugins
                     if (!(double.TryParse(args[i].Substring(substring), out cooldown)))
                         return string.Format("Wrong Number Value for : {0}", args[i].ToString());
                 }
-                else if (args[i].StartsWith("-vip"))
+                else if (args[i] == "-vip")
                 {
                     vip = true;
+                }
+                else if (args[i] == "-vip+")
+                {
+                    vipp = true;
+                }
+                else if (args[i] == "-vip++")
+                {
+                    vippp = true;
                 }
                 else if (args[i].StartsWith("-admin"))
                 {
@@ -283,11 +315,17 @@ namespace Oxide.Plugins
         void OnPlayerSpawn(PlayerClient player, bool useCamp, RustProto.Avatar avatar)
         {
             if (KitsConfig["autokit"] == null) return;
+            if (avatar != null && avatar.HasPos && avatar.HasAng) return;
             object thereturn = Interface.GetMod().CallHook("canRedeemKit", new object[] { player.netUser });
             if (thereturn == null)
             {
-                timer.Once(0.01f, () => GiveKit(player.netUser, "autokit"));
+                timer.Once(0.01f, () => StripAndGiveKit(player.netUser, "autokit"));
             }
+        } 
+        void StripAndGiveKit(NetUser netuser, string kitname)
+        {
+            if(shouldstrip) netuser.playerClient.rootControllable.idMain.GetComponent<Inventory>().Clear();
+            GiveKit(netuser, kitname);
         }
         void cmdRemoveKit(NetUser netuser, string[] args)
         {
@@ -368,7 +406,19 @@ namespace Oxide.Plugins
                     return;
                 }
             if (kitdata.ContainsKey("vip"))
-                if (!hasVip(netuser))
+                if (!hasVip(netuser,"vip"))
+                {
+                    SendReply(netuser, cantUseKit);
+                    return;
+                }
+            if (kitdata.ContainsKey("vip+"))
+                if (!hasVip(netuser, "vip+"))
+                {
+                    SendReply(netuser, cantUseKit);
+                    return;
+                }
+            if (kitdata.ContainsKey("vip++"))
+                if (!hasVip(netuser, "vip++"))
                 {
                     SendReply(netuser, cantUseKit);
                     return;
