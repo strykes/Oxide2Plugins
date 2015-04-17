@@ -12,7 +12,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("PlayerDatabase", "Reneb", "1.0.1")]
+    [Info("PlayerDatabase", "Reneb", "1.0.2")]
     class PlayerDatabase : RustLegacyPlugin
     {
         private Core.Configuration.DynamicConfigFile Data;
@@ -50,10 +50,12 @@ namespace Oxide.Plugins
             {
                 currenttable = pair.Value as Dictionary<string, object>;
                 if (currenttable.ContainsKey("name"))
-                    if (currenttable["name"].ToString().ToLower().Contains("name"))
+                {
+                    if (currenttable["name"].ToString().ToLower().Contains(name))
                     {
                         returnlist.Add(pair.Key);
                     }
+                }
             }
             return returnlist.ToArray();
         }
