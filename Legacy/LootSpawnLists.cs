@@ -13,7 +13,7 @@ using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("LootSpawnLists", "Reneb from thomasfn", "1.0.0")]
+    [Info("LootSpawnLists", "Reneb from thomasfn", "2.0.1")]
     class LootSpawnLists : RustLegacyPlugin
     {
 
@@ -33,9 +33,6 @@ namespace Oxide.Plugins
         {
             CheckCfg<Dictionary<string, object>>("Spawnlists", ref SpawnLists);
             SaveConfig();
-        }
-        void OnServerInitialized()
-        {
             PatchNewSpawnlists();
         }
         static Dictionary<string, object> LoadDefaultSpawnlists()
