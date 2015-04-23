@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.4")]
+    [Info("Build", "Reneb", "1.0.9")]
     class Build : RustPlugin
     { 
         class BuildPlayer : MonoBehaviour
@@ -20,6 +20,7 @@ namespace Oxide.Plugins
             public string currentPrefab;
             public string currentType;
             public float currentHealth;
+            public Quaternion currentRotate;
             public BuildingGrade.Enum currentGrade;
             public bool ispressed;
             public float lastTickPress;
@@ -101,6 +102,8 @@ namespace Oxide.Plugins
         private static BuildingBlock fbuildingblock;
         private static BuildingBlock buildingblock;
         private static Item newItem;
+
+        private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
         /////////////////////////////////////////////////////
         ///  OXIDE HOOKS
         /////////////////////////////////////////////////////
@@ -210,9 +213,12 @@ namespace Oxide.Plugins
             // Floor to Floor sockets
             var FloortoFloor = new Dictionary<Vector3, Quaternion>();
             FloortoFloor.Add(new Vector3(0f, 0f, -3f), new Quaternion(0f, 1f, 0f, 0f));
-            FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+
+            //FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+            FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
             FloortoFloor.Add(new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            //FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
 
             // Floor to FloorTriangle sockets
             var FloortoFT = new Dictionary<Vector3, Quaternion>();
@@ -257,9 +263,9 @@ namespace Oxide.Plugins
 
             // Wall to Wall Floor sockets
             var WallToFloor = new Dictionary<Vector3, Quaternion>();
-            WallToFloor.Add(new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-            WallToFloor.Add(new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
+            WallToFloor.Add(new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
+            WallToFloor.Add(new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+             
             // Adding all informations from the Wall type into the main table
             // Note that you can't add blocks or supports on a wall
             WallType.Add(SocketType.Floor, WallToFloor);
@@ -328,7 +334,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         void InitializeBlocks()
         {
-            foreach (Construction construction in UnityEngine.Resources.FindObjectsOfTypeAll<Construction>())
+            foreach (Construction construction in PrefabAttribute.server.GetAll<Construction>())
             {
                     /*if (construction.name == "foundation.triangle")
                     {
@@ -341,9 +347,8 @@ namespace Oxide.Plugins
                         }
                         Puts("================");
                     }*/
-                Puts(construction.fullName);
-                nameToBlockPrefab.Add(construction.info.name.english, construction.fullName);
-            }
+                nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
+            } 
         }
 
         /////////////////////////////////////////////////////
@@ -442,7 +447,7 @@ namespace Oxide.Plugins
         }
 
         /////////////////////////////////////////////////////
-        ///  SpawnDeployable()
+        ///  SpawnStructure()
         ///  Function to spawn a block structure
         /////////////////////////////////////////////////////
         private static void SpawnStructure(string prefabname, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade, float health)
@@ -462,10 +467,11 @@ namespace Oxide.Plugins
             block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
             block.Spawn(true);
             block.SetGrade(grade);
-            if(health < 0f)
+            if(health <= 0f)
                 block.health = block.MaxHealth();
             else
                 block.health = health;
+            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
             
         }
 
@@ -510,6 +516,7 @@ namespace Oxide.Plugins
         private static void SetGrade(BuildingBlock block, BuildingGrade.Enum level)
         {
             block.SetGrade(level);
+            block.health = block.MaxHealth();
             block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
         }
 
@@ -566,6 +573,9 @@ namespace Oxide.Plugins
                 break;
                 case "erase":
                 DoErase(buildplayer, currentplayer, currentCollider);
+                break;
+                case "rotate":
+                    DoRotation(buildplayer, currentplayer, currentCollider);
                 break;
                 case "spawning":
                 DoSpawn(buildplayer, currentplayer, currentCollider);
@@ -649,6 +659,57 @@ namespace Oxide.Plugins
                             houseList.Add(fbuildingblock);
                             checkFrom.Add(fbuildingblock.transform.position);
                             SetGrade(fbuildingblock, buildplayer.currentGrade);
+                        }
+                    }
+                }
+            }
+        }
+        static void DoRotation(BuildingBlock block, Quaternion defaultRotation)
+        {
+            if (block.blockDefinition == null) return;
+            UnityEngine.Transform transform = block.transform;
+            if (defaultRotation == defaultQuaternion)
+                transform.localRotation *= Quaternion.Euler(block.blockDefinition.rotationAmount);
+            else
+                transform.localRotation *= defaultRotation;
+            block.ClientRPC(null, "UpdateConditionalModels", new object[0]);
+            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+        }
+        private static void DoRotation(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
+        {
+            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            if (buildingblock == null)
+            {
+                return;
+            }
+            DoRotation(buildingblock, buildplayer.currentRotate);
+            if (buildplayer.selection == "select")
+            {
+                return;
+            }
+
+            houseList = new List<object>();
+            checkFrom = new List<Vector3>();
+            houseList.Add(buildingblock);
+            checkFrom.Add(buildingblock.transform.position);
+
+            int current = 0;
+            while (true)
+            {
+                current++;
+                if (current > checkFrom.Count)
+                    break;
+                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                foreach (var hit in hits)
+                {
+                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    {
+                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
+                        if (!(houseList.Contains(fbuildingblock)))
+                        {
+                            houseList.Add(fbuildingblock);
+                            checkFrom.Add(fbuildingblock.transform.position);
+                            DoRotation(fbuildingblock, buildplayer.currentRotate);
                         }
                     }
                 }
@@ -1112,6 +1173,23 @@ namespace Oxide.Plugins
 
             SendReply(player, string.Format("Building Tool Heal for: {0}", buildplayer.selection));
         }
+        [ChatCommand("buildrotate")]
+        void cmdChatBuilRotate(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) return;
+            BuildPlayer buildplayer = GetBuildPlayer(player);
+
+            buildplayer.currentType = "rotate";
+            buildplayer.selection = "select";
+            float rotate = 0f;
+            
+            if (args.Length > 0) float.TryParse(args[0], out rotate);
+            if (args.Length > 1)
+                if (args[1] == "all")
+                    buildplayer.selection = "all";
+            buildplayer.currentRotate = Quaternion.Euler(0f, rotate, 0f);
+            SendReply(player, string.Format("Building Tool Rotation for: {0}", buildplayer.selection));
+        }
         [ChatCommand("buildhelp")]
         void cmdChatBuildhelp(BasePlayer player, string command, string[] args)
         {
@@ -1137,6 +1215,7 @@ namespace Oxide.Plugins
                 SendReply(player, "======== Commands ========");
                 SendReply(player, "/build StructureName Optional:HeightAdjust(can be negative, 0 default) Optional:Grade Optional:Health");
                 SendReply(player, "/buildup StructureName Optional:HeightAdjust(can be negative, 3 default) Optional:Grave Optional:Health");
+                SendReply(player, "/buildrotate");
                 SendReply(player, "======== Usage ========");
                 SendReply(player, "/build foundation => build a Twigs Foundation");
                 SendReply(player, "/build foundation 0 2 => build a Stone Foundation");
