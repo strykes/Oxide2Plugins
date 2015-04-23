@@ -12,13 +12,14 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PathFinding", "Reneb", "0.0.2")]
+    [Info("PathFinding", "Reneb", "0.0.6")]
     class PathFinding : RustPlugin
-    {
+    { 
         public class Pathfinder
         {
             public SortedList<float, List<PathfindNode>> SortNode;
             public Hash<Vector3, PathfindNode> NodeList;
+            public Hash<Vector3, bool> ClosedList;
             public List<PathfindNode> RunDetection;
 
             public PathfindNode targetNode;
@@ -26,24 +27,24 @@ namespace Oxide.Plugins
             public float currentPriority;
 
             public int Loops;
-            public int MaxLoops = 1000;
 
             public bool shouldBreak;
-
+             
             public Pathfinder()
             {
                 SortNode = new SortedList<float, List<PathfindNode>>();
                 NodeList = new Hash<Vector3, PathfindNode>();
                 RunDetection = new List<PathfindNode>();
+                ClosedList = new Hash<Vector3, bool>();
             }
             public List<Vector3> FindPath(Vector3 sourcePos, Vector3 targetPos)
             {
                 Reset();
                 this.targetNode = new PathfindNode(this);
-                PathfindGoal(this, this.targetNode, new Vector3(Mathf.Floor(targetPos.x), Mathf.Ceil(targetPos.y), Mathf.Floor(targetPos.z)));
+                PathfindGoal(this, this.targetNode, targetPos);
                 PathfindFirst(this, new PathfindNode(this), sourcePos);
-
-                while (true)
+                 
+                while (true) 
                 {
                     currentPriority = SortNode.Keys[0];
                     foreach (PathfindNode pathnode in (SortNode[currentPriority]))
@@ -59,7 +60,7 @@ namespace Oxide.Plugins
                     if (Loops > MaxLoops) { Reset(); return null; }
                     if (shouldBreak) break;
                 }
-
+                
                 PathfindNode parentnode = targetNode.parentNode;
                 List<Vector3> PlayerPath = new List<Vector3>();
                 while (true)
@@ -69,6 +70,7 @@ namespace Oxide.Plugins
                     if (parentnode == null) break;
                 }
                 PlayerPath.Reverse();
+                PlayerPath.RemoveAt(0);
                 Reset();
                 return PlayerPath;
             }
@@ -138,23 +140,31 @@ namespace Oxide.Plugins
             // This automatically creates the surrounding pathnodes
             public void DetectAdjacentNodes()
             {
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForward, blockLayer))
-                    north = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForward, false);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorRight, blockLayer))
-                    east = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorRight, false);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBack, blockLayer))
-                    south = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBack, false);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorLeft, blockLayer))
-                    west = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorLeft, false);
+                if(!pathfinder.ClosedList[this.positionEyes + VectorForward])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForward, blockLayer))
+                        north = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForward, false);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorRight])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorRight, blockLayer))
+                        east = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorRight, false);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorBack])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBack, blockLayer))
+                        south = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBack, false);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorLeft])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorLeft, blockLayer))
+                        west = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorLeft, false);
 
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardRight, blockLayer))
-                    northeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardRight, true);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardLeft, blockLayer))
-                    northwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardLeft, true);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackLeft, blockLayer))
+                if (!pathfinder.ClosedList[this.positionEyes + VectorForwardRight])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardRight, blockLayer))
+                        northeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardRight, true);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorForwardLeft])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardLeft, blockLayer))
+                        northwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardLeft, true);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorBackLeft])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackLeft, blockLayer))
                     southeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackLeft, true);
-                if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackRight, blockLayer))
-                    southwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackRight, true);
+                if (!pathfinder.ClosedList[this.positionEyes + VectorBackRight])
+                    if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackRight, blockLayer))
+                     southwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackRight, true);
             }
         }
         // Here we calculate the movement cost between 2 points.
@@ -166,6 +176,7 @@ namespace Oxide.Plugins
         // Create a new node or get the node information
         public static PathfindNode FindPathNodeOrCreate(Pathfinder pathfinder, PathfindNode parentnode, Vector3 position, bool diagonal)
         {
+            pathfinder.ClosedList[position] = true;
             if (!FindGroundPosition(position, out GroundPosition, out FixedGroundPosition)) return null;
             if (pathfinder.NodeList[FixedGroundPosition] == null) pathfinder.NodeList[FixedGroundPosition] = new PathfindNode(pathfinder, parentnode, GroundPosition, diagonal);
             else if (pathfinder.NodeList[FixedGroundPosition].isGoal) { pathfinder.targetNode.parentNode = parentnode; parentnode.isGoal = true; }
@@ -198,7 +209,7 @@ namespace Oxide.Plugins
             groundPos = sourcePos;
             if (Physics.Raycast(sourcePos, Vector3UP, out hitinfo, groundLayer))
             {
-                groundPos.y = Mathf.Ceil(hitinfo.point.y);
+                groundPos.y = hitinfo.point.y;
                 return true;
             }
             return false;
@@ -208,11 +219,11 @@ namespace Oxide.Plugins
 
         public static void PathfindFirst(Pathfinder pathfinder, PathfindNode pathfindnode, Vector3 position)
         {
-            pathfindnode.position = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y), Mathf.Floor(position.z));
-            pathfindnode.positionEyes = pathfindnode.position + new Vector3(0f, 0.5f, 0f);
+            pathfindnode.position = position;
+            pathfindnode.positionEyes = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y) + 0.5f, Mathf.Floor(position.z));
             pathfindnode.H = 0;
-            CalculateManhattanDistance(pathfindnode, pathfinder.targetNode);
-            pathfindnode.F = pathfindnode.H + pathfindnode.G;
+            pathfindnode.G = 0;
+            pathfindnode.F = 0;
             pathfinder.AddToPriorityList(pathfindnode);
         }
 
@@ -223,9 +234,8 @@ namespace Oxide.Plugins
         {
             pathfindnode.position = position;
             pathfindnode.positionEyes = new Vector3(Mathf.Floor(position.x), Mathf.Ceil(position.y) + 0.5f, Mathf.Floor(position.z));
-
             pathfindnode.isGoal = true;
-            pathfinder.NodeList[pathfindnode.position] = pathfindnode;
+            pathfinder.NodeList[pathfindnode.positionEyes - EyesPosition] = pathfindnode;
         }
 
         class PathFollower : MonoBehaviour
@@ -259,7 +269,7 @@ namespace Oxide.Plugins
                     waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                     nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
                     entity.transform.position = nextPos; 
-                    if (player != null) player.ClientRPC(null, player, "ForcePositionTo", nextPos);
+                    if (player != null) player.ClientRPCPlayer(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
                 }
             } 
@@ -271,6 +281,7 @@ namespace Oxide.Plugins
 
             public void SetMovementPoint(Vector3 endpos, float s)
             {
+                
                 StartPos = entity.transform.position;
                 if (endpos != StartPos) {
                     EndPos = endpos;
@@ -283,11 +294,6 @@ namespace Oxide.Plugins
                 Paths.RemoveAt(0);
             }
             void FixedUpdate() { Move(); }
-        }
-        static float GetPlayerGround(Vector3 position)
-        {
-            if (Physics.Raycast(position + jumpPosition, Vector3Down, out hitinfo, 3f, groundLayer)) return hitinfo.point.y;
-            return position.y - 1.5f;
         }
         static void SetViewAngle(BasePlayer player, Quaternion ViewAngles)
         {
@@ -326,6 +332,27 @@ namespace Oxide.Plugins
 
         private Oxide.Plugins.Timer PathfindingTimer;
 
+
+
+        private static int MaxLoops = 500;
+
+        void LoadDefaultConfig() { }
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+
+        void Init()
+        {
+            CheckCfg<int>("Max Loops", ref MaxLoops);
+            SaveConfig();
+        }
+
+
         ///////////////////////////////////////////// 
         /// OXIDE HOOKS
         ///////////////////////////////////////////// 
@@ -354,7 +381,9 @@ namespace Oxide.Plugins
         
         bool FindAndFollowPath(BaseEntity entity, Vector3 sourcePosition, Vector3 targetPosition)
         {
+            //var curtime = Time.realtimeSinceStartup;
             var bestPath = FindBestPath(sourcePosition, targetPosition);
+            //Debug.Log((Time.realtimeSinceStartup - curtime).ToString());
             if (bestPath == null) return false;
             FollowPath(entity, bestPath);
             return true;
@@ -399,6 +428,7 @@ namespace Oxide.Plugins
                 if (Physics.Linecast(StraightPath[i - 1f] + jumpPosition, GroundPosition + jumpPosition, blockLayer)) return null;
                 StraightPath[i] = GroundPosition;
             }
+            if (Physics.Linecast(StraightPath[distance - 1f] + jumpPosition, targetPosition + jumpPosition, blockLayer)) return null;
             StraightPath[distance] = targetPosition;
             StraightPath.Remove(0f);
             
