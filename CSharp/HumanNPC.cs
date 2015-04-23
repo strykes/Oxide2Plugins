@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.1", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.9", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
          
@@ -31,11 +31,12 @@ namespace Oxide.Plugins
         private static int blockshootLayer;
 
         StoredData storedData;
-        static Hash<string, Waypoint> waypoints = new Hash<string, Waypoint>();
         Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
 
         [PluginReference]
         Plugin Kits;
+        [PluginReference]
+        Plugin Waypoints;
         [PluginReference]
         public static Plugin PathFinding;
 
@@ -88,7 +89,7 @@ namespace Oxide.Plugins
             {
                 speed = Convert.ToSingle(s);
                 return speed;
-            }
+            } 
         }
 
         ////////////////////////////////////////////////////// 
@@ -151,24 +152,6 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
-        ///  class Waypoint
-        ///  Waypoint List information
-        //////////////////////////////////////////////////////
-        class Waypoint
-        {
-            public string Name;
-            public List<WaypointInfo> Waypoints;
-
-            public Waypoint()
-            {
-                Waypoints = new List<WaypointInfo>();
-            }
-            public void AddWaypoint(Vector3 position, float speed)
-            {
-                Waypoints.Add(new WaypointInfo(position, speed));
-            }
-        }
 
         ////////////////////////////////////////////////////// 
         ///  class HumanTrigger
@@ -264,14 +247,26 @@ namespace Oxide.Plugins
             void Awake()
             {
                 npc = GetComponent<HumanPlayer>();
-                cachedWaypoints = GetWayPoints(npc.info.waypoint);
+                var cwaypoints = Interface.CallHook("GetWaypointsList", npc.info.waypoint);
+                if(cwaypoints == null)
+                    cachedWaypoints = null;
+                else 
+                {
+                    cachedWaypoints = new List<WaypointInfo>();
+                    foreach (var cwaypoint in (List<object>)cwaypoints)
+                    {
+                        foreach (KeyValuePair<Vector3, float> pair in (Dictionary<Vector3, float>)cwaypoint)
+                        {
+                            cachedWaypoints.Add(new WaypointInfo(pair.Key, pair.Value));
+                        }
+                    }
+                }
                 attackDistance = float.Parse(npc.info.attackDistance);
                 maxDistance = float.Parse(npc.info.maxDistance);
                 damageDistance = float.Parse(npc.info.damageDistance);
                 damageInterval = float.Parse(npc.info.damageInterval);
                 damageAmount = float.Parse(npc.info.damageAmount);
                 speed = float.Parse(npc.info.speed);
-                if (cachedWaypoints == null || cachedWaypoints.Count == 0) enabled = false;
             }
             void FixedUpdate()
             {
@@ -281,7 +276,7 @@ namespace Oxide.Plugins
             {
                 if (npc.player.IsWounded()) return;
                 if(attackEntity != null) MoveOrAttack(attackEntity);
-                else if(secondsTaken == 0f) GetNextPath();
+                else if (secondsTaken == 0f) GetNextPath();
                 if (StartPos != EndPos) Execute_Move();
                 if (waypointDone >= 1f) secondsTaken = 0f;
             }
@@ -292,36 +287,39 @@ namespace Oxide.Plugins
                 waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                 nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
                 npc.player.transform.position = nextPos;
-                npc.player.SendNetworkUpdate(BasePlayer.NetworkQueue.Positional);
+                npc.player.TransformChanged();
             }
             void GetNextPath()
             {
+                if (npc == null) npc = GetComponent<HumanPlayer>();
                 LastPos = Vector3.zero;
                 shouldMove = true;
-                if (cachedWaypoints == null) { enabled = false; return; }
-                Interface.CallHook("OnNPCPosition", npc.player, npc.player.transform.position);
+                if (cachedWaypoints == null) { shouldMove = false; return; }
+                Interface.CallHook("OnNPCPosition", npc.player, npc.player.transform.position); 
                 if (currentWaypoint +1 >= cachedWaypoints.Count)
                     currentWaypoint = -1;
                 currentWaypoint++;
                 SetMovementPoint(npc.player.transform.position, cachedWaypoints[currentWaypoint].GetPosition(), cachedWaypoints[currentWaypoint].GetSpeed());
-                if (StartPos == EndPos) { enabled = false; Debug.Log(string.Format("HumanNPC: Wrong Waypoints, 2 waypoints are on the same spot or NPC is spawning on his first waypoint. Deactivating the NPC {0}", npc.player.userID.ToString())); return; }
-            }
+                if (npc.player.transform.position == cachedWaypoints[currentWaypoint].GetPosition()) { npc.DisableMove(); npc.Invoke("AllowMove", cachedWaypoints[currentWaypoint].GetSpeed()); return; }
+            } 
             public void SetMovementPoint(Vector3 startpos, Vector3 endpos, float s)
-            { 
+            {  
                 StartPos = startpos;
                 EndPos = endpos;
-                secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
-                LookTowards(npc.player, EndPos);
-                secondsTaken = 0f;
-                waypointDone = 0f;
+                if (StartPos != EndPos)
+                    secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
+                    LookTowards(npc.player, EndPos);
+                    secondsTaken = 0f;
+                    waypointDone = 0f;
             }
             void MoveOrAttack(BaseEntity entity)
             {
+                
                 c_attackDistance = Vector3.Distance(entity.transform.position, npc.player.transform.position);
                 shouldMove = false;
                 if (((BaseCombatEntity)entity).IsAlive() && c_attackDistance < attackDistance && Vector3.Distance(LastPos, npc.player.transform.position) < maxDistance && noPath < 5)
                 {
-                    if (waypointDone >= 1f) {
+                    if (waypointDone >= 1f) { 
                         if (pathFinding != null && pathFinding.Count > 0) pathFinding.RemoveAt(0);
                         waypointDone = 0f;
                     }
@@ -333,32 +331,40 @@ namespace Oxide.Plugins
                     }
                     if (pathFinding == null || pathFinding.Count < 1) return;
                     shouldMove = true;
-                    if (waypointDone == 0f) SetMovementPoint(npc.player.transform.position, pathFinding[0], speed);
+                    if (waypointDone == 0f) SetMovementPoint(npc.player.transform.position, pathFinding[0], speed*2);
                 }
                 else
                     npc.EndAttackingEntity();
             }
             public void PathFinding()
             {
+                if (IsInvoking("PathFinding")) { CancelInvoke("PathFinding");}
+                
                 temppathFinding = (List<Vector3>)Interface.CallHook("FindBestPath", npc.player.transform.position, attackEntity.transform.position);
+                
                 if (temppathFinding == null)
                 {
                     if (pathFinding == null || pathFinding.Count == 0)
                         noPath++;
-                    else noPath = 0; 
+                    else noPath = 0;
+                    Invoke("PathFinding", 2);
                 }
                 else
                 {
                     noPath = 0;
                     pathFinding = temppathFinding;
                     waypointDone = 0f;
+                    Invoke("PathFinding", pathFinding.Count/speed);
                 }
             }  
             
             public void GetBackToLastPos()
             {
-                SetMovementPoint(npc.player.transform.position, LastPos, 7f);
-                secondsTaken = 0.01f;
+                if (npc.player.transform.position != LastPos)
+                {
+                    SetMovementPoint(npc.player.transform.position, LastPos, 7f);
+                    secondsTaken = 0.01f;
+                }
             } 
             public void Enable() { this.enabled = true; }
             public void Disable() { this.enabled = false; }
@@ -412,12 +418,11 @@ namespace Oxide.Plugins
 
                 locomotion = player.gameObject.AddComponent<HumanLocomotion>();
                 trigger = player.gameObject.AddComponent<HumanTrigger>();
-
                 enabled = true;
                 lastMessage = Time.realtimeSinceStartup;
             }
-            void AllowMove() { locomotion.Enable(); }
-            void DisableMove() { locomotion.Disable(); } 
+            public void AllowMove() { locomotion.Enable(); }
+            public void DisableMove() { locomotion.Disable(); } 
             public void TemporaryDisableMove(float thetime = -1f)
             {
                 if (thetime == -1f) thetime = stopandtalkSeconds;
@@ -430,7 +435,7 @@ namespace Oxide.Plugins
                 if (locomotion.IsInvoking("PathFinding")) locomotion.CancelInvoke("PathFinding");
                 locomotion.noPath = 0;
                 locomotion.shouldMove = true;
-                
+                Debug.Log("end");
                 Interface.CallHook("OnNPCStopTarget", player, locomotion.attackEntity);
                 locomotion.attackEntity = null;
                 player.health = float.Parse(info.health);
@@ -438,13 +443,18 @@ namespace Oxide.Plugins
             }
             public void StartAttackingEntity(BaseEntity entity)
             {
+                
                 if (Interface.CallHook("OnNPCStartTarget", player, entity) == null)
                 {
+                    
                     locomotion.attackEntity = entity;
                     locomotion.pathFinding = null;
                     locomotion.temppathFinding = null;
+                    
                     if (locomotion.LastPos == Vector3.zero) locomotion.LastPos = player.transform.position;
-                    locomotion.InvokeRepeating("PathFinding", 0, 1);
+                    if(IsInvoking("AllowMove")) { CancelInvoke("AllowMove"); AllowMove(); }
+                    locomotion.Invoke("PathFinding", 0);
+                    
                 }
             }
             void OnDestroy()
@@ -543,14 +553,6 @@ namespace Oxide.Plugins
             }
         }
 
-        class WaypointEditor : MonoBehaviour
-        {
-            public Waypoint targetWaypoint;
-
-            void Awake()
-            {
-            }
-        }
         class NPCEditor : MonoBehaviour
         {
             public BasePlayer player;
@@ -563,13 +565,44 @@ namespace Oxide.Plugins
 
         class StoredData
         {
-            public HashSet<Waypoint> WayPoints = new HashSet<Waypoint>();
             public HashSet<HumanNPCInfo> HumanNPCs = new HashSet<HumanNPCInfo>();
 
             public StoredData()
             {
             }
         }
+
+        private static Dictionary<string, object> weaponToFX = DefaultWeaponToFx();
+
+        void LoadDefaultConfig() { }
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+
+        void Init()
+        {
+            CheckCfg<Dictionary<string, object>>("Weapon To FX", ref weaponToFX);
+            SaveConfig();
+        }
+
+        static Dictionary<string, object> DefaultWeaponToFx()
+        {
+            var defaultfx = new Dictionary<string, object>();
+            defaultfx.Add("shotgun_waterpipe","fx/weapons/vm_waterpipe_shotgun/attack");
+            defaultfx.Add("shotgun_pump", "fx/weapons/vm_waterpipe_shotgun/attack");
+            defaultfx.Add("smg_thompson", "fx/weapons/vm_thompson/attack");
+            defaultfx.Add("rifle_ak", "fx/weapons/vm_ak47u/attack");
+            defaultfx.Add("rifle_bolt", "fx/weapons/vm_bolt_rifle/attack");
+            defaultfx.Add("pistol_revolver", "fx/weapons/vm_revolver/attack");
+            defaultfx.Add("pistol_eoka", "fx/weapons/vm_eoka_pistol/attack");
+            return defaultfx;
+        }
+
         static float GetGroundY(Vector3 position)
         {
             position = position + jumpPosition;
@@ -598,11 +631,7 @@ namespace Oxide.Plugins
         }
         void Unload()
         {
-            var objects = GameObject.FindObjectsOfType(typeof(WaypointEditor));
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
-            objects = GameObject.FindObjectsOfType(typeof(HumanPlayer));
+            var objects = GameObject.FindObjectsOfType(typeof(HumanPlayer));
             if (objects != null)
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
@@ -620,7 +649,7 @@ namespace Oxide.Plugins
         }
         void LoadData()
         {
-            waypoints.Clear();
+            humannpcs.Clear();
             try
             {
                 storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("HumanNPC");
@@ -629,11 +658,21 @@ namespace Oxide.Plugins
             {
                 storedData = new StoredData();
             }
-            foreach (var thewaypoint in storedData.WayPoints)
-                waypoints[thewaypoint.Name] = thewaypoint;
             foreach (var thenpc in storedData.HumanNPCs)
                 humannpcs[thenpc.userid] = thenpc;
         }
+
+
+
+
+
+
+
+
+
+
+
+
         ////////////////////////////////////////////////////// 
         ///  Oxide Hooks
         //////////////////////////////////////////////////////
@@ -681,8 +720,10 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         {
+            
             if (entity.GetComponent<HumanPlayer>() != null)
             {
+                
                 Interface.CallHook("OnHitNPC", entity.GetComponent<BaseCombatEntity>(), hitinfo);
                 if (entity.GetComponent<HumanPlayer>().invulnerability)
                 {
@@ -755,7 +796,20 @@ namespace Oxide.Plugins
                 PointEnd = target.transform.position
             };
             target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver);
+            PlayAttack(loc.npc.player.svActiveItem, loc.npc.player.transform.position, (target.transform.position - loc.npc.player.transform.position).normalized);
             loc.npc.player.SignalBroadcast(BaseEntity.Signal.Attack, null);
+        }
+        static void PlayAttack(Item attackitem, Vector3 source, Vector3 dir)
+        {
+            if(attackitem != null)
+            {
+                if (weaponToFX.ContainsKey(attackitem.info.shortname))
+                {
+                    Effect effect = new Effect(weaponToFX[attackitem.info.shortname].ToString(), source, dir);
+                    EffectNetwork.Send(effect);
+                }
+            }
+            
         }
         static void SetViewAngle(BasePlayer player, Quaternion ViewAngles)
         {
@@ -808,19 +862,6 @@ namespace Oxide.Plugins
             if (player.net.connection.authLevel < 1) { SendReply(player, "You don't have access to this command"); return false; }
             return true;
         }
-        bool isEditingWP(BasePlayer player, int ttype)
-        {
-            if (player.GetComponent<WaypointEditor>() != null)
-            {
-                if (ttype == 0) SendReply(player, string.Format("You are already editing {0}", player.GetComponent<WaypointEditor>().targetWaypoint.Name.ToString()));
-                return true;
-            }
-            else
-            {
-                if (ttype == 1) SendReply(player, string.Format("You are not editing any waypoints, say /waypoints_new or /waypoints_edit NAME"));
-                return false;
-            }
-        }
         bool hasNoArguments(BasePlayer player, string[] args, int Number)
         {
             if (args.Length < Number) { SendReply(player, "Not enough Arguments"); return true; }
@@ -865,8 +906,6 @@ namespace Oxide.Plugins
         string GetRandomMessage(List<string> messagelist) { return messagelist[GetRandom(0, messagelist.Count)]; }
         int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
 
-
-        static List<WaypointInfo> GetWayPoints(string name) => waypoints[name]?.Waypoints;
 
         List<string> ListFromArgs(string[] args, int from)
         {
@@ -1100,7 +1139,7 @@ namespace Oxide.Plugins
                         return;
                     }
                     if (args[1] == "reset") npceditor.targetNPC.info.waypoint = "";
-                    else if (waypoints[args[1]] == null) { SendReply(player, "This waypoint doesn't exist"); return; }
+                    else if (Interface.CallHook("GetWaypointsList",args[1]) == null) { SendReply(player, "This waypoint doesn't exist"); return; }
                     else npceditor.targetNPC.info.waypoint = args[1];
                     break;
                 case "kit":
@@ -1199,7 +1238,10 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
             var npceditor = player.GetComponent<NPCEditor>();
+            var curtime = Time.realtimeSinceStartup;
+            //List<Vector3> vector3list = (List<Vector3>)Interface.CallHook("FindBestPath", npceditor.targetNPC.player.transform.position, closestHitpoint);
             Interface.CallHook("FindAndFollowPath", npceditor.targetNPC.player, npceditor.targetNPC.player.transform.position, closestHitpoint);
+            Debug.Log((Time.realtimeSinceStartup - curtime).ToString());
         }
         [ChatCommand("npc_remove")]
         void cmdChatNPCRemove(BasePlayer player, string command, string[] args)
@@ -1243,95 +1285,6 @@ namespace Oxide.Plugins
             OnServerInitialized();
         }
 
-        ////////////////////////////////////////////////////// 
-        // Waypoints manager
-        ////////////////////////////////////////////////////// 
-
-        [ChatCommand("waypoints_new")]
-        void cmdWaypointsNew(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (isEditingWP(player, 0)) return;
-
-            var newWaypoint = new Waypoint();
-            if (newWaypoint == null)
-            {
-                SendReply(player, "Waypoints: Something went wrong while making a new waypoint");
-                return;
-            }
-            var newWaypointEditor = player.gameObject.AddComponent<WaypointEditor>();
-            newWaypointEditor.targetWaypoint = newWaypoint;
-            SendReply(player, "Waypoints: New WaypointList created, you may now add waypoints.");
-        }
-        [ChatCommand("waypoints_add")]
-        void cmdWaypointsAdd(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (!isEditingWP(player, 1)) return;
-            var WaypointEditor = player.GetComponent<WaypointEditor>();
-            if (WaypointEditor.targetWaypoint == null)
-            {
-                SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
-                return;
-            }
-            float speed = 3f;
-            if (args.Length > 0) float.TryParse(args[0], out speed);
-            WaypointEditor.targetWaypoint.AddWaypoint(player.transform.position, speed);
-
-            SendReply(player, string.Format("Waypoint Added: {0} {1} {2} - Speed: {3}", player.transform.position.x.ToString(), player.transform.position.y.ToString(), player.transform.position.z.ToString(), speed.ToString()));
-        }
-        [ChatCommand("waypoints_list")]
-        void cmdWaypointsList(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (waypoints.Count == 0)
-            {
-                SendReply(player, "No waypoints created yet");
-                return;
-            }
-            SendReply(player, "==== Waypoints ====");
-            foreach (KeyValuePair<string, Waypoint> pair in waypoints)
-            {
-                SendReply(player, pair.Key);
-            }
-
-        }
-        [ChatCommand("waypoints_save")]
-        void cmdWaypointsSave(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (!isEditingWP(player, 1)) return;
-            if (args.Length == 0)
-            {
-                SendReply(player, "Waypoints: /waypoints_save NAMEOFWAYPOINT");
-                return;
-            }
-            var WaypointEditor = player.GetComponent<WaypointEditor>();
-            if (WaypointEditor.targetWaypoint == null)
-            {
-                SendReply(player, "Waypoints: Something went wrong while getting your WaypointList");
-                return;
-            }
-
-            WaypointEditor.targetWaypoint.Name = args[0];
-
-            if (waypoints[args[0]] != null) storedData.WayPoints.Remove(waypoints[args[0]]);
-            waypoints[args[0]] = WaypointEditor.targetWaypoint;
-            storedData.WayPoints.Add(waypoints[args[0]]);
-            SendReply(player, string.Format("Waypoints: New waypoint saved with: {0} with {1} waypoints stored", WaypointEditor.targetWaypoint.Name, WaypointEditor.targetWaypoint.Waypoints.Count.ToString()));
-            GameObject.Destroy(player.GetComponent<WaypointEditor>());
-            SaveData();
-        }
-        [ChatCommand("waypoints_close")]
-        void cmdWaypointsClose(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (!isEditingWP(player, 1)) return;
-            SendReply(player, "Waypoints: Closed without saving");
-            GameObject.Destroy(player.GetComponent<WaypointEditor>());
-        }
-
-
         void SendMessage(HumanPlayer npc, BasePlayer target, string message)
         {
             if (Time.realtimeSinceStartup > npc.lastMessage + 0.1f)
@@ -1351,6 +1304,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         void OnHitNPC(BasePlayer npc, HitInfo hinfo)
         {
+            
             npc.GetComponent<HumanPlayer>().StartAttackingEntity(hinfo.Initiator);
             if (npc.GetComponent<HumanPlayer>().info.message_hurt != null && npc.GetComponent<HumanPlayer>().info.message_hurt.Count != 0)
                 if (hinfo.Initiator != null)
@@ -1379,7 +1333,7 @@ namespace Oxide.Plugins
         {
             if(npc.GetComponent<HumanPlayer>().hostile)
                 if(npc.GetComponent<HumanPlayer>().locomotion.attackEntity == null)
-                    if(player.net.connection.authLevel < 1)
+                    if(player.net.connection != null && player.net.connection.authLevel < 1)
                         npc.GetComponent<HumanPlayer>().StartAttackingEntity(player);
             if (npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hello));
