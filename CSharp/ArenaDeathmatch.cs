@@ -16,8 +16,7 @@ namespace Oxide.Plugins
     	////////////////////////////////////////////////////////////
     	// Setting all fields //////////////////////////////////////
     	////////////////////////////////////////////////////////////
-        private Core.Libraries.Plugins loadedPlugins;
-        private Core.Plugins.Plugin eventPlugin;
+        [PluginReference] Plugin EventManager;
         
         private bool launched;
         private bool useThisEvent;
@@ -27,9 +26,7 @@ namespace Oxide.Plugins
         private string EventName; 
         private string EventSpawnFile;
         
-        private int DefaultKit;
-        
-        private Dictionary<string, object> CurrentKit;
+        private string DefaultKit;
         
         private List<DeathmatchPlayer> DeathmatchPlayers;
         
@@ -44,7 +41,7 @@ namespace Oxide.Plugins
             void Awake()
             {
                 player = GetComponent<BasePlayer>();
-                enabled = true;
+                enabled = false;
                 kills = 0;
             }
         }
@@ -58,19 +55,17 @@ namespace Oxide.Plugins
             launched = false;
             useThisEvent = false;
             EventStarted = false;
-            loadedPlugins = Interface.GetMod().GetLibrary<Core.Libraries.Plugins>("Plugins");
             DeathmatchPlayers = new List<DeathmatchPlayer>();
         }
         void OnServerInitialized()
         {
-            eventPlugin = loadedPlugins.Find("EventManager");
-            if (eventPlugin == null)
+            if (EventManager == null)
             {
                 Puts("Event plugin doesn't exist");
                 return;
             }
 			LoadVariables();
-            var success = eventPlugin.CallHook("RegisterEventGame", new object[] { EventName });
+            var success = EventManager.Call("RegisterEventGame", new object[] { EventName });
             if (success == null)
             {
                 Puts("Event plugin doesn't exist");
@@ -88,7 +83,7 @@ namespace Oxide.Plugins
         {
             if (useThisEvent && EventStarted)
             {
-                eventPlugin.CallHook("EndEvent", new object[] { });
+                EventManager.Call("EndEvent", new object[] { });
 				var objects = GameObject.FindObjectsOfType(typeof(DeathmatchPlayer));
 				if (objects != null)
 					foreach (var gameObj in objects)
@@ -99,35 +94,14 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
     	// Configurations ////////////////////////////////////////////////////////////////////
     	//////////////////////////////////////////////////////////////////////////////////////
-    	private void CreateDefaultKit()
-    	{
-    		var Kits = new List<object>();
-            var kit1 = new Dictionary<string, object>();
-            var main1 = new Dictionary<string, object>();
-            main1.Add("ammo_rifle", 250);
-            var belt1 = new Dictionary<string, object>();
-            belt1.Add("rifle_bolt", 1);
-            belt1.Add("bandage", 2);
-            belt1.Add("syringe_medical", 2);
-            var wear1 = new Dictionary<string, object>();
-            wear1.Add("urban_boots", 1);
-            wear1.Add("urban_jacket", 1);
-            wear1.Add("urban_pants", 1);
-            wear1.Add("burlap_gloves", 1);
-            kit1.Add("main", main1);
-            kit1.Add("belt", belt1);
-            kit1.Add("wear", wear1);
-            Kits.Add(kit1);
-    		Config["Kits"] = Kits;
-    		Changed = true;
-    	}
+
         private void LoadVariables()
         {
-            if(Config["Kits"] == null) CreateDefaultKit();
-            DefaultKit = Convert.ToInt32(GetConfig("Default", "Kit", 1));
+            DefaultKit = Convert.ToString(GetConfig("Default", "Kit", "deathmatch"));
             EventName = Convert.ToString(GetConfig("Settings", "EventName", "Deathmatch"));
             EventSpawnFile = Convert.ToString(GetConfig("Settings", "EventSpawnFile", "DeathmatchSpawnfile"));
             
+            CurrentKit = DefaultKit;
             if (Changed)
             {
                 SaveConfig();
@@ -162,7 +136,7 @@ namespace Oxide.Plugins
             {
                 useThisEvent = true;
                 if(EventSpawnFile != null && EventSpawnFile != "")
-                    eventPlugin.CallHook("SelectSpawnfile", new object[] { EventSpawnFile });
+                    EventManager.Call("SelectSpawnfile", new object[] { EventSpawnFile });
             }
             else
                 useThisEvent = false;
@@ -172,7 +146,7 @@ namespace Oxide.Plugins
             if (useThisEvent && EventStarted)
             {
                 player.inventory.Strip();
-                eventPlugin.CallHook("GivePlayerKit", new object[] { player, CurrentKit });
+                EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
             } 
         }
         object OnSelectSpawnFile(string name)
@@ -188,12 +162,7 @@ namespace Oxide.Plugins
         {
             if (useThisEvent)
             {
-                var Kits = Config["Kits"] as List<object>;
-                if ((DefaultKit-1) >= Kits.Count )
-                {
-                    return string.Format("The default kit {0} doesn't exist", DefaultKit.ToString());
-                }
-                CurrentKit = Kits[(DefaultKit-1)] as Dictionary<string, object>;
+            	
             }
             return null;
         }
@@ -204,7 +173,7 @@ namespace Oxide.Plugins
         object OnEventOpenPost()
         {
             if(useThisEvent)
-                eventPlugin.CallHook("BroadcastEvent", new object[] { "In Deathmatch, your inventory WILL be lost!  Do not join until you have put away your items!" });
+                EventManager.Call("BroadcastEvent", new object[] { "In Deathmatch, your inventory WILL be lost!  Do not join until you have put away your items!" });
             return null;
         }
         object OnEventClosePost()
@@ -324,10 +293,10 @@ namespace Oxide.Plugins
         	var emptyobject = new object[] { };
         	for(var i = 1; i<10; i++)
         	{
-        		eventPlugin.CallHook("BroadcastEvent", winnerobjectmsg);
+        		EventManager.Call("BroadcastEvent", winnerobjectmsg);
         	}
-        	eventPlugin.CallHook("CloseEvent",emptyobject);
-        	eventPlugin.CallHook("EndEvent",emptyobject);
+        	EventManager.Call("CloseEvent",emptyobject);
+        	EventManager.Call("EndEvent",emptyobject);
         }
     }
 }
