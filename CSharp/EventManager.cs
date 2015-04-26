@@ -16,9 +16,8 @@ namespace Oxide.Plugins
     	////////////////////////////////////////////////////////////
     	// Setting all fields //////////////////////////////////////
     	////////////////////////////////////////////////////////////
-        private Core.Libraries.Plugins loadedPlugins;
-        private Core.Plugins.Plugin spawnsplugin;
-        
+        [PluginReference] Plugin Spawns;
+        [PluginReference] Plugin Kits;
         
         private string EventSpawnFile;
         private string EventGameName;
@@ -147,7 +146,7 @@ namespace Oxide.Plugins
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
             player.transform.position = destination;
-            player.ClientRPC(null, player, "ForcePositionTo", new object[] { destination });
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
         }
         static string MakeItemName(Item item)
@@ -197,7 +196,6 @@ namespace Oxide.Plugins
         void Loaded()
         {
         	Changed = false;
-            loadedPlugins = Interface.GetMod().GetLibrary<Core.Libraries.Plugins>("Plugins");
             EventGames = new List<string>();
             EventPlayers = new List<EventPlayer>();
             EventGameName = defaultGame;
@@ -207,8 +205,6 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
-            spawnsplugin = loadedPlugins.Find("Spawns");
-            
         }
         void Unload()
         {
@@ -241,39 +237,26 @@ namespace Oxide.Plugins
         }
         void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
         {
-            if (!EventStarted) return;
-            OnEntityAttack(player, hitinfo);
-        }
-        void OnMeleeAttack(BaseMelee melee, HitInfo hitinfo)
-        {
-            if (!EventStarted) return;
-            object parent = melee.GetParentEntity();
-            if (parent is BasePlayer)
-            {
-                OnEntityAttack(parent as BasePlayer, hitinfo);
-            }
-        }
-        object OnEntityAttack(BasePlayer player, HitInfo hitinfo)
-        {
+        	if (!EventStarted) return;
             if (player.GetComponent<EventPlayer>() == null || !(player.GetComponent<EventPlayer>().inEvent))
             {
-                return null;
+                return;
             }
             else if (hitinfo.HitEntity != null)
             {
                 loadedPlugins.CallHook("OnEventPlayerAttack", new object[] { player, hitinfo });
             }
-            return null;
+            return;
         }
-        object OnEntityDeath(BaseEntity entity, HitInfo hitinfo)
+        void OnEntityDeath(BaseEntity entity, HitInfo hitinfo)
         {
-            if (!EventStarted) return null;
-            if (!(entity is BasePlayer)) return null;
-            if ((entity as BasePlayer).GetComponent<EventPlayer>() == null) return null;
+            if (!EventStarted) return;
+            if (!(entity is BasePlayer)) return;
+            if ((entity as BasePlayer).GetComponent<EventPlayer>() == null) return;
             loadedPlugins.CallHook("OnEventPlayerDeath", new object[] { (entity as BasePlayer), hitinfo });
-            return null;
+            return;
         }
-    	void OnPlayerDisconnected(BasePlayer player,Network.Connection connection)
+    	void OnPlayerDisconnected(BasePlayer player)
     	{
     		if (player.GetComponent<EventPlayer>() != null)
     		{
@@ -357,10 +340,10 @@ namespace Oxide.Plugins
         void TeleportPlayerToEvent(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
-            var targetpos = spawnsplugin.CallHook("GetRandomSpawn", new object[] { EventSpawnFile });
+            var targetpos = Spawns.Call("GetRandomSpawn", new object[] { EventSpawnFile });
             if (targetpos is string)
                 return;
-            var newpos = loadedPlugins.CallHook("EventChooseSpawn", new object[] { player, targetpos });
+            var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = (Vector3)newpos;
             timer.Once(0.2f, () => { ForcePlayerPosition(player, (Vector3)targetpos); loadedPlugins.CallHook("OnEventPlayerSpawn", new object[] { player }); });
@@ -416,28 +399,9 @@ namespace Oxide.Plugins
             if (!(eventplayer.inEvent) && !(eventplayer.savedHome) && !(eventplayer.savedInventory))
                 GameObject.Destroy(eventplayer);
         }
-        void GivePlayerKit(BasePlayer player, Dictionary<string, object> GiveKit)
+        void GivePlayerKit(BasePlayer player, string GiveKit)
         {
-            var targetContainer = player.inventory.containerMain;
-            foreach (KeyValuePair<string, object> pair in GiveKit)
-            {
-                if (pair.Key == "main")
-                    targetContainer = player.inventory.containerMain;
-                else if (pair.Key == "belt")
-                    targetContainer = player.inventory.containerBelt;
-                else if (pair.Key == "wear")
-                    targetContainer = player.inventory.containerWear;
-                else
-                {
-                    Puts(string.Format("Error in Event, Kit is invalid: {0} isn't a container to receive items", pair.Key));
-                    return;
-                }
-                var GiveContainer = pair.Value as Dictionary<string, object>;
-                foreach (KeyValuePair<string, object> itemkit in GiveContainer)
-                {
-                    GiveItem(player, itemkit.Key, Convert.ToInt32(itemkit.Value), targetContainer, false);
-                }
-            }
+            Kits.Call("GiveKit", player, GiveKit);
         }
         void EjectAllPlayers()
         {
@@ -475,7 +439,7 @@ namespace Oxide.Plugins
             if (EventGameName == null) return "An Event game must first be chosen.";
             else if (EventSpawnFile == null) return "A spawn file must first be loaded.";
             else if (EventOpen) return "The Event is already open.";
-            object success = spawnsplugin.CallHook("GetSpawnsCount", new object[] { EventSpawnFile });
+            object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
             if (success is string)
             {
                 return (string)success;
@@ -611,7 +575,7 @@ namespace Oxide.Plugins
                 return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
             }
             EventSpawnFile = name;
-            success = spawnsplugin.CallHook("GetSpawnsCount", new object[] { EventSpawnFile });
+            success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
             if (success is string)
             {
                 EventSpawnFile = null;
