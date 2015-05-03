@@ -6,6 +6,7 @@ using System.Data;
 using System.Collections.Generic;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Plugins;
 using Rust;
 
 namespace Oxide.Plugins
@@ -13,41 +14,43 @@ namespace Oxide.Plugins
     [Info("Event Manager", "Reneb", 1.0)]
     class EventManager : RustPlugin
     {
-    	////////////////////////////////////////////////////////////
-    	// Setting all fields //////////////////////////////////////
-    	////////////////////////////////////////////////////////////
-        [PluginReference] Plugin Spawns;
-        [PluginReference] Plugin Kits;
-        
+        ////////////////////////////////////////////////////////////
+        // Setting all fields //////////////////////////////////////
+        ////////////////////////////////////////////////////////////
+        [PluginReference]
+        Plugin Spawns;
+        [PluginReference]
+        Plugin Kits;
+
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
         private string defaultGame;
         private string defaultSpawnfile;
-        
+
         private bool EventOpen;
         private bool EventStarted;
         private bool EventEnded;
         private bool isBP;
         private bool Changed;
-        
+
         private List<string> EventGames;
-		private List<EventPlayer> EventPlayers;
-        
-		private ItemDefinition itemdefinition;
-        
+        private List<EventPlayer> EventPlayers;
+
+        private ItemDefinition itemdefinition;
+
         private int stackable;
         private int giveamount;
-		private int eventAuth;
-		
-		
-		////////////////////////////////////////////////////////////
-    	// EventPlayer class to store informations /////////////////
-    	////////////////////////////////////////////////////////////
+        private int eventAuth;
+
+
+        ////////////////////////////////////////////////////////////
+        // EventPlayer class to store informations /////////////////
+        ////////////////////////////////////////////////////////////
         class EventPlayer : MonoBehaviour
         {
             public BasePlayer player;
-            
+
             public bool inEvent;
             public bool savedInventory;
             public bool savedHome;
@@ -141,13 +144,24 @@ namespace Oxide.Plugins
             }
         }
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Some Static methods that can be called from the EventPlayer Class /////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Some Static methods that can be called from the EventPlayer Class /////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
+            player.StartSleeping();
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
+
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
+            player.UpdateNetworkGroup();
+            player.UpdatePlayerCollider(true, false);
+            player.SendNetworkUpdateImmediate(false);
+            player.ClientRPCPlayer(null, player, "StartLoading");
+            player.SendFullSnapshot();
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, false);
+            player.ClientRPCPlayer(null, player, "FinishLoading");
+
         }
         static string MakeItemName(Item item)
         {
@@ -188,14 +202,14 @@ namespace Oxide.Plugins
                 }
             }
         }
-        
-        
+
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Oxide Hooks ///////////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Oxide Hooks ///////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         void Loaded()
         {
-        	Changed = false;
+            Changed = false;
             EventGames = new List<string>();
             EventPlayers = new List<EventPlayer>();
             EventGameName = defaultGame;
@@ -220,13 +234,13 @@ namespace Oxide.Plugins
             Config.Clear();
             LoadVariables();
         }
-        void OnPlayerSpawn(BasePlayer player)
+        void OnPlayerRespawned(BasePlayer player)
         {
-        	if (!EventStarted) return;
-            if (!(player.GetComponent<EventPlayer>())) return;
+            if (!EventStarted) return;
+            if (!(player.GetComponent<EventPlayer>())) return;  
             if (player.GetComponent<EventPlayer>().inEvent)
             {
-                loadedPlugins.CallHook("OnEventPlayerSpawn", new object[] { player });
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
             }
             else
             {
@@ -237,14 +251,14 @@ namespace Oxide.Plugins
         }
         void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
         {
-        	if (!EventStarted) return;
+            if (!EventStarted) return;
             if (player.GetComponent<EventPlayer>() == null || !(player.GetComponent<EventPlayer>().inEvent))
             {
                 return;
             }
             else if (hitinfo.HitEntity != null)
             {
-                loadedPlugins.CallHook("OnEventPlayerAttack", new object[] { player, hitinfo });
+                Interface.CallHook("OnEventPlayerAttack", new object[] { player, hitinfo });
             }
             return;
         }
@@ -253,20 +267,20 @@ namespace Oxide.Plugins
             if (!EventStarted) return;
             if (!(entity is BasePlayer)) return;
             if ((entity as BasePlayer).GetComponent<EventPlayer>() == null) return;
-            loadedPlugins.CallHook("OnEventPlayerDeath", new object[] { (entity as BasePlayer), hitinfo });
+            Interface.CallHook("OnEventPlayerDeath", new object[] { (entity as BasePlayer), hitinfo });
             return;
         }
-    	void OnPlayerDisconnected(BasePlayer player)
-    	{
-    		if (player.GetComponent<EventPlayer>() != null)
-    		{
-    			LeaveEvent(player);
-    		}
-    	}
-        
+        void OnPlayerDisconnected(BasePlayer player)
+        {
+            if (player.GetComponent<EventPlayer>() != null)
+            {
+                LeaveEvent(player);
+            }
+        }
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Configs Manager ///////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Configs Manager ///////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
@@ -289,19 +303,19 @@ namespace Oxide.Plugins
         {
             eventAuth = Convert.ToInt32(GetConfig("Settings", "authLevel", 1));
             defaultGame = Convert.ToString(GetConfig("Default", "Game", "Deathmatch"));
-			
+
             if (Changed)
             {
                 SaveConfig();
                 Changed = false;
             }
         }
-        
-        
+
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Some global methods ///////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
-    	// hasAccess /////////////////////////////////////////////////////////////////////////
+        // Some global methods ///////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        // hasAccess /////////////////////////////////////////////////////////////////////////
         bool hasAccess(ConsoleSystem.Arg arg)
         {
             if (arg.connection != null)
@@ -314,14 +328,14 @@ namespace Oxide.Plugins
             }
             return true;
         }
-        
-    	// Broadcast To The General Chat /////////////////////////////////////////////////////
+
+        // Broadcast To The General Chat /////////////////////////////////////////////////////
         void BroadcastToChat(string msg)
         {
             ConsoleSystem.Broadcast("chat.add \"SERVER\" " + msg.QuoteSafe() + " 1.0", new object[0]);
         }
-        
-    	// Broadcast To Players in Event /////////////////////////////////////////////////////
+
+        // Broadcast To Players in Event /////////////////////////////////////////////////////
         void BroadcastEvent(string msg)
         {
             foreach (EventPlayer eventplayer in EventPlayers)
@@ -329,14 +343,14 @@ namespace Oxide.Plugins
                 SendReply(eventplayer.player, msg.QuoteSafe());
             }
         }
-        
+
         void TeleportAllPlayersToEvent()
-        { 
+        {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
                 TeleportPlayerToEvent(eventplayer.player);
             }
-        } 
+        }
         void TeleportPlayerToEvent(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -346,9 +360,9 @@ namespace Oxide.Plugins
             var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = (Vector3)newpos;
-            timer.Once(0.2f, () => { ForcePlayerPosition(player, (Vector3)targetpos); loadedPlugins.CallHook("OnEventPlayerSpawn", new object[] { player }); });
+            timer.Once(0.2f, () => { ForcePlayerPosition(player, (Vector3)targetpos); Interface.CallHook("OnEventPlayerSpawn", new object[] { player }); });
         }
-        
+
         void SaveAllInventories()
         {
             foreach (EventPlayer player in EventPlayers)
@@ -405,35 +419,35 @@ namespace Oxide.Plugins
         }
         void EjectAllPlayers()
         {
-        	foreach (EventPlayer eventplayer in EventPlayers)
+            foreach (EventPlayer eventplayer in EventPlayers)
             {
                 eventplayer.inEvent = false;
             }
         }
         void SendPlayersHome()
         {
-        	foreach (EventPlayer eventplayer in EventPlayers)
+            foreach (EventPlayer eventplayer in EventPlayers)
             {
                 TeleportPlayerHome(eventplayer.player);
             }
         }
         void RedeemPlayersInventory()
         {
-        	foreach (EventPlayer eventplayer in EventPlayers)
+            foreach (EventPlayer eventplayer in EventPlayers)
             {
-        		RedeemInventory(eventplayer.player);
+                RedeemInventory(eventplayer.player);
             }
         }
         void TryEraseAllPlayers()
         {
-        	foreach (EventPlayer eventplayer in EventPlayers)
+            foreach (EventPlayer eventplayer in EventPlayers)
             {
                 TryErasePlayer(eventplayer.player);
             }
         }
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Methods to Change the Arena Status ////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Methods to Change the Arena Status ////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         object OpenEvent()
         {
             if (EventGameName == null) return "An Event game must first be chosen.";
@@ -444,7 +458,7 @@ namespace Oxide.Plugins
             {
                 return (string)success;
             }
-            success = loadedPlugins.CallHook("CanEventOpen", new object[] { });
+            success = Interface.CallHook("CanEventOpen", new object[] { });
             if (success is string)
             {
                 return (string)success;
@@ -452,38 +466,38 @@ namespace Oxide.Plugins
             EventOpen = true;
             EventPlayers.Clear();
             BroadcastToChat(string.Format("The Event is now open for : {0} !  Type /event_join to join!", EventGameName));
-            loadedPlugins.CallHook("OnEventOpenPost", new object[] { });
+            Interface.CallHook("OnEventOpenPost", new object[] { });
             return true;
         }
         object CloseEvent()
         {
             if (!EventOpen) return "The Event is already closed.";
             EventOpen = false;
-            loadedPlugins.CallHook("OnEventClosePost", new object[] { });
+            Interface.CallHook("OnEventClosePost", new object[] { });
             if (EventStarted)
                 BroadcastToChat("The Event entrance is now closed!");
             else
                 BroadcastToChat("The Event was cancelled!");
             return true;
-        } 
+        }
         object EndEvent()
         {
             if (EventEnded) return "An Event game is not underway.";
 
-            loadedPlugins.CallHook("OnEventEndPre", new object[] { });
+            Interface.CallHook("OnEventEndPre", new object[] { });
             BroadcastToChat(string.Format("Event: {0} is now over!", EventGameName));
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
-            
-            
+
+
             SendPlayersHome();
             RedeemPlayersInventory();
             TryEraseAllPlayers();
             EjectAllPlayers();
-            
+
             EventPlayers.Clear();
-            loadedPlugins.CallHook("OnEventEndPost", new object[] { });
+            Interface.CallHook("OnEventEndPost", new object[] { });
             return true;
         }
         object StartEvent()
@@ -491,12 +505,12 @@ namespace Oxide.Plugins
             if (EventGameName == null) return "An Event game must first be chosen.";
             else if (EventSpawnFile == null) return "A spawn file must first be loaded.";
             else if (EventStarted) return "An Event game has already started.";
-            object success = loadedPlugins.CallHook("CanEventStart", new object[] { });
+            object success = Interface.CallHook("CanEventStart", new object[] { });
             if (success is string)
             {
                 return (string)success;
             }
-            loadedPlugins.CallHook("OnEventStartPre", new object[] { });
+            Interface.CallHook("OnEventStartPre", new object[] { });
             BroadcastToChat(string.Format("Event: {0} is about to begin!", EventGameName));
             EventStarted = true;
             EventEnded = false;
@@ -504,7 +518,7 @@ namespace Oxide.Plugins
             SaveAllInventories();
             SaveAllHomeLocations();
             TeleportAllPlayersToEvent();
-            loadedPlugins.CallHook("OnEventStartPost", new object[] { });
+            Interface.CallHook("OnEventStartPost", new object[] { });
             return true;
         }
         object JoinEvent(BasePlayer player)
@@ -513,7 +527,7 @@ namespace Oxide.Plugins
                 return "You are already in the Event.";
             else if (!EventOpen)
                 return "The Event is currently closed.";
-            object success = loadedPlugins.CallHook("CanEventJoin", new object[] { player });
+            object success = Interface.CallHook("CanEventJoin", new object[] { player });
             if (success is string)
             {
                 return (string)success;
@@ -529,7 +543,7 @@ namespace Oxide.Plugins
                 TeleportPlayerToEvent(player);
             }
             BroadcastToChat(string.Format("{0} has joined the Event!  (Total Players: {1})", player.displayName.ToString(), EventPlayers.Count.ToString()));
-            loadedPlugins.CallHook("OnEventJoinPost", new object[] { player });
+            Interface.CallHook("OnEventJoinPost", new object[] { player });
             return true;
         }
         object LeaveEvent(BasePlayer player)
@@ -537,39 +551,39 @@ namespace Oxide.Plugins
             if (player.GetComponent<EventPlayer>() == null)
                 return "You are not currently in the Event.";
             player.inventory.Strip();
-			player.GetComponent<EventPlayer>().inEvent = false;
+            player.GetComponent<EventPlayer>().inEvent = false;
             if (!EventEnded)
-                BroadcastToChat(string.Format("{0} has left the Event! (Total Players: {1})", player.displayName.ToString(), (EventPlayers.Count-1).ToString()));
+                BroadcastToChat(string.Format("{0} has left the Event! (Total Players: {1})", player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             if (EventStarted)
             {
                 RedeemInventory(player);
                 TeleportPlayerHome(player);
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
                 TryErasePlayer(player);
-                loadedPlugins.CallHook("OnEventLeavePost", new object[] { player });
+                Interface.CallHook("OnEventLeavePost", new object[] { player });
             }
             else
             {
-            	EventPlayers.Remove(player.GetComponent<EventPlayer>());
-            	GameObject.Destroy(player.GetComponent<EventPlayer>());
+                EventPlayers.Remove(player.GetComponent<EventPlayer>());
+                GameObject.Destroy(player.GetComponent<EventPlayer>());
             }
-            
+
             return true;
         }
-        
+
         object SelectEvent(string name)
         {
             if (!(EventGames.Contains(name))) return "This Game isn't registered, did you reload the game after loading Event - Core?";
             if (EventStarted || EventOpen) return "The Event needs to be closed and ended before selecting a new game.";
             EventGameName = name;
-            loadedPlugins.CallHook("OnSelectEventGamePost", new object[] { name });
+            Interface.CallHook("OnSelectEventGamePost", new object[] { name });
             return true;
         }
         object SelectSpawnfile(string name)
         {
             if (EventGameName == null || EventGameName == "") return "You must select an Event game first";
-            if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?",EventGameName.ToString());
-            object success = loadedPlugins.CallHook("OnSelectSpawnFile", new object[] { name });
+            if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
+            object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
             if (success == null)
             {
                 return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
@@ -588,21 +602,21 @@ namespace Oxide.Plugins
             if (!(EventGames.Contains(name)))
                 EventGames.Add(name);
             Puts(string.Format("Registered event game: {0}", name));
-            loadedPlugins.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
+            Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
             if (EventGameName == name)
             {
                 object success = SelectEvent(EventGameName);
-                if(success is string)
+                if (success is string)
                 {
                     Puts((string)success);
                 }
             }
             return true;
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Chat Commands /////////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Chat Commands /////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         [ChatCommand("event_leave")]
         void cmdEventLeave(BasePlayer player, string command, string[] args)
         {
@@ -623,10 +637,10 @@ namespace Oxide.Plugins
                 return;
             }
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Console Commands //////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Console Commands //////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         [ConsoleCommand("event.open")]
         void ccmdEventOpen(ConsoleSystem.Arg arg)
         {
@@ -658,7 +672,7 @@ namespace Oxide.Plugins
             {
                 SendReply(arg, (string)success);
                 return;
-            } 
+            }
         }
         [ConsoleCommand("event.end")]
         void ccmdEventEnd(ConsoleSystem.Arg arg)
