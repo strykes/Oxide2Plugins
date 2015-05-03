@@ -332,7 +332,7 @@ namespace Oxide.Plugins
         // Broadcast To The General Chat /////////////////////////////////////////////////////
         void BroadcastToChat(string msg)
         {
-            ConsoleSystem.Broadcast("chat.add \"SERVER\" " + msg.QuoteSafe() + " 1.0", new object[0]);
+            ConsoleSystem.Broadcast("chat.add", new object[] { 0, "<color=orange>Event:</color> " + msg });
         }
 
         // Broadcast To Players in Event /////////////////////////////////////////////////////
@@ -348,7 +348,7 @@ namespace Oxide.Plugins
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
-                TeleportPlayerToEvent(eventplayer.player);
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { eventplayer.player });
             }
         }
         void TeleportPlayerToEvent(BasePlayer player)
@@ -359,8 +359,8 @@ namespace Oxide.Plugins
                 return;
             var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
-                targetpos = (Vector3)newpos;
-            timer.Once(0.2f, () => { ForcePlayerPosition(player, (Vector3)targetpos); Interface.CallHook("OnEventPlayerSpawn", new object[] { player }); });
+                targetpos = newpos;
+            ForcePlayerPosition(player, (Vector3)targetpos);
         }
 
         void SaveAllInventories()
@@ -540,7 +540,7 @@ namespace Oxide.Plugins
             {
                 SaveHomeLocation(player);
                 SaveInventory(player);
-                TeleportPlayerToEvent(player);
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
             }
             BroadcastToChat(string.Format("{0} has joined the Event!  (Total Players: {1})", player.displayName.ToString(), EventPlayers.Count.ToString()));
             Interface.CallHook("OnEventJoinPost", new object[] { player });
@@ -570,7 +570,7 @@ namespace Oxide.Plugins
 
             return true;
         }
-
+         
         object SelectEvent(string name)
         {
             if (!(EventGames.Contains(name))) return "This Game isn't registered, did you reload the game after loading Event - Core?";
