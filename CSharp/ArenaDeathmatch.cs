@@ -5,6 +5,7 @@ using System;
 using System.Data;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Plugins;
 using System.Timers;
 using Rust;
 
@@ -13,26 +14,28 @@ namespace Oxide.Plugins
     [Info("Arena Deathmatch", "Reneb", 1.0)]
     class ArenaDeathmatch : RustPlugin
     {
-    	////////////////////////////////////////////////////////////
-    	// Setting all fields //////////////////////////////////////
-    	////////////////////////////////////////////////////////////
-        [PluginReference] Plugin EventManager;
-        
+        ////////////////////////////////////////////////////////////
+        // Setting all fields //////////////////////////////////////
+        ////////////////////////////////////////////////////////////
+        [PluginReference]
+        Plugin EventManager;
+
         private bool launched;
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
-        
-        private string EventName; 
+
+        private string EventName;
         private string EventSpawnFile;
-        
+
         private string DefaultKit;
-        
+        private string CurrentKit;
+
         private List<DeathmatchPlayer> DeathmatchPlayers;
-        
+
         ////////////////////////////////////////////////////////////
-    	// DeathmatchPlayer class to store informations ////////////
-    	////////////////////////////////////////////////////////////
+        // DeathmatchPlayer class to store informations ////////////
+        ////////////////////////////////////////////////////////////
         class DeathmatchPlayer : MonoBehaviour
         {
             public BasePlayer player;
@@ -45,12 +48,12 @@ namespace Oxide.Plugins
                 kills = 0;
             }
         }
-        
-        
+
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Oxide Hooks ///////////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
-        void Loaded()  
+        // Oxide Hooks ///////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        void Loaded()
         {
             launched = false;
             useThisEvent = false;
@@ -64,7 +67,7 @@ namespace Oxide.Plugins
                 Puts("Event plugin doesn't exist");
                 return;
             }
-			LoadVariables();
+            LoadVariables();
             var success = EventManager.Call("RegisterEventGame", new object[] { EventName });
             if (success == null)
             {
@@ -84,23 +87,23 @@ namespace Oxide.Plugins
             if (useThisEvent && EventStarted)
             {
                 EventManager.Call("EndEvent", new object[] { });
-				var objects = GameObject.FindObjectsOfType(typeof(DeathmatchPlayer));
-				if (objects != null)
-					foreach (var gameObj in objects)
-						GameObject.Destroy(gameObj);
+                var objects = GameObject.FindObjectsOfType(typeof(DeathmatchPlayer));
+                if (objects != null)
+                    foreach (var gameObj in objects)
+                        GameObject.Destroy(gameObj);
             }
         }
-        
-        //////////////////////////////////////////////////////////////////////////////////////
-    	// Configurations ////////////////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
 
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Configurations ////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+         
         private void LoadVariables()
         {
             DefaultKit = Convert.ToString(GetConfig("Default", "Kit", "deathmatch"));
             EventName = Convert.ToString(GetConfig("Settings", "EventName", "Deathmatch"));
             EventSpawnFile = Convert.ToString(GetConfig("Settings", "EventSpawnFile", "DeathmatchSpawnfile"));
-            
+
             CurrentKit = DefaultKit;
             if (Changed)
             {
@@ -126,19 +129,19 @@ namespace Oxide.Plugins
             }
             return value;
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////
-    	// Beginning Of Event Manager Hooks //////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
+        // Beginning Of Event Manager Hooks //////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
         void OnSelectEventGamePost(string name)
         {
             if (EventName == name)
             {
                 useThisEvent = true;
-                if(EventSpawnFile != null && EventSpawnFile != "")
+                if (EventSpawnFile != null && EventSpawnFile != "")
                     EventManager.Call("SelectSpawnfile", new object[] { EventSpawnFile });
             }
-            else
+            else 
                 useThisEvent = false;
         }
         void OnEventPlayerSpawn(BasePlayer player)
@@ -147,7 +150,7 @@ namespace Oxide.Plugins
             {
                 player.inventory.Strip();
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
-            } 
+            }
         }
         object OnSelectSpawnFile(string name)
         {
@@ -157,12 +160,12 @@ namespace Oxide.Plugins
                 return true;
             }
             return null;
-        } 
+        }
         object CanEventOpen()
         {
             if (useThisEvent)
             {
-            	
+
             }
             return null;
         }
@@ -172,7 +175,7 @@ namespace Oxide.Plugins
         }
         object OnEventOpenPost()
         {
-            if(useThisEvent)
+            if (useThisEvent)
                 EventManager.Call("BroadcastEvent", new object[] { "In Deathmatch, your inventory WILL be lost!  Do not join until you have put away your items!" });
             return null;
         }
@@ -185,7 +188,7 @@ namespace Oxide.Plugins
             return null;
         }
         object OnEventEndPost()
-        { 
+        {
             if (useThisEvent)
             {
                 EventStarted = false;
@@ -202,7 +205,7 @@ namespace Oxide.Plugins
         }
         object OnEventStartPost()
         {
-            
+
             return null;
         }
         object CanEventJoin()
@@ -211,24 +214,24 @@ namespace Oxide.Plugins
         }
         object OnEventJoinPost(BasePlayer player)
         {
-            if (useThisEvent )
+            if (useThisEvent)
             {
-				if (player.GetComponent<DeathmatchPlayer>())
-					GameObject.Destroy(player.GetComponent<DeathmatchPlayer>());
-				DeathmatchPlayers.Add(player.gameObject.AddComponent<DeathmatchPlayer>());
+                if (player.GetComponent<DeathmatchPlayer>())
+                    GameObject.Destroy(player.GetComponent<DeathmatchPlayer>());
+                DeathmatchPlayers.Add(player.gameObject.AddComponent<DeathmatchPlayer>());
             }
             return null;
         }
         object OnEventLeavePost(BasePlayer player)
         {
-        	if (useThisEvent)
+            if (useThisEvent)
             {
-            	if (player.GetComponent<DeathmatchPlayer>())
-            	{
-            		DeathmatchPlayers.Remove(player.GetComponent<DeathmatchPlayer>());
-            		GameObject.Destroy(player.GetComponent<DeathmatchPlayer>());
-            		CheckScores();
-            	}
+                if (player.GetComponent<DeathmatchPlayer>())
+                {
+                    DeathmatchPlayers.Remove(player.GetComponent<DeathmatchPlayer>());
+                    GameObject.Destroy(player.GetComponent<DeathmatchPlayer>());
+                    CheckScores();
+                }
             }
             return null;
         }
@@ -243,60 +246,70 @@ namespace Oxide.Plugins
                 }
             }
         }
-        
+
         void OnEventPlayerDeath(BasePlayer victim, HitInfo hitinfo)
         {
-        	if(useThisEvent)
-        	{
-				if(hitinfo.Initiator != null)
-				{
-					BasePlayer attacker = hitinfo.Initiator.ToPlayer();
-					if(attacker != null)
-					{
-						if(attacker != victim)
-						{
-							AddKill(attacker);
-						}
-					}
-				}
-        	}
+            if (useThisEvent)
+            {
+                if (hitinfo.Initiator != null)
+                {
+                    BasePlayer attacker = hitinfo.Initiator.ToPlayer();
+                    if (attacker != null)
+                    {
+                        if (attacker != victim)
+                        {
+                            AddKill(attacker);
+                        }
+                    }
+                }
+            }
             return;
         }
         object EventChooseSpawn(BasePlayer player, Vector3 destination)
         {
-        	return null;
+            return null;
         }
         //////////////////////////////////////////////////////////////////////////////////////
-    	// End Of Event Manager Hooks ////////////////////////////////////////////////////////
-    	//////////////////////////////////////////////////////////////////////////////////////
-    	 
-    	void AddKill(BasePlayer player)
+        // End Of Event Manager Hooks ////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        void AddKill(BasePlayer player)
         {
-        	if (!player.GetComponent<DeathmatchPlayer>())
-				return;
-			player.GetComponent<DeathmatchPlayer>().kills++;
-			CheckScores();
-        }
+            if (!player.GetComponent<DeathmatchPlayer>())
+                return;
+            player.GetComponent<DeathmatchPlayer>().kills++;
+            CheckScores();
+        } 
         void CheckScores()
-        {
-        	foreach(DeathmatchPlayer deathmatchplayer in DeathmatchPlayers)
-        	{
-        		if(deathmatchplayer.kills >= 10)
-        		{
-        			Winner(deathmatchplayer.player);
-        		}
-        	}
+        { 
+
+            if(DeathmatchPlayers.Count == 0)
+            {
+                var emptyobject = new object[] { };
+                EventManager.Call("BroadcastEvent", "Arena has no more players, auto-closing.");
+                EventManager.Call("CloseEvent", emptyobject);
+                EventManager.Call("EndEvent", emptyobject);
+                return;
+            }
+            foreach (DeathmatchPlayer deathmatchplayer in DeathmatchPlayers)
+            {
+                if (deathmatchplayer.kills >= 10 || DeathmatchPlayers.Count == 1)
+                {
+                    Winner(deathmatchplayer.player);
+                }
+            }
         }
         void Winner(BasePlayer player)
         {
-        	var winnerobjectmsg = new object[] { string.Format("{0} WON THE DEATHMATCH",player.displayName) };
-        	var emptyobject = new object[] { };
-        	for(var i = 1; i<10; i++)
-        	{
-        		EventManager.Call("BroadcastEvent", winnerobjectmsg);
-        	}
-        	EventManager.Call("CloseEvent",emptyobject);
-        	EventManager.Call("EndEvent",emptyobject);
+            var winnerobjectmsg = new object[] { string.Format("{0} WON THE DEATHMATCH", player.displayName) };
+            var emptyobject = new object[] { };
+            for (var i = 1; i < 10; i++)
+            {
+                EventManager.Call("BroadcastEvent", winnerobjectmsg);
+            }
+            EventManager.Call("CloseEvent", emptyobject);
+            EventManager.Call("EndEvent", emptyobject);
         }
     }
 }
+
