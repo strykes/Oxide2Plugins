@@ -27,9 +27,11 @@ namespace Oxide.Plugins
 
         private string EventName;
         private string EventSpawnFile;
-
+        
         private string DefaultKit;
         private string CurrentKit;
+
+        private int EventWinKills;
 
         private List<DeathmatchPlayer> DeathmatchPlayers;
 
@@ -103,6 +105,7 @@ namespace Oxide.Plugins
             DefaultKit = Convert.ToString(GetConfig("Default", "Kit", "deathmatch"));
             EventName = Convert.ToString(GetConfig("Settings", "EventName", "Deathmatch"));
             EventSpawnFile = Convert.ToString(GetConfig("Settings", "EventSpawnFile", "DeathmatchSpawnfile"));
+            EventWinKills = Convert.ToInt32(GetConfig("Settings", "Win Kills", "10"));
 
             CurrentKit = DefaultKit;
             if (Changed)
@@ -146,9 +149,10 @@ namespace Oxide.Plugins
         }
         void OnEventPlayerSpawn(BasePlayer player)
         {
-            if (useThisEvent && EventStarted)
-            {
+            if (useThisEvent && EventStarted) 
+            {  
                 player.inventory.Strip();
+                EventManager.Call("TeleportPlayerToEvent", new object[] { player });
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
             }
         }
@@ -258,6 +262,7 @@ namespace Oxide.Plugins
                     {
                         if (attacker != victim)
                         {
+                            
                             AddKill(attacker);
                         }
                     }
@@ -277,12 +282,13 @@ namespace Oxide.Plugins
         {
             if (!player.GetComponent<DeathmatchPlayer>())
                 return;
+
             player.GetComponent<DeathmatchPlayer>().kills++;
+            EventManager.Call("BroadcastEvent", string.Format("{0} has {1}/{2} kills ", player.displayName, player.GetComponent<DeathmatchPlayer>().kills.ToString(), EventWinKills.ToString()));
             CheckScores();
         } 
         void CheckScores()
-        { 
-
+        {    
             if(DeathmatchPlayers.Count == 0)
             {
                 var emptyobject = new object[] { };
@@ -293,7 +299,7 @@ namespace Oxide.Plugins
             }
             foreach (DeathmatchPlayer deathmatchplayer in DeathmatchPlayers)
             {
-                if (deathmatchplayer.kills >= 10 || DeathmatchPlayers.Count == 1)
+                if (deathmatchplayer.kills >= EventWinKills || DeathmatchPlayers.Count == 1)
                 {
                     Winner(deathmatchplayer.player);
                 }
