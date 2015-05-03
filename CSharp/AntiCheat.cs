@@ -163,7 +163,7 @@ namespace Oxide.Plugins
             public string tx;
             public string ty;
             public string tz;
-            public string sd;
+            public string td;
             public string lg;
             
             Vector3 frompos;
@@ -178,6 +178,7 @@ namespace Oxide.Plugins
                 this.tx = topos.x.ToString();
                 this.ty = topos.y.ToString();
                 this.tz = topos.z.ToString();
+                this.td = logType; 
                 // GET TIME HERE
             }
 			
@@ -225,7 +226,8 @@ namespace Oxide.Plugins
             var newlayermask = new UnityEngine.LayerMask();
             newlayermask.value = 133120;
             originalWallhack.GetComponent<TriggerBase>().interestLayers = newlayermask;
-            RefreshAllWalls(); 
+            RefreshAllWalls();
+            LoadData();
             RefreshPlayers();
         }
         void RefreshPlayers()
@@ -333,15 +335,20 @@ namespace Oxide.Plugins
         void RefreshAllWalls()
         {
             if (!wallhack) return;
-            var allbuildings = UnityEngine.Resources.FindObjectsOfTypeAll<BuildingBlock>();
             var currenttime = Time.realtimeSinceStartup;
-            foreach (BuildingBlock block in allbuildings)
+            foreach (BuildingBlock block in UnityEngine.Resources.FindObjectsOfTypeAll<BuildingBlock>())
             {
-                if (block.blockDefinition != null && (block.blockDefinition.hierachyName == "wall" || block.blockDefinition.hierachyName == "door.hinged"))
+                if (block.blockDefinition != null))
                 {
-                    CreateNewProtectionFromBlock(block, true);
-                    if (block.blockDefinition.hierachyName == "door.hinged")                    
-                            DoorCheck.Add(block.net.ID, Time.realtimeSinceStartup);                                        
+                	if(block.blockDefinition.hierachyName == "wall")
+                	{
+                		CreateNewProtectionFromBlock(block, true);           	
+                	}
+                	else if (block.blockDefinition.hierachyName == "door.hinged")
+                	{
+                		CreateNewProtectionFromBlock(block, true);
+                		DoorCheck.Add(block.net.ID, Time.realtimeSinceStartup);  
+                	}                                              
                 }
             } 
             Debug.Log(string.Format("AntiCheat: Took {0} seconds to protect all walls & doors", (Time.realtimeSinceStartup - currenttime).ToString()));
@@ -684,11 +691,34 @@ namespace Oxide.Plugins
         }
         
         ////////////////////////////////////////////////////////////
+    	// Log Class
+    	////////////////////////////////////////////////////////////
+        /*
+        public class PlayerLog : MonoBehaviour
+        {
+            public BasePlayer player;
+            public Vector3 lastPosition;
+            
+            
+
+            void Awake()
+            {
+                player = GetComponent<BasePlayer>();
+                InvokeRepeating("CheckLogs", 1f, 2f);
+            }
+            void CheckLogs()
+            {           
+                if (!player.IsConnected()) GameObject.Destroy(this);
+                
+            }
+        }*/
+        
+        ////////////////////////////////////////////////////////////
     	// Chat Commands
     	////////////////////////////////////////////////////////////
         
-        [ChatCommand("ac_logs")]
-        void cmdChatACLogs(BasePlayer player, string command, string[] args)
+        [ChatCommand("ac")]
+        void cmdChatAC(BasePlayer player, string command, string[] args)
         {
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             if(args == null || args.Length < 2)
@@ -712,6 +742,32 @@ namespace Oxide.Plugins
 					return;
 				}
 				SendReply(player, string.Format("{0} {1} - has {2} hack detections", targetid, targetname, (anticheatlogs[targetid]).Count.ToString()));
+				string detectionText = string.Empty;
+				foreach( AntiCheatLog aclog in anticheatlogs[targetid] )
+				{
+            		player.SendConsoleCommand("ddraw.line", 5f, UnityEngine.Color.red, aclog.FromPos(), aclog.ToPos());
+            		detectionText = string.Empty;
+            		switch(aclog.td)
+            		{
+            			case "speed":
+            				detectionText = string.Format("{0} - speed - {1}m/s", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString());
+            			break;
+            			case "fly":
+            				detectionText = string.Format("{0} - fly - {1}m/s", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString());
+            			break;
+            			case "wall":
+            				detectionText = string.Format("{0} - wall", targetid);
+            			break;
+            			default:
+            			
+            			break;
+            		}
+            		if(detectionText != string.Empty)
+            		{
+            			SendReply(player, detectionText);
+            			player.SendConsoleCommand("ddraw.line", 5f, UnityEngine.Color.white, aclog.FromPos(), detectionText);
+            		}
+            	}
             	// TO BE MADE
             }
             else if(args[0].ToLower() == "radius")
@@ -725,10 +781,47 @@ namespace Oxide.Plugins
             }
         }
         
+        [ChatCommand("ac_list")]
+        void cmdChatACList(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
+            foreach( KeyValuePair<string, List<AntiCheatLog>> pair in anticheatlogs )
+            {
+            	SendReply(player, string.Format("{0} - {1} detections",pair.Key,pair.Value.Count.ToString()));
+            }
+            
+            SaveData();
+        }
+        
+        [ChatCommand("ac_remove")]
+        void cmdChatACRemove(BasePlayer player, string command, string[] args)
+        {
+            if(!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
+            string targetid = string.Empty;
+			string targetname = string.Empty;
+			if( !FindPlayerByName( args[1] , out targetid, out targetname ) )
+			{
+				SendReply(player, targetid);
+				return;
+			}
+			if(anticheatlogs[targetid] == null || (anticheatlogs[targetid]).Count == 0)
+			{
+				SendReply(player, string.Format("{0} {1} - has no hack detections", targetid, targetname));
+				return;
+			}
+            foreach( AntiCheatLog aclog in anticheatlogs[targetid] )
+            {
+            	storedData.AntiCheatLogs.Remove(aclog);
+            }
+            anticheatlogs.Remove(targetid);
+            SendReply(player, string.Format("Removed: {0} {1} anticheat logs", targetid, targetname));
+            SaveData();
+        }
+        
         [ChatCommand("ac_reset")]
         void cmdChatACReset(BasePlayer player, string command, string[] args)
         {
-            if(player.net.connection.authLevel < 2) { SendReply(player, "You dont have access to this command"); return; }
+            if(!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             anticheatlogs.Clear();
             storedData.AntiCheatLogs.Clear();
             SaveData();
