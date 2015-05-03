@@ -7,7 +7,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb", "2.1.14", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb", "2.2.0", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -720,8 +720,8 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             if (args == null || args.Length < 2)
             {
-                SendReply(player, "/ac_logs player PLAYERNAME/STEAMID => to show all the hack detections made by this player");
-                SendReply(player, "/ac_logs radius RADIUS => to show all hack detections in this radius.");
+                SendReply(player, "/ac player PLAYERNAME/STEAMID => to show all the hack detections made by this player");
+                SendReply(player, "/ac radius RADIUS => to show all hack detections in this radius.");
                 return;
             }
             if (args[0].ToLower() == "player")
@@ -742,18 +742,18 @@ namespace Oxide.Plugins
                 string detectionText = string.Empty;
                 foreach (AntiCheatLog aclog in anticheatlogs[targetid])
                 {
-                    player.SendConsoleCommand("ddraw.line", 5f, UnityEngine.Color.red, aclog.FromPos(), aclog.ToPos());
+                    player.SendConsoleCommand("ddraw.arrow", 5f, UnityEngine.Color.red, aclog.FromPos(), aclog.ToPos(),0.5f);
                     detectionText = string.Empty;
                     switch (aclog.td)
                     {
                         case "speed":
-                            detectionText = string.Format("{0} - speed - {1}m/s", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString());
+                            detectionText = string.Format("{0} - speed - {1}m/s - @ {2}m from you", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString(), Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
                             break;
                         case "fly":
-                            detectionText = string.Format("{0} - fly - {1}m/s", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString());
+                            detectionText = string.Format("{0} - fly - {1}m/s - @ {2}m from you", targetid, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString(), Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
                             break;
                         case "wall":
-                            detectionText = string.Format("{0} - wall", targetid);
+                            detectionText = string.Format("{0} - wall - @ {1}m from you", targetid, Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
                             break;
                         default:
 
@@ -762,15 +762,51 @@ namespace Oxide.Plugins
                     if (detectionText != string.Empty)
                     {
                         SendReply(player, detectionText);
-                        player.SendConsoleCommand("ddraw.line", 5f, UnityEngine.Color.white, aclog.FromPos(), detectionText);
+                        player.SendConsoleCommand("ddraw.text", 5f, UnityEngine.Color.white, aclog.FromPos(), detectionText);
                     }
                 }
                 // TO BE MADE
             }
             else if (args[0].ToLower() == "radius")
             {
-                // TO BE MADE
+                float radius = 20f;
+                if(!float.TryParse(args[1],out radius))
+                {
+                    Debug.Log("/ac radius XXX");
+                    return;
+                }
+                string detectionText = string.Empty;
+                foreach ( KeyValuePair<string, List<AntiCheatLog>> pair in anticheatlogs)
+                {
+                    foreach(AntiCheatLog aclog in pair.Value)
+                    {
+                        if(Vector3.Distance(player.transform.position, aclog.FromPos()) < radius )
+                        {
+                            player.SendConsoleCommand("ddraw.arrow", 5f, UnityEngine.Color.red, aclog.FromPos(), aclog.ToPos(), 0.5f);
+                            detectionText = string.Empty;
+                            switch (aclog.td)
+                            {
+                                case "speed":
+                                    detectionText = string.Format("{0} - speed - {1}m/s - @ {2}m from you", pair.Key, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString(), Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
+                                    break;
+                                case "fly":
+                                    detectionText = string.Format("{0} - fly - {1}m/s - @ {2}m from you", pair.Key, Vector3.Distance(aclog.ToPos(), aclog.FromPos()).ToString(), Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
+                                    break;
+                                case "wall":
+                                    detectionText = string.Format("{0} - wall - @ {1}m from you", pair.Key, Vector3.Distance(player.transform.position, aclog.FromPos()).ToString());
+                                    break;
+                                default:
 
+                                    break;
+                            }
+                            if (detectionText != string.Empty)
+                            {
+                                SendReply(player, detectionText);
+                                player.SendConsoleCommand("ddraw.text", 5f, UnityEngine.Color.white, aclog.FromPos(), detectionText);
+                            }
+                        }
+                    }
+                }
             }
             else
             {
@@ -796,7 +832,7 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             string targetid = string.Empty;
             string targetname = string.Empty;
-            if (!FindPlayerByName(args[1], out targetid, out targetname))
+            if (!FindPlayerByName(args[0], out targetid, out targetname))
             {
                 SendReply(player, targetid);
                 return;
@@ -806,6 +842,7 @@ namespace Oxide.Plugins
                 SendReply(player, string.Format("{0} {1} - has no hack detections", targetid, targetname));
                 return;
             }
+           
             foreach (AntiCheatLog aclog in anticheatlogs[targetid])
             {
                 storedData.AntiCheatLogs.Remove(aclog);
