@@ -10,9 +10,53 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.9", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.0.19", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
+
+
+        ////////////////////////////////////////////
+        /// Configs
+        ////////////////////////////////////////////
+        private bool Changed = false;
+        public static float AutolightOnTime;
+        public static float AutolightOffTime;
+        private object GetConfig(string menu, string datavalue, object defaultValue)
+        {
+            var data = Config[menu] as Dictionary<string, object>;
+            if (data == null)
+            {
+                data = new Dictionary<string, object>();
+                Config[menu] = data;
+                Changed = true;
+            }
+            object value;
+            if (!data.TryGetValue(datavalue, out value))
+            {
+                value = defaultValue;
+                data[datavalue] = value;
+                Changed = true;
+            }
+            return value;
+        } 
+        private void LoadVariables()
+        {
+            AutolightOnTime = Convert.ToSingle(GetConfig("AutoLights", "Lights On Time", "18.0"));
+            AutolightOffTime = Convert.ToSingle(GetConfig("AutoLights", "Lights Off Time", "8.0"));
+
+            if (Changed)
+            {
+                SaveConfig();
+                Changed = false;
+            }
+        } 
+        void LoadDefaultConfig()
+        {
+            Config.Clear();
+            LoadVariables();
+        }
+         
+
         ////////////////////////////////////////////
         /// FIELDS
         ////////////////////////////////////////////
@@ -21,9 +65,12 @@ namespace Oxide.Plugins
         static Hash<string, ZoneDefinition> zonedefinitions = new Hash<string, ZoneDefinition>();
         public Hash<BasePlayer, string> LastZone = new Hash<BasePlayer, string>();
         public static Hash<BasePlayer, List<Zone>> playerZones = new Hash<BasePlayer, List<Zone>>();
+        public static Hash<BaseCombatEntity, List<Zone>> buildingZones = new Hash<BaseCombatEntity, List<Zone>>();
+        public static Hash<ResourceDispenser, List<Zone>> resourceZones = new Hash<ResourceDispenser, List<Zone>>();
 
         public static int triggerLayer;
         public static int playersMask;
+        public static int buildingMask;
 
         public FieldInfo[] allZoneFields;
         public FieldInfo cachedField;
@@ -121,26 +168,138 @@ namespace Oxide.Plugins
             RadiationZone radiationzone;
             float radiationamount;
 
+            int zoneMask;
+            HashSet<Collider> buildingblocks = new HashSet<Collider>();
+            bool lightsOn = false;
+
             void Awake()
             {
                 gameObject.layer = triggerLayer;
                 gameObject.name = "Zone Manager";
-                gameObject.AddComponent<UnityEngine.SphereCollider>();
+                
+                 gameObject.AddComponent<UnityEngine.SphereCollider>();
+          
                 gameObject.SetActive(true);
-            }
+                enabled = false;
+            } 
             public void SetInfo(ZoneDefinition info)
             {
                 this.info = info;
                 GetComponent<UnityEngine.Transform>().position = info.Location.GetPosition();
                 GetComponent<UnityEngine.SphereCollider>().radius = info.Location.GetRadius();
                 radiationamount = 0f;
+                zoneMask = 0;
+                if(info.undestr != null)
+                {
+                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Construction");
+                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Deployed");
+                }
+                if(info.nogather != null)
+                {
+                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Resource");
+                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Tree");
+                }
+                if (info.nopve != null || info.nocorpse != null)
+                {
+                    zoneMask |= ((int)1) << LayerMask.NameToLayer("AI");
+                }
+                if (zoneMask != 0) InvokeRepeating("CheckCollisions", 0f, 10f);
+
+                if (info.autolights != null)
+                {
+                    float currentTime = TOD_Sky.Instance.Cycle.Hour;
+                    if (currentTime > AutolightOffTime && currentTime < AutolightOnTime)
+                    {
+                        lightsOn = true;
+                    }
+                    else
+                    {
+                        lightsOn = false;
+                    }
+                    InvokeRepeating("CheckLights", 0f, 10f);
+                }
+
                 if (float.TryParse(info.radiation, out radiationamount))
-                    radiationzone = gameObject.AddComponent<RadiationZone>();
+                    radiationzone = gameObject.AddComponent<RadiationZone>();  
             }
-            void OnDestroy()
-            {
+            void OnDestroy() 
+            { 
                 if (radiationzone != null)
                     GameObject.Destroy(radiationzone);
+            }
+            void CheckLights()
+            {
+                float currentTime = TOD_Sky.Instance.Cycle.Hour;
+                if (currentTime > AutolightOffTime && currentTime < AutolightOnTime)
+                {
+                    if(lightsOn)
+                    {
+                        foreach (Collider col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
+                        {
+                            if (col.GetComponentInParent<BaseOven>())
+                            {
+                                if(!col.GetComponentInParent<BaseOven>().IsInvoking("Cook"))
+                                    col.GetComponentInParent<BaseEntity>().SetFlag(BaseEntity.Flags.On, false);
+                            }
+                        }
+                        lightsOn = false;
+                    }
+                }
+                else
+                {
+                    if (!lightsOn)
+                    { 
+                        foreach(Collider col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
+                        {
+                            if(col.GetComponentInParent<BaseOven>())
+                            {
+                                col.GetComponentInParent<BaseEntity>().SetFlag(BaseEntity.Flags.On, true);
+                            }
+                        }
+                        lightsOn = true;
+                    }
+                }
+            }
+            void CheckCollisions()
+            {
+                foreach(Collider col in Physics.OverlapSphere(info.Location.GetPosition(), info.Location.GetRadius(), zoneMask))
+                {
+                    if(!buildingblocks.Contains(col))
+                    {
+                        buildingblocks.Add(col);
+                        BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
+                        ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
+                        if (info.nocorpse != null)
+                        {
+                            if (basecombat != null)
+                            {
+                                BaseCorpse corpse = basecombat.GetComponent<BaseCorpse>();
+                                if (corpse != null)
+                                {
+                                    corpse.Kill(BaseNetworkable.DestroyMode.None);
+                                    continue;
+                                }
+                            }
+                        }
+                        if (baseresource != null)
+                        {
+                            if (baseresource == null) return;
+                            if (resourceZones[baseresource] == null)
+                                resourceZones[baseresource] = new List<Zone>();
+                            if (!resourceZones[baseresource].Contains(this))
+                                resourceZones[baseresource].Add(this);
+                        }
+                        else if (basecombat != null)
+                        {
+                            
+                            if (buildingZones[basecombat] == null)
+                                buildingZones[basecombat] = new List<Zone>();
+                            if (!buildingZones[basecombat].Contains(this))
+                                buildingZones[basecombat].Add(this);
+                        }
+                        
+                    } 
+                } 
             }
             void OnTriggerEnter(Collider col)
             {
@@ -171,6 +330,7 @@ namespace Oxide.Plugins
             public string radius;
             public ZoneLocation Location;
             public string ID;
+            public string autolights;
             public string eject;
             public string pvpgod;
             public string pvegod;
@@ -179,8 +339,11 @@ namespace Oxide.Plugins
             public string nobuild;
             public string notp;
             public string nochat;
+            public string nogather;
+            public string nopve;
             public string nodeploy;
             public string nokits;
+            public string nocorpse;
             public string nosuicide;
             public string killsleepers;
             public string radiation;
@@ -230,7 +393,13 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         // OXIDE HOOKS
         /////////////////////////////////////////
-
+        void OnEntitySpawned(BaseNetworkable entity)
+        {
+            if(entity.GetComponent<BaseCorpse>() != null)
+            {
+                Debug.Log(LayerMask.LayerToName(entity.gameObject.layer));
+            }
+        }
         /////////////////////////////////////////
         // Loaded()
         // Called when the plugin is loaded
@@ -242,7 +411,13 @@ namespace Oxide.Plugins
             permission.RegisterPermission("canbuild", this);
             triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
             playersMask = LayerMask.GetMask(new string[] { "Player (Server)" });
+            buildingMask = LayerMask.GetMask(new string[] { "Deployed" });
+           /* for(int i = 0; i < 25; i ++)
+            {
+                Debug.Log(LayerMask.LayerToName(i));
+            }*/
             LoadData();
+            LoadVariables();
         }
         /////////////////////////////////////////
         // Unload()
@@ -285,7 +460,7 @@ namespace Oxide.Plugins
             {
                 if (!hasPermission(planner.ownerPlayer, "canbuild"))
                 {
-                    gameobject.GetComponentInParent<BuildingBlock>().Kill(BaseNetworkable.DestroyMode.Gib);
+                    gameobject.GetComponentInParent<BaseCombatEntity>().Kill(BaseNetworkable.DestroyMode.Gib);
                     SendMessage(planner.ownerPlayer, "You are not allowed to build here");
                 }
             }
@@ -306,7 +481,7 @@ namespace Oxide.Plugins
                 }
             }
         }
-
+         
         /////////////////////////////////////////
         // OnPlayerChat(ConsoleSystem.Arg arg)
         // Called when a user writes something in the chat, doesn't take in count the commands
@@ -351,8 +526,25 @@ namespace Oxide.Plugins
             if (hasTag(player, "killsleepers")) player.Die();
         }
 
+        void OnMeleeAttack(BaseMelee melee, HitInfo hitinfo)
+        {
+            if (hitinfo.HitEntity == null) return;
+            if(hitinfo.HitEntity.GetComponent<ResourceDispenser>() != null)
+            {
+                ResourceDispenser disp = hitinfo.HitEntity.GetComponent<ResourceDispenser>();
+                if (resourceZones[disp] == null) return;
+                foreach (Zone zone in resourceZones[disp])
+                {
+                    if (zone.info.nogather != null)
+                    {
+                        hitinfo.HitEntity = null;
+                    }
+                }
+            }
+        }
+         
         /////////////////////////////////////////
-        // OnEntityTakeDamage(BaseCombatEntity entity, HitInfo hitinfo)
+        // OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         // Called when any entity is attacked
         /////////////////////////////////////////
         void OnEntityTakeDamage(BaseCombatEntity entity, HitInfo hitinfo)
@@ -376,7 +568,19 @@ namespace Oxide.Plugins
                         CancelDamage(hitinfo);
                 }
             }
-            else if ((entity is BuildingBlock) || (entity is WorldItem))
+            else if (entity is BaseCombatEntity)
+            {
+                BaseCombatEntity block = entity as BaseCombatEntity;
+                if (buildingZones[block] == null) return;
+                foreach(Zone zone in buildingZones[block])
+                {
+                    if(zone.info.undestr != null)
+                    {
+                        CancelDamage(hitinfo);
+                    }
+                }
+            }
+            else if(entity is WorldItem)
             {
                 if (hitinfo != null && hitinfo.Initiator != null)
                 {
@@ -403,17 +607,6 @@ namespace Oxide.Plugins
             }
         }
 
-        /////////////////////////////////////////
-        // OnEntitySpawned(BaseNetworkable basenet)
-        // Called when any entity is spawned
-        /////////////////////////////////////////
-        void OnEntitySpawned(BaseNetworkable basenet)
-        {
-            if (basenet is TimedExplosive)
-            {
-                timer.Once(4f, () => CheckExplosivePosition(basenet as TimedExplosive));
-            }
-        }
 
         /////////////////////////////////////////
         // Outside Plugin Hooks
@@ -453,10 +646,13 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         bool CreateOrUpdateZone(string ZoneID, string[] args, Vector3 position = default(Vector3))
         {
-            ZoneDefinition zonedef;
-            if (zonedefinitions[ZoneID] == null) zonedef = new ZoneDefinition();
-            else zonedef = zonedefinitions[ZoneID];
-            zonedef.ID = ZoneID;
+            var zonedef = zonedefinitions[ZoneID];
+            if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            if (zonedef == null)
+            {
+                zonedef = new ZoneDefinition();
+                zonedef.ID = ZoneID;
+            }
 
             string editvalue;
             for (int i = 0; i < args.Length; i = i + 2)
@@ -486,8 +682,7 @@ namespace Oxide.Plugins
             }
 
             if (position != default(Vector3)) { zonedef.Location = new ZoneLocation((Vector3)position, (zonedef.radius != null) ? zonedef.radius : "20"); }
-
-            if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            
             zonedefinitions[ZoneID] = zonedef;
             storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
             SaveData();
@@ -498,8 +693,9 @@ namespace Oxide.Plugins
         bool EraseZone(string ZoneID)
         {
             if (zonedefinitions[ZoneID] == null) return false;
-            zonedefinitions[ZoneID] = null;
+            
             storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
+            zonedefinitions[ZoneID] = null;
             SaveData();
             RefreshZone(ZoneID);
             return true;
@@ -550,7 +746,7 @@ namespace Oxide.Plugins
             Zone targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             RemoveFromWhitelist(targetZone, player);
-            return true;
+            return true; 
         }
         bool RemovePlayerFromZoneKeepinlist(string ZoneID, BasePlayer player)
         {
@@ -581,9 +777,11 @@ namespace Oxide.Plugins
 
         void NewZone(ZoneDefinition zonedef)
         {
+            
             if (zonedef == null) return;
             var newgameObject = new UnityEngine.GameObject();
             var newZone = newgameObject.AddComponent<Zone>();
+
             newZone.SetInfo(zonedef);
         }
         void RefreshZone(string zoneID)
@@ -599,13 +797,13 @@ namespace Oxide.Plugins
                             if (pair.Value.Contains(gameObj)) playerZones[pair.Key].Remove(gameObj);
                         }
                         GameObject.Destroy(gameObj);
-                        if (zonedefinitions[zoneID] != null)
-                        {
-                            NewZone(zonedefinitions[zoneID]);
-                        }
                         break;
                     }
                 }
+            if (zonedefinitions[zoneID] != null)
+            {
+                NewZone(zonedefinitions[zoneID]);
+            }
         }
 
         int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
@@ -666,6 +864,7 @@ namespace Oxide.Plugins
         {
             if (playerZones[player] == null) playerZones[player] = new List<Zone>();
             if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
+            
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
             if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player) && !zone.keepInList.Contains(player)) EjectPlayer(zone, player);
             Interface.CallHook("OnEnterZone", zone.info.ID, player);
@@ -680,20 +879,22 @@ namespace Oxide.Plugins
 
         static void EjectPlayer(Zone zone, BasePlayer player)
         {
+            
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
-            player.ClientRPC(null, player, "ForcePositionTo", new object[] { player.transform.position });
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
         static void AttractPlayer(Zone zone, BasePlayer player)
         {
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius - 1f));
-            player.ClientRPC(null, player, "ForcePositionTo", new object[] { player.transform.position });
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
         static bool isAdmin(BasePlayer player)
         {
+            if (player.net.connection == null) return true;
             if (player.net.connection.authLevel > 0)
                 return true;
             return false;
