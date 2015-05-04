@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", 1.0)]
+    [Info("Event Manager", "Reneb", "1.0.1", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -21,6 +21,8 @@ namespace Oxide.Plugins
         Plugin Spawns;
         [PluginReference]
         Plugin Kits;
+        [PluginReference]
+        Plugin ZoneManager;
 
         private string EventSpawnFile;
         private string EventGameName;
@@ -213,12 +215,14 @@ namespace Oxide.Plugins
             EventGames = new List<string>();
             EventPlayers = new List<EventPlayer>();
             EventGameName = defaultGame;
+            LoadData();
         }
         void OnServerInitialized()
         {
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
+            InitializeZones();
         }
         void Unload()
         {
@@ -227,6 +231,7 @@ namespace Oxide.Plugins
             if (objects != null)
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
+            ResetZones();
         }
         void LoadDefaultConfig()
         {
@@ -277,10 +282,109 @@ namespace Oxide.Plugins
                 LeaveEvent(player);
             }
         }
+        ////////////////////////////////////////////////////////////
+        // Zone Management
+        ////////////////////////////////////////////////////////////
+        void InitializeZones()
+        {
+            foreach(KeyValuePair<string, EventZone> pair in zonelogs)
+            {
+                InitializeZone(pair.Key);
+            }
+        }
+        void InitializeZone(string name)
+        {
+            if (zonelogs[name] == null) return;
+            ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
+            if(EventGames.Contains(name))
+                Interface.CallHook("OnPostZoneCreate", name);
+        } 
+        void ResetZones()
+        { 
+            foreach (string game in EventGames)
+            {
+                ZoneManager?.Call("EraseZone", game);
+            }
+        }
+        void UpdateZone(string name, string[] args)
+        {
+            ZoneManager?.Call("CreateOrUpdateZone", name, args);
+        }
+        public class EventZone
+        {
+            public string name;
+            public string x;
+            public string y;
+            public string z;
+            public string radius;
+            Vector3 position;
 
+            public EventZone(string name, Vector3 position, float radius)
+            {
+                this.name = name;
+                this.x = position.x.ToString();
+                this.y = position.y.ToString();
+                this.z = position.z.ToString();
+                this.radius = radius.ToString();
+            }
+            public Vector3 GetPosition()
+            {
+                if (position == default(Vector3))
+                    position = new Vector3(float.Parse(this.x), float.Parse(this.y), float.Parse(this.z));
+                return position;
+            }
+
+        }
+
+        static StoredData storedData;
+        static Hash<string, EventZone> zonelogs = new Hash<string, EventZone>();
+
+        class StoredData
+        {
+            public HashSet<EventZone> ZoneLogs = new HashSet<EventZone>();
+
+            public StoredData()
+            {
+            }
+        }
+
+        void OnServerSave()
+        {
+            SaveData();
+        }
+
+        void SaveData()
+        {
+            Interface.GetMod().DataFileSystem.WriteObject("EventManager", storedData);
+        }
+
+        void LoadData()
+        {
+            zonelogs.Clear();
+            try
+            {
+                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("EventManager");
+            }
+            catch
+            {
+                storedData = new StoredData();
+            }
+            foreach (var thelog in storedData.ZoneLogs)
+            {
+                zonelogs[thelog.name] = thelog;
+            }
+        }
         //////////////////////////////////////////////////////////////////////////////////////
         // Configs Manager ///////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
         object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
@@ -299,16 +403,15 @@ namespace Oxide.Plugins
             }
             return value;
         }
+        static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
         void LoadVariables()
         {
             eventAuth = Convert.ToInt32(GetConfig("Settings", "authLevel", 1));
             defaultGame = Convert.ToString(GetConfig("Default", "Game", "Deathmatch"));
 
-            if (Changed)
-            {
-                SaveConfig();
-                Changed = false;
-            }
+            CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
+
+            SaveConfig();
         }
 
 
@@ -322,7 +425,7 @@ namespace Oxide.Plugins
             {
                 if (arg.connection.authLevel < 1)
                 {
-                    SendReply(arg, "You are not allowed to use this command");
+                    SendReply(arg, MessagesPermissionsNotAllowed);
                     return false;
                 }
             }
@@ -332,6 +435,7 @@ namespace Oxide.Plugins
         // Broadcast To The General Chat /////////////////////////////////////////////////////
         void BroadcastToChat(string msg)
         {
+            Debug.Log(msg);
             ConsoleSystem.Broadcast("chat.add", new object[] { 0, "<color=orange>Event:</color> " + msg });
         }
 
@@ -342,14 +446,18 @@ namespace Oxide.Plugins
             {
                 SendReply(eventplayer.player, msg.QuoteSafe());
             }
-        }
+        } 
 
         void TeleportAllPlayersToEvent()
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { eventplayer.player });
-            }
+            }  
+        }
+        void OnEventPlayerSpawn(BasePlayer player)
+        {
+            TeleportPlayerToEvent(player);
         }
         void TeleportPlayerToEvent(BasePlayer player)
         {
@@ -360,6 +468,7 @@ namespace Oxide.Plugins
             var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = newpos;
+            ZoneManager?.Call("AddPlayerToZoneKeepinlist", EventGameName, player);
             ForcePlayerPosition(player, (Vector3)targetpos);
         }
 
@@ -553,7 +662,10 @@ namespace Oxide.Plugins
             player.inventory.Strip();
             player.GetComponent<EventPlayer>().inEvent = false;
             if (!EventEnded)
+            {
                 BroadcastToChat(string.Format("{0} has left the Event! (Total Players: {1})", player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
+            }
+            
             if (EventStarted)
             {
                 RedeemInventory(player);
@@ -561,13 +673,13 @@ namespace Oxide.Plugins
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
                 TryErasePlayer(player);
                 Interface.CallHook("OnEventLeavePost", new object[] { player });
+                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
             }
             else
             {
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
                 GameObject.Destroy(player.GetComponent<EventPlayer>());
             }
-
             return true;
         }
          
@@ -597,6 +709,18 @@ namespace Oxide.Plugins
             }
             return true;
         }
+        object SelectNewZone(MonoBehaviour monoplayer, string radius)
+        {
+            if (EventGameName == null || EventGameName == "") return "You must select an Event game first";
+            if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
+            if (EventStarted || EventOpen) return "The Event needs to be closed and ended before selecting a new zone.";
+            Interface.CallHook("OnSelectEventZone", new object[] { monoplayer, radius });
+            if (zonelogs[EventGameName] != null) storedData.ZoneLogs.Remove(zonelogs[EventGameName]);
+            zonelogs[EventGameName] = new EventZone(EventGameName, monoplayer.transform.position, Convert.ToSingle(radius));
+            storedData.ZoneLogs.Add(zonelogs[EventGameName]);
+            InitializeZone(EventGameName);
+            return true;
+        }
         object RegisterEventGame(string name)
         {
             if (!(EventGames.Contains(name)))
@@ -611,6 +735,8 @@ namespace Oxide.Plugins
                     Puts((string)success);
                 }
             }
+            if(zonelogs[name] != null)
+                InitializeZone(name);
             return true;
         }
 
@@ -651,6 +777,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            SendReply(arg, string.Format("Event \"{0}\" is now opened.", EventGameName));
         }
         [ConsoleCommand("event.start")]
         void ccmdEventStart(ConsoleSystem.Arg arg)
@@ -662,6 +789,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            SendReply(arg, string.Format("Event \"{0}\" is now started.", EventGameName));
         }
         [ConsoleCommand("event.close")]
         void ccmdEventClose(ConsoleSystem.Arg arg)
@@ -673,6 +801,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            SendReply(arg, string.Format("Event \"{0}\" is now closed for entries.", EventGameName));
         }
         [ConsoleCommand("event.end")]
         void ccmdEventEnd(ConsoleSystem.Arg arg)
@@ -684,6 +813,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            SendReply(arg, string.Format("Event \"{0}\" has ended.", EventGameName));
         }
         [ConsoleCommand("event.game")]
         void ccmdEventGame(ConsoleSystem.Arg arg)
@@ -718,6 +848,28 @@ namespace Oxide.Plugins
                 return;
             }
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
+        }
+        [ConsoleCommand("event.zone")]
+        void ccmdEventZone(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if(arg.connection == null)
+            {
+                SendReply(arg, "To set the zone position & radius you must be connected");
+                return;
+            }
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.zone RADIUS");
+                return;
+            }
+            object success = SelectNewZone(arg.connection.player, arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0] ));
         }
     }
 }
