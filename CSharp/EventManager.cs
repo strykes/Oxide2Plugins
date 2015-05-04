@@ -404,12 +404,39 @@ namespace Oxide.Plugins
             return value;
         }
         static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
+        static string MessagesEventNotSet = "An Event game must first be chosen.";
+        static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
+        static string MessagesEventAlreadyOpened = "The Event is already open.";
+        static string MessagesEventAlreadyClosed = "The Event is already closed.";
+
+        static string MessagesEventOpen = "The Event is now open for : {0} !  Type /event_join to join!";
+        static string MessagesEventClose = "The Event entrance is now closed!";
+        static string MessagesEventCancel = "The Event was cancelled!";
+        static string MessagesEventNoGamePlaying = "An Event game is not underway.";
+        static string MessagesEventEnd = "Event: {0} is now over!";
+        static string MessagesEventAlreadyJoined = "You are already in the Event.";
+        static string MessagesEventJoined = "{0} has joined the Event!  (Total Players: {1})";
+        static string MessagesEventLeft = "{0} has left the Event! (Total Players: {1})";
+
         void LoadVariables()
         {
             eventAuth = Convert.ToInt32(GetConfig("Settings", "authLevel", 1));
             defaultGame = Convert.ToString(GetConfig("Default", "Game", "Deathmatch"));
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
+            CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
+            CheckCfg<string>("Messages - Event Error - No SpawnFile", ref MessagesEventNoSpawnFile);
+            CheckCfg<string>("Messages - Event Error - Already Opened", ref MessagesEventAlreadyOpened);
+            CheckCfg<string>("Messages - Event Error - Already Closed", ref MessagesEventAlreadyClosed);
+            CheckCfg<string>("Messages - Event Error - No Games Undergoing", ref MessagesEventNoGamePlaying);
+            CheckCfg<string>("Messages - Event Error - Already Joined", ref MessagesEventAlreadyJoined);
+
+            CheckCfg<string>("Messages - Event - Opened", ref MessagesEventOpen);
+            CheckCfg<string>("Messages - Event - Closed", ref MessagesEventClose);
+            CheckCfg<string>("Messages - Event - Cancelled", ref MessagesEventCancel);
+            CheckCfg<string>("Messages - Event - End", ref MessagesEventEnd);
+            CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
+            CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
 
             SaveConfig();
         }
@@ -530,6 +557,7 @@ namespace Oxide.Plugins
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
+                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, eventplayer.player);
                 eventplayer.inEvent = false;
             }
         }
@@ -665,7 +693,7 @@ namespace Oxide.Plugins
             {
                 BroadcastToChat(string.Format("{0} has left the Event! (Total Players: {1})", player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             }
-            
+            ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
             if (EventStarted)
             {
                 RedeemInventory(player);
@@ -673,7 +701,7 @@ namespace Oxide.Plugins
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
                 TryErasePlayer(player);
                 Interface.CallHook("OnEventLeavePost", new object[] { player });
-                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
+                
             }
             else
             {
