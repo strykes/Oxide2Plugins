@@ -408,6 +408,8 @@ namespace Oxide.Plugins
         static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
         static string MessagesEventAlreadyOpened = "The Event is already open.";
         static string MessagesEventAlreadyClosed = "The Event is already closed.";
+        static string MessagesEventAlreadyStarted = "An Event game has already started.";
+
 
         static string MessagesEventOpen = "The Event is now open for : {0} !  Type /event_join to join!";
         static string MessagesEventClose = "The Event entrance is now closed!";
@@ -417,6 +419,11 @@ namespace Oxide.Plugins
         static string MessagesEventAlreadyJoined = "You are already in the Event.";
         static string MessagesEventJoined = "{0} has joined the Event!  (Total Players: {1})";
         static string MessagesEventLeft = "{0} has left the Event! (Total Players: {1})";
+        static string MessagesEventBegin = "Event: {0} is about to begin!";
+        static string MessagesEventNotInEvent = "You are not currently in the Event.";
+        static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
+        static string MessagesEventStatusClosed = "The Event is currently closed.";
+        static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before selecting a new game.";
 
         void LoadVariables()
         {
@@ -430,12 +437,19 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Already Closed", ref MessagesEventAlreadyClosed);
             CheckCfg<string>("Messages - Event Error - No Games Undergoing", ref MessagesEventNoGamePlaying);
             CheckCfg<string>("Messages - Event Error - Already Joined", ref MessagesEventAlreadyJoined);
+            CheckCfg<string>("Messages - Event Error - Already Started", ref MessagesEventAlreadyStarted);
+            CheckCfg<string>("Messages - Event Error - Not In Event", ref MessagesEventNotInEvent);
+            CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
+            CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
+
+            CheckCfg<string>("Messages - Status - Closed", ref MessagesEventStatusClosed);
 
             CheckCfg<string>("Messages - Event - Opened", ref MessagesEventOpen);
             CheckCfg<string>("Messages - Event - Closed", ref MessagesEventClose);
             CheckCfg<string>("Messages - Event - Cancelled", ref MessagesEventCancel);
             CheckCfg<string>("Messages - Event - End", ref MessagesEventEnd);
             CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
+            CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
             CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
 
             SaveConfig();
