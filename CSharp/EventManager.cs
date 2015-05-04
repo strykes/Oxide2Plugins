@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.0.1", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.0.2", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -587,9 +587,9 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         object OpenEvent()
         {
-            if (EventGameName == null) return "An Event game must first be chosen.";
-            else if (EventSpawnFile == null) return "A spawn file must first be loaded.";
-            else if (EventOpen) return "The Event is already open.";
+            if (EventGameName == null) return MessagesEventNotSet;
+            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
+            else if (EventOpen) return MessagesEventAlreadyOpened;
             object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
             if (success is string)
             {
@@ -602,27 +602,27 @@ namespace Oxide.Plugins
             }
             EventOpen = true;
             EventPlayers.Clear();
-            BroadcastToChat(string.Format("The Event is now open for : {0} !  Type /event_join to join!", EventGameName));
+            BroadcastToChat(string.Format(MessagesEventOpen, EventGameName));
             Interface.CallHook("OnEventOpenPost", new object[] { });
             return true;
         }
         object CloseEvent()
         {
-            if (!EventOpen) return "The Event is already closed.";
+            if (!EventOpen) return MessagesEventAlreadyClosed;
             EventOpen = false;
             Interface.CallHook("OnEventClosePost", new object[] { });
             if (EventStarted)
-                BroadcastToChat("The Event entrance is now closed!");
+                BroadcastToChat(MessagesEventClose);
             else
-                BroadcastToChat("The Event was cancelled!");
+                BroadcastToChat(MessagesEventCancel);
             return true;
         }
         object EndEvent()
         {
-            if (EventEnded) return "An Event game is not underway.";
+            if (EventEnded) return MessagesEventNoGamePlaying;
 
             Interface.CallHook("OnEventEndPre", new object[] { });
-            BroadcastToChat(string.Format("Event: {0} is now over!", EventGameName));
+            BroadcastToChat(string.Format(MessagesEventEnd, EventGameName));
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
@@ -639,8 +639,8 @@ namespace Oxide.Plugins
         }
         object StartEvent()
         {
-            if (EventGameName == null) return "An Event game must first be chosen.";
-            else if (EventSpawnFile == null) return "A spawn file must first be loaded.";
+            if (EventGameName == null) return MessagesEventNotSet;
+            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
             else if (EventStarted) return "An Event game has already started.";
             object success = Interface.CallHook("CanEventStart", new object[] { });
             if (success is string)
@@ -661,7 +661,7 @@ namespace Oxide.Plugins
         object JoinEvent(BasePlayer player)
         {
             if (player.GetComponent<EventPlayer>())
-                return "You are already in the Event.";
+                return MessagesEventAlreadyJoined;
             else if (!EventOpen)
                 return "The Event is currently closed.";
             object success = Interface.CallHook("CanEventJoin", new object[] { player });
@@ -679,7 +679,7 @@ namespace Oxide.Plugins
                 SaveInventory(player);
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
             }
-            BroadcastToChat(string.Format("{0} has joined the Event!  (Total Players: {1})", player.displayName.ToString(), EventPlayers.Count.ToString()));
+            BroadcastToChat(string.Format(MessagesEventJoined, player.displayName.ToString(), EventPlayers.Count.ToString()));
             Interface.CallHook("OnEventJoinPost", new object[] { player });
             return true;
         }
@@ -691,7 +691,7 @@ namespace Oxide.Plugins
             player.GetComponent<EventPlayer>().inEvent = false;
             if (!EventEnded)
             {
-                BroadcastToChat(string.Format("{0} has left the Event! (Total Players: {1})", player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
+                BroadcastToChat(string.Format(MessagesEventLeft, player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             }
             ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
             if (EventStarted)
@@ -721,7 +721,7 @@ namespace Oxide.Plugins
         }
         object SelectSpawnfile(string name)
         {
-            if (EventGameName == null || EventGameName == "") return "You must select an Event game first";
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
             if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
             object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
             if (success == null)
@@ -739,7 +739,7 @@ namespace Oxide.Plugins
         }
         object SelectNewZone(MonoBehaviour monoplayer, string radius)
         {
-            if (EventGameName == null || EventGameName == "") return "You must select an Event game first";
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
             if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
             if (EventStarted || EventOpen) return "The Event needs to be closed and ended before selecting a new zone.";
             Interface.CallHook("OnSelectEventZone", new object[] { monoplayer, radius });
