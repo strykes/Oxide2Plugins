@@ -1,21 +1,21 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
-using System.Data;
 using UnityEngine;
 using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Copy Paste", "Reneb", "2.2.0")]
+    [Info("Copy Paste", "Reneb & VVoid", "2.2.5")]
     class CopyPaste : RustPlugin
     {
-        private MethodInfo CreateEntity;
-        private MethodInfo FindPrefab;
-        private FieldInfo serverinput;
-        private Dictionary<string, string> deployedToItem;
+        private MethodInfo inventoryClear = typeof(ItemContainer).GetMethod("Clear", BindingFlags.NonPublic | BindingFlags.Instance);
+        private FieldInfo serverinput = typeof(BasePlayer).GetField("serverInput", BindingFlags.NonPublic | BindingFlags.Instance);
+        private FieldInfo keycode = typeof(KeyLock).GetField("keyCode", BindingFlags.NonPublic | BindingFlags.Instance);
+        private FieldInfo codelock = typeof(CodeLock).GetField("code", BindingFlags.NonPublic | BindingFlags.Instance);
+        private FieldInfo firstKeyCreated = typeof(KeyLock).GetField("firstKeyCreated", BindingFlags.NonPublic | BindingFlags.Instance);
+        private Dictionary<string, string> deployedToItem = new Dictionary<string, string>();
+        private int layerMasks = LayerMask.GetMask("Construction", "Construction Trigger", "Trigger", "Deployed", "Tree", "AI");
 
         /// CACHED VARIABLES
 
@@ -29,57 +29,38 @@ namespace Oxide.Plugins
         private Dictionary<string, object> rotCleanData;
         private List<object> rawStructure;
         private List<object> rawDeployables;
-        private List<object> rawStorages;
+        private List<object> rawSpawnables;
         private float heightAdjustment;
         private string filename;
         private object closestEnt;
         private Vector3 closestHitpoint;
         private string cleanDeployedName;
 
-        /////////////////////////////////////////////////////
-        ///  OXIDE HOOKS
-        /////////////////////////////////////////////////////
-
-        /////////////////////////////////////////////////////
-        ///  Loaded()
-        ///  When the plugin is loaded by Oxide
-        /////////////////////////////////////////////////////
-        void Loaded() 
-        {
-            serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            deployedToItem = new Dictionary<string, string>();
-        }
         void OnServerInitialized()
         {
-            var allItemsDef = UnityEngine.Resources.FindObjectsOfTypeAll<ItemDefinition>();
+            var allItemsDef = Resources.FindObjectsOfTypeAll<ItemDefinition>();
             foreach (ItemDefinition itemDef in allItemsDef)
             {
-                if (itemDef.GetComponent<ItemModDeployable>() != null )
+                if (itemDef.GetComponent<ItemModDeployable>() != null)
                 {
                     deployedToItem.Add(itemDef.GetComponent<ItemModDeployable>().entityPrefab.targetObject.gameObject.name.ToString(), itemDef.shortname.ToString());
                 }
             }
         }
 
-        /////////////////////////////////////////////////////
-        ///  GENERAL FUNCTIONS
-        /////////////////////////////////////////////////////
-
-        /////////////////////////////////////////////////////
-        ///  TryGetClosestRayPoint( Vector3, Quaternion, out object, out Vector3 )
-        ///  Get the closest raypoint
-
         bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
         {
             Vector3 sourceEye = sourcePos + new Vector3(0f, 1.5f, 0f);
-            UnityEngine.Ray ray = new UnityEngine.Ray(sourceEye, sourceDir * Vector3.forward);
+            Ray ray = new Ray(sourceEye, sourceDir * Vector3.forward);
 
-            var hits = UnityEngine.Physics.RaycastAll(ray);
+            var hits = Physics.RaycastAll(ray);
             float closestdist = 999999f;
             closestHitpoint = sourcePos;
             closestEnt = false;
             foreach (var hit in hits)
             {
+                if (hit.collider.isTrigger)
+                    continue;
                 if (hit.distance < closestdist)
                 {
                     closestdist = hit.distance;
@@ -101,34 +82,18 @@ namespace Oxide.Plugins
             }
             return true;
         }
+
         bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
         {
-            viewAngle = new Quaternion(0f,0f,0f,0f);
+            viewAngle = new Quaternion(0f, 0f, 0f, 0f);
             var input = serverinput.GetValue(player) as InputState;
-            if (input == null)
-                return false;
-            if (input.current == null)
-                return false;
-            if (input.current.aimAngles == null)
+            if (input == null || input.current == null || input.current.aimAngles == Vector3.zero)
                 return false;
 
             viewAngle = Quaternion.Euler(input.current.aimAngles);
             return true;
         }
-        bool GetCleanDeployedName(string sourcename, out string name)
-        {
-            name = "";
-            if(sourcename.IndexOf("(Clone)",0) > -1)
-            {
-                sourcename = sourcename.Substring(0,sourcename.IndexOf("(Clone)",0));
-                if (deployedToItem.ContainsKey(sourcename))
-                {
-                    name = deployedToItem[sourcename];
-                    return true;
-                }
-            }
-            return false;
-        } 
+
         Vector3 GenerateGoodPos(Vector3 InitialPos, Vector3 CurrentPos, float diffRot)
         {
             transformedPos = CurrentPos - InitialPos;
@@ -147,9 +112,9 @@ namespace Oxide.Plugins
 
             normedPos = GenerateGoodPos(initialBlock.transform.position, currentBlock.transform.position, playerRot);
             normedYRot = currentBlock.transform.rotation.ToEulerAngles().y - playerRot;
-            
-            data.Add("prefabname",currentBlock.blockDefinition.fullname);
-            data.Add("grade",currentBlock.grade);
+
+            data.Add("prefabname", currentBlock.blockDefinition.fullName);
+            data.Add("grade", currentBlock.grade);
 
             posCleanData.Add("x", normedPos.x);
             posCleanData.Add("y", normedPos.y);
@@ -171,10 +136,7 @@ namespace Oxide.Plugins
 
             normedPos = GenerateGoodPos(initialBlock.transform.position, currentBlock.transform.position, playerRot);
             normedYRot = currentBlock.transform.rotation.ToEulerAngles().y - playerRot;
-
-            if(!GetCleanDeployedName(currentBlock.gameObject.name.ToString(), out cleanDeployedName))
-                return false;
-            data.Add("prefabname", cleanDeployedName);
+            data.Add("prefabname", StringPool.Get(currentBlock.prefabID).ToString());
 
             posCleanData.Add("x", normedPos.x);
             posCleanData.Add("y", normedPos.y);
@@ -188,15 +150,38 @@ namespace Oxide.Plugins
             return true;
         }
 
-        object CopyBuilding(Vector3 playerPos, float playerRot, BuildingBlock initialBlock, out List<object> rawStructure, out List<object> rawDeployables, out List<object> rawStorages)
+        bool GetSpawnableClean(BuildingBlock initialBlock, float playerRot, Spawnable currentSpawn, out Dictionary<string, object> data)
+        {
+            data = new Dictionary<string, object>();
+            posCleanData = new Dictionary<string, object>();
+            rotCleanData = new Dictionary<string, object>();
+
+            normedPos = GenerateGoodPos(initialBlock.transform.position, currentSpawn.transform.position, playerRot);
+            normedYRot = currentSpawn.transform.rotation.ToEulerAngles().y - playerRot;
+            data.Add("prefabname", currentSpawn.GetComponent<BaseNetworkable>().LookupPrefabName().ToString());
+
+            posCleanData.Add("x", normedPos.x);
+            posCleanData.Add("y", normedPos.y);
+            posCleanData.Add("z", normedPos.z);
+            data.Add("pos", posCleanData);
+
+            rotCleanData.Add("x", currentSpawn.transform.rotation.ToEulerAngles().x);
+            rotCleanData.Add("y", normedYRot);
+            rotCleanData.Add("z", currentSpawn.transform.rotation.ToEulerAngles().z);
+            data.Add("rot", rotCleanData);
+            return true;
+        }
+
+        object CopyBuilding(Vector3 playerPos, float playerRot, BuildingBlock initialBlock, out List<object> rawStructure, out List<object> rawDeployables, out List<object> rawSpawnables)
         {
             rawStructure = new List<object>();
             rawDeployables = new List<object>();
-            rawStorages = new List<object>();
+            rawSpawnables = new List<object>();
             List<object> houseList = new List<object>();
             List<Vector3> checkFrom = new List<Vector3>();
             BuildingBlock fbuildingblock;
             Deployable fdeployable;
+            Spawnable fspawnable;
 
             houseList.Add(initialBlock);
             checkFrom.Add(initialBlock.transform.position);
@@ -204,8 +189,10 @@ namespace Oxide.Plugins
             Dictionary<string, object> housedata;
             if (!GetStructureClean(initialBlock, playerRot, initialBlock, out housedata))
             {
-                return "Couldn't get a clean initial block";
+                return "Couldn\'t get a clean initial block";
             }
+            if (initialBlock.HasSlot(BaseEntity.Slot.Lock)) // initial block could be a door.
+                TryCopyLock(initialBlock, housedata);
             rawStructure.Add(housedata);
 
             int current = 0;
@@ -214,9 +201,11 @@ namespace Oxide.Plugins
                 current++;
                 if (current > checkFrom.Count)
                     break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3f);
+                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3f, layerMasks);
                 foreach (var hit in hits)
                 {
+                    if (hit.isTrigger)
+                        continue;
                     if (hit.GetComponentInParent<BuildingBlock>() != null)
                     {
                         fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
@@ -226,6 +215,9 @@ namespace Oxide.Plugins
                             checkFrom.Add(fbuildingblock.transform.position);
                             if (GetStructureClean(initialBlock, playerRot, fbuildingblock, out housedata))
                             {
+
+                                if (fbuildingblock.HasSlot(BaseEntity.Slot.Lock))
+                                    TryCopyLock(fbuildingblock, housedata);
                                 rawStructure.Add(housedata);
                             }
                         }
@@ -236,9 +228,49 @@ namespace Oxide.Plugins
                         if (!(houseList.Contains(fdeployable)))
                         {
                             houseList.Add(fdeployable);
+                            checkFrom.Add(fdeployable.transform.position);
                             if (GetDeployableClean(initialBlock, playerRot, fdeployable, out housedata))
                             {
+                                if (fdeployable.GetComponent<StorageContainer>())
+                                {
+                                    var box = fdeployable.GetComponent<StorageContainer>();
+                                    var itemlist = new List<object>();
+                                    foreach (Item item in box.inventory.itemList)
+                                    {
+                                        var newitem = new Dictionary<string, object>();
+                                        newitem.Add("blueprint", item.isBlueprint.ToString());
+                                        newitem.Add("id", item.info.itemid.ToString());
+                                        newitem.Add("amount", item.amount.ToString());
+                                        itemlist.Add(newitem);
+                                    }
+                                    housedata.Add("items", itemlist);
+
+                                    if (box.HasSlot(BaseEntity.Slot.Lock))
+                                        TryCopyLock(box, housedata);
+                                }
+                                else if (fdeployable.GetComponent<Signage>())
+                                {
+                                    var signage = fdeployable.GetComponent<Signage>();
+                                    var sign = new Dictionary<string, object>();
+                                    if (signage.textureID > 0)
+                                        sign.Add("texture", Convert.ToBase64String(FileStorage.server.Get(signage.textureID, FileStorage.Type.png)));
+                                    sign.Add("locked", signage.IsLocked());
+                                    housedata.Add("sign", sign);
+                                }
                                 rawDeployables.Add(housedata);
+                            }
+                        }
+                    }
+                    else if (hit.GetComponentInParent<Spawnable>() != null)
+                    {
+                        fspawnable = hit.GetComponentInParent<Spawnable>();
+                        if (!(houseList.Contains(fspawnable)))
+                        {
+                            houseList.Add(fspawnable);
+                            checkFrom.Add(fspawnable.transform.position);
+                            if (GetSpawnableClean(initialBlock, playerRot, fspawnable, out housedata))
+                            {
+                                rawSpawnables.Add(housedata);
                             }
                         }
                     }
@@ -247,9 +279,6 @@ namespace Oxide.Plugins
             return true;
         }
 
-        /////////////////////////////////////////////////////
-        ///  CHAT COMMANDS
-        /////////////////////////////////////////////////////
         [ChatCommand("copy")]
         void cmdChatCopy(BasePlayer player, string command, string[] args)
         {
@@ -260,18 +289,18 @@ namespace Oxide.Plugins
                 SendReply(player, "You need to set the name of the copy file: /copy NAME");
                 return;
             }
-            
+
             // Get player camera view directly from the player
             if (!TryGetPlayerView(player, out currentRot))
             {
-                SendReply(player, "Couldn't find your eyes");
+                SendReply(player, "Couldn\'t find your eyes");
                 return;
             }
 
             // Get what the player is looking at
-            if(!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
+            if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
             {
-                SendReply(player, "Couldn't find any Entity");
+                SendReply(player, "Couldn\'t find any Entity");
                 return;
             }
 
@@ -291,7 +320,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            var returncopy = CopyBuilding(player.transform.position, currentRot.ToEulerAngles().y, buildingblock, out rawStructure, out rawDeployables, out rawStorages);
+            var returncopy = CopyBuilding(player.transform.position, currentRot.ToEulerAngles().y, buildingblock, out rawStructure, out rawDeployables, out rawSpawnables);
             if (returncopy is string)
             {
                 SendReply(player, (string)returncopy);
@@ -318,15 +347,18 @@ namespace Oxide.Plugins
             CopyData.Clear();
             CopyData["structure"] = rawStructure;
             CopyData["deployables"] = rawDeployables;
+            CopyData["spawnables"] = rawSpawnables;
             CopyData["default"] = defaultValues;
 
 
             Interface.GetMod().DataFileSystem.SaveDatafile(filename);
 
-            SendReply(player,string.Format("The house {0} was successfully saved",args[0].ToString()));
-            SendReply(player,string.Format("{0} building parts detected",rawStructure.Count.ToString()));
+            SendReply(player, string.Format("The house {0} was successfully saved", args[0].ToString()));
+            SendReply(player, string.Format("{0} building parts detected", rawStructure.Count.ToString()));
             SendReply(player, string.Format("{0} deployables detected", rawDeployables.Count.ToString()));
+            SendReply(player, string.Format("{0} spawnables detected", rawSpawnables.Count.ToString()));
         }
+
         [ChatCommand("paste")]
         void cmdChatPaste(BasePlayer player, string command, string[] args)
         {
@@ -347,14 +379,14 @@ namespace Oxide.Plugins
             // Get player camera view directly from the player
             if (!TryGetPlayerView(player, out currentRot))
             {
-                SendReply(player, "Couldn't find your eyes");
+                SendReply(player, "Couldn\'t find your eyes");
                 return;
             }
 
             // Get what the player is looking at
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
             {
-                SendReply(player, "Couldn't find any Entity");
+                SendReply(player, "Couldn\'t find any Entity");
                 return;
             }
 
@@ -371,15 +403,18 @@ namespace Oxide.Plugins
             Core.Configuration.DynamicConfigFile PasteData = Interface.GetMod().DataFileSystem.GetDatafile(filename);
             if (PasteData["structure"] == null || PasteData["default"] == null)
             {
-                SendReply(player, "This is not a correct copypaste file, or it's empty.");
+                SendReply(player, "This is not a correct copypaste file, or it\'s empty.");
                 return;
             }
             List<object> structureData = PasteData["structure"] as List<object>;
             List<object> deployablesData = PasteData["deployables"] as List<object>;
+            List<object> spawnablesData = PasteData["spawnables"] as List<object>;
 
             PasteBuilding(structureData, closestHitpoint, currentRot.ToEulerAngles().y, heightAdjustment);
             PasteDeployables(deployablesData, closestHitpoint, currentRot.ToEulerAngles().y, heightAdjustment, player);
+            PasteSpawnables(spawnablesData, closestHitpoint, currentRot.ToEulerAngles().y, heightAdjustment, player);
         }
+
         [ChatCommand("placeback")]
         void cmdChatPlaceback(BasePlayer player, string command, string[] args)
         {
@@ -399,10 +434,10 @@ namespace Oxide.Plugins
             Core.Configuration.DynamicConfigFile PasteData = Interface.GetMod().DataFileSystem.GetDatafile(filename);
             if (PasteData["structure"] == null || PasteData["default"] == null)
             {
-                SendReply(player, "This is not a correct copypaste file, or it's empty.");
+                SendReply(player, "This is not a correct copypaste file, or it\'s empty.");
                 return;
             }
-            Dictionary<string,object> defaultData = PasteData["default"] as Dictionary<string,object>;
+            Dictionary<string, object> defaultData = PasteData["default"] as Dictionary<string, object>;
             Dictionary<string, object> defaultPos = defaultData["position"] as Dictionary<string, object>;
             Vector3 defaultposition = new Vector3(Convert.ToSingle(defaultPos["x"]), Convert.ToSingle(defaultPos["y"]), Convert.ToSingle(defaultPos["z"]));
             List<object> structureData = PasteData["structure"] as List<object>;
@@ -411,65 +446,130 @@ namespace Oxide.Plugins
             PasteBuilding(structureData, defaultposition, Convert.ToSingle(defaultData["yrotation"]), heightAdjustment);
             PasteDeployables(deployablesData, defaultposition, Convert.ToSingle(defaultData["yrotation"]), heightAdjustment, player);
         }
-        void SpawnStructure(UnityEngine.GameObject prefab, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade)
+
+        BuildingBlock SpawnStructure(GameObject prefab, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade)
         {
-            UnityEngine.GameObject build =  UnityEngine.Object.Instantiate( prefab );
-            if(build == null) return;
+            GameObject build = UnityEngine.Object.Instantiate(prefab);
+            if (build == null) return null;
             BuildingBlock block = build.GetComponent<BuildingBlock>();
-            if(block == null) return;
+            if (block == null) return null;
             block.transform.position = pos;
             block.transform.rotation = angles;
             block.gameObject.SetActive(true);
-            block.blockDefinition = Construction.Library.FindByPrefabID(block.prefabID);
+            block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
             block.Spawn(true);
             block.SetGrade(grade);
             block.health = block.MaxHealth();
-            
+            return block;
+
         }
+
         void SpawnDeployable(Item newitem, Vector3 pos, Quaternion angles, BasePlayer player)
         {
             if (newitem.info.GetComponent<ItemModDeployable>() == null)
             {
-                SendReply(player,"1");
                 return;
             }
             var deployable = newitem.info.GetComponent<ItemModDeployable>().entityPrefab.targetObject.GetComponent<Deployable>();
             if (deployable == null)
             {
-                SendReply(player, "2");
                 return;
             }
-            var newBaseEntity = GameManager.server.CreateEntity( deployable.gameObject, pos, angles );
+            var newBaseEntity = GameManager.server.CreateEntity(deployable.gameObject, pos, angles);
             if (newBaseEntity == null)
             {
-                SendReply(player, "3");
                 return;
             }
-            newBaseEntity.SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver );
-            newBaseEntity.SendMessage("InitializeItem", newitem, UnityEngine.SendMessageOptions.DontRequireReceiver);
+            newBaseEntity.SendMessage("SetDeployedBy", player, SendMessageOptions.DontRequireReceiver);
+            newBaseEntity.SendMessage("InitializeItem", newitem, SendMessageOptions.DontRequireReceiver);
             newBaseEntity.Spawn(true);
         }
+
         void PasteBuilding(List<object> structureData, Vector3 targetPoint, float targetRot, float heightAdjustment)
         {
             Vector3 OriginRotation = new Vector3(0f, targetRot, 0f);
-            Quaternion OriginRot = Quaternion.EulerRotation( OriginRotation );
+            Quaternion OriginRot = Quaternion.EulerRotation(OriginRotation);
             foreach (Dictionary<string, object> structure in structureData)
             {
-                
+
                 Dictionary<string, object> structPos = structure["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = structure["rot"] as Dictionary<string, object>;
                 string prefabname = (string)structure["prefabname"];
-                BuildingGrade.Enum grade = (BuildingGrade.Enum) structure["grade"];
+                BuildingGrade.Enum grade = (BuildingGrade.Enum)structure["grade"];
                 Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
-                Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]),Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
+                Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
                 Vector3 NewPos = TempPos + targetPoint;
-                UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefabname);
+                GameObject newPrefab = GameManager.server.FindPrefab(prefabname);
                 if (newPrefab != null)
                 {
-                    SpawnStructure(newPrefab, NewPos, newAngles, grade);
+                    var block = SpawnStructure(newPrefab, NewPos, newAngles, grade);
+                    if (block && block.HasSlot(BaseEntity.Slot.Lock))
+                    {
+                        TryPasteLock(block, structure);
+                    }
                 }
             }
         }
+
+        void TryCopyLock(BaseCombatEntity lockableEntity, IDictionary<string, object> housedata)
+        {
+            var slotentity = lockableEntity.GetSlot(BaseEntity.Slot.Lock);
+            if (slotentity != null)
+            {
+                if (slotentity.GetComponent<CodeLock>())
+                {
+                    housedata.Add("codelock", codelock.GetValue(slotentity.GetComponent<CodeLock>()).ToString());
+                }
+                else if (slotentity.GetComponent<KeyLock>())
+                {
+                    var code = (int)keycode.GetValue(slotentity.GetComponent<KeyLock>());
+                    if ((bool)firstKeyCreated.GetValue(slotentity.GetComponent<KeyLock>()))
+                        code |= 0x80;
+                    housedata.Add("keycode", code.ToString());
+                }
+            }
+        }
+
+        void TryPasteLock(BaseCombatEntity lockableEntity, IDictionary<string, object> structure)
+        {
+            BaseEntity lockentity = null;
+            if (structure.ContainsKey("codelock"))
+            {
+                lockentity = GameManager.server.CreateEntity("build/locks/lock.code", Vector3.zero, new Quaternion());
+                lockentity.OnDeployed(lockableEntity);
+                var code = (string)structure["codelock"];
+                if (!string.IsNullOrEmpty(code))
+                {
+                    var @lock = lockentity.GetComponent<CodeLock>();
+                    codelock.SetValue(@lock, (string)structure["codelock"]);
+                    @lock.SetFlag(BaseEntity.Flags.Locked, true);
+                }
+            }
+            else if (structure.ContainsKey("keycode"))
+            {
+                lockentity = GameManager.server.CreateEntity("build/locks/lock.key", Vector3.zero, new Quaternion());
+                lockentity.OnDeployed(lockableEntity);
+                var code = Convert.ToInt32(structure["keycode"]);
+                var @lock = lockentity.GetComponent<KeyLock>();
+                if ((code & 0x80) != 0)
+                {
+                    // Set the keycode only if that lock had keys before. Otherwise let it be random.
+                    keycode.SetValue(@lock, (code & 0x7F));
+                    firstKeyCreated.SetValue(@lock, true);
+                    @lock.SetFlag(BaseEntity.Flags.Locked, true);
+                }
+
+            }
+
+            if (lockentity)
+            {
+                lockentity.gameObject.Identity();
+                lockentity.SetParent(lockableEntity, "lock");
+                lockentity.Spawn(true);
+                lockableEntity.SetSlot(BaseEntity.Slot.Lock, lockentity);
+            }
+        }
+
         void PasteDeployables(List<object> deployablesData, Vector3 targetPoint, float targetRot, float heightAdjustment, BasePlayer player)
         {
             Vector3 OriginRotation = new Vector3(0f, targetRot, 0f);
@@ -480,19 +580,73 @@ namespace Oxide.Plugins
                 Dictionary<string, object> structPos = deployable["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = deployable["rot"] as Dictionary<string, object>;
                 string prefabname = (string)deployable["prefabname"];
+
                 Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
                 Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
                 Vector3 NewPos = TempPos + targetPoint;
-                Item newItem = ItemManager.CreateByName(prefabname,1);
-                if (newItem != null)
+
+                GameObject newPrefab = GameManager.server.FindPrefab(prefabname);
+                if (newPrefab != null)
                 {
-                    SpawnDeployable(newItem, NewPos, newAngles, player);
+                    BaseEntity entity = GameManager.server.CreateEntity(newPrefab, NewPos, newAngles);
+                    if (entity == null) return;
+                    entity.SendMessage("SetDeployedBy", player, SendMessageOptions.DontRequireReceiver);
+                    entity.Spawn(true);
+                    if (entity.GetComponent<StorageContainer>())
+                    {
+                        var box = entity.GetComponent<StorageContainer>();
+                        inventoryClear.Invoke(box.inventory, null);
+                        var items = deployable["items"] as List<object>;
+                        foreach (var itemDef in items)
+                        {
+                            var item = itemDef as Dictionary<string, object>;
+                            var i = ItemManager.CreateByItemID(Convert.ToInt32(item["id"]), Convert.ToInt32(item["amount"]), Convert.ToBoolean(item["blueprint"]));
+                            i?.MoveToContainer(box.inventory);
+                        }
+
+                        if (box.HasSlot(BaseEntity.Slot.Lock))
+                            TryPasteLock(box, deployable);
+                    }
+                    else if (entity.GetComponent<Signage>())
+                    {
+                        var sign = entity.GetComponent<Signage>();
+                        var signData = deployable["sign"] as Dictionary<string, object>;
+                        if (signData.ContainsKey("texture"))
+                            sign.textureID = FileStorage.server.Store(Convert.FromBase64String(signData["texture"].ToString()), FileStorage.Type.png);
+                        if (Convert.ToBoolean(signData["locked"]))
+                            sign.SetFlag(BaseEntity.Flags.Locked, true);
+                        sign.SendNetworkUpdate();
+                    }
                 }
                 else
                 {
                     SendReply(player, prefabname);
                 }
+
             }
+        }
+
+        void PasteSpawnables(List<object> spawnablesData, Vector3 targetPoint, float targetRot, float heightAdjustment, BasePlayer player)
+        {
+            if (spawnablesData == null) return;
+
+            Vector3 OriginRotation = new Vector3(0f, targetRot, 0f);
+            Quaternion OriginRot = Quaternion.EulerRotation(OriginRotation);
+            foreach (Dictionary<string, object> spawnable in spawnablesData)
+            {
+                Dictionary<string, object> structPos = spawnable["pos"] as Dictionary<string, object>;
+                Dictionary<string, object> structRot = spawnable["rot"] as Dictionary<string, object>;
+                string prefabname = (string)spawnable["prefabname"];
+                Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
+                Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
+                Vector3 NewPos = TempPos + targetPoint;
+                GameObject newPrefab = GameManager.server.FindPrefab(prefabname);
+                if (newPrefab == null) return;
+                BaseEntity entity = GameManager.server.CreateEntity(newPrefab, NewPos, newAngles);
+                if (entity == null) return;
+                entity.Spawn(true);
+            }
+
         }
     }
 }
