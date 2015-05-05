@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Spawns Database", "Reneb", 1.0)]
+    [Info("Spawns Database", "Reneb", "1.1.0")]
     class Spawns : RustPlugin
     {
         Dictionary<BasePlayer, object> SpawnsData;
@@ -52,19 +52,15 @@ namespace Oxide.Plugins
         }
         object GetRandomSpawn(string filename)
         {
-            Puts(filename.ToString());
             if (!(SpawnsfileData.ContainsKey(filename)))
             {
-                Puts("loading1");
                 object success = loadSpawnfile(filename);
-                Puts("loading");
                 if (success is string)
                 {
                     return (string)success;
                 }
             }
-            Puts("hetting");
-            return ((List<Vector3>)SpawnsfileData[filename])[ GetRandomNumber(0,((List<Vector3>)SpawnsfileData[filename]).Count)];
+            return ((List<Vector3>)SpawnsfileData[filename])[GetRandomNumber(0, ((List<Vector3>)SpawnsfileData[filename]).Count)];
         }
 
         object GetRandomSpawnRange(string filename, int min, int max)
@@ -77,9 +73,9 @@ namespace Oxide.Plugins
                     return (string)success;
                 }
             }
-            if(min < 0) min = 0;
-            if(max > ((List<Vector3>)SpawnsfileData[filename]).Count) max = ((List<Vector3>)SpawnsfileData[filename]).Count;
-            return ((List<Vector3>)SpawnsfileData[filename])[ GetRandomNumber(min,max)];
+            if (min < 0) min = 0;
+            if (max > ((List<Vector3>)SpawnsfileData[filename]).Count) max = ((List<Vector3>)SpawnsfileData[filename]).Count;
+            return ((List<Vector3>)SpawnsfileData[filename])[GetRandomNumber(min, max)];
         }
         object GetSpawn(string filename, int number)
         {
@@ -91,8 +87,8 @@ namespace Oxide.Plugins
                     return (string)success;
                 }
             }
-            if(number < 0) number = 0;
-            if(number > ((List<Vector3>)SpawnsfileData[filename]).Count) number = ((List<Vector3>)SpawnsfileData[filename]).Count;
+            if (number < 0) number = 0;
+            if (number > ((List<Vector3>)SpawnsfileData[filename]).Count) number = ((List<Vector3>)SpawnsfileData[filename]).Count;
             return ((List<Vector3>)SpawnsfileData[filename])[number];
         }
         object loadSpawnfile(string filename)
@@ -147,7 +143,7 @@ namespace Oxide.Plugins
             SpawnsData.Add(player, new List<Vector3>());
             foreach (KeyValuePair<string, object> pair in NewSpawnFile)
             {
-                var currentvalue = pair.Value as Dictionary<string,object>;
+                var currentvalue = pair.Value as Dictionary<string, object>;
                 ((List<Vector3>)SpawnsData[player]).Add(new Vector3(Convert.ToInt32(currentvalue["x"]), Convert.ToInt32(currentvalue["y"]), Convert.ToInt32(currentvalue["z"])));
             }
             SendReply(player, string.Format("Opened spawnfile with {0} spawns", ((List<Vector3>)SpawnsData[player]).Count.ToString()));
@@ -179,7 +175,7 @@ namespace Oxide.Plugins
                 return;
             }
             int result;
-            if(!int.TryParse(args[0],out result))
+            if (!int.TryParse(args[0], out result))
             {
                 SendReply(player, "/spawns_remove SPAWN_NUMBER");
                 return;
@@ -196,7 +192,7 @@ namespace Oxide.Plugins
                 return;
             }
             ((List<Vector3>)SpawnsData[player]).RemoveAt(result);
-            SendReply(player, string.Format("Successfully removed Spawn n°{0}",result.ToString()));
+            SendReply(player, string.Format("Successfully removed Spawn n°{0}", result.ToString()));
         }
         [ChatCommand("spawns_save")]
         void cmdSpawnsSave(BasePlayer player, string command, string[] args)
@@ -230,7 +226,7 @@ namespace Oxide.Plugins
                 i++;
             }
             Interface.GetMod().DataFileSystem.SaveDatafile(args[0].ToString());
-            SendReply(player, string.Format("{0} spawnpoints saved into {1}",((List<Vector3>)SpawnsData[player]).Count.ToString(),args[0].ToString()));
+            SendReply(player, string.Format("{0} spawnpoints saved into {1}", ((List<Vector3>)SpawnsData[player]).Count.ToString(), args[0].ToString()));
             SpawnsData.Remove(player);
         }
         [ChatCommand("spawns_close")]
