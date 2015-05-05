@@ -1,6 +1,6 @@
 PLUGIN.Name = "finder"
 PLUGIN.Title = "Finder"
-PLUGIN.Version = V(1, 4, 2)
+PLUGIN.Version = V(1, 4, 3)
 PLUGIN.Description = "Find objects that belongs to players. sleepingbags, players, sleepers, doors for the moment."
 PLUGIN.Author = "Reneb"
 PLUGIN.HasConfig = true
@@ -18,24 +18,10 @@ function PLUGIN:Init()
 	command.AddChatCommand( "finditem", self.Plugin, "cmdFindItem" )
 	command.AddChatCommand( "findprivilege", self.Plugin, "cmdFindBuildingPrivilege" )
 	command.AddChatCommand( "findprivileges", self.Plugin, "cmdFindBuildingPrivilege" )
-	local pluginList = plugins.GetAll()
-    for i = 0, pluginList.Length - 1 do
-        local pluginTitle = pluginList[i].Object.Title
-        if pluginTitle == "deadPlayerList" then
-            deadPlayerList = pluginList[i].Object
-            break
-        end
-    end
-	local pluginList = plugins.GetAll()
-    for i = 0, pluginList.Length - 1 do
-        local pluginTitle = pluginList[i].Object.Title
-        if pluginTitle == "Building Owners" then
-            buildingowners = pluginList[i].Object
-            break
-        end
-    end
+	deadPlayerList = plugins.Find("DeadPlayersList")
+	buildingOwners = plugins.Find("BuildingOwners")
 	if(not deadPlayerList) then
-		print("To increase your chance in finding players, use the deadPlayerList plugin")
+		print("To increase your chance in finding players, use the DeadPlayerList plugin")
 	end
 end
 local function ChatMessage(player,msg)
@@ -45,7 +31,7 @@ function PLUGIN:LoadDefaultConfig()
 	self.Config.authLevel = 1
 end
 function PLUGIN:cmdFindBuildingPrivilege(player,cmd,args)
-	if(player:GetComponent("BaseNetworkable").net.connection.authLevel >= self.Config.authLevel ) then
+	if(player.net.connection.authLevel >= self.Config.authLevel ) then
 		if(args.Length >= 1) then
 			local targetplayer, err = self:FindPlayer(args[0])
 			if(not targetplayer) then
@@ -90,7 +76,7 @@ function PLUGIN:FindBuildingPrivilegeByPlayer(player)
 end
 function PLUGIN:cmdFindItem(player,com,args)
 	self.Find[player] = {}
-	local authlevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
+	local authlevel = player.net.connection.authLevel
 	local neededlevel = self.Config.authLevel 
 	if(authlevel >= neededlevel) then
 		if(args.Length >= 1) then
@@ -171,7 +157,7 @@ function PLUGIN:GetItemDefinition(itemname)
 end
 function PLUGIN:cmdFindPlayer(player,com,args)
 	self.Find[player] = {}
-	local authlevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
+	local authlevel = player.net.connection.authLevel
 	local neededlevel = self.Config.authLevel 
 	if(authlevel >= neededlevel) then
 		if(args.Length >= 1) then
@@ -201,10 +187,10 @@ function PLUGIN:cmdFindPlayer(player,com,args)
 end
 function PLUGIN:cmdFindDoor(player,com,args)
 	self.Find[player] = {}
-	local authlevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
+	local authlevel = player.net.connection.authLevel
 	local neededlevel = 1
 	if(authlevel >= neededlevel) then
-		if(not buildingowners) then
+		if(not buildingOwners) then
 			ChatMessage(player,"This command is not activated. You must have Building Owners plugin installed.")
 			return
 		end
@@ -230,7 +216,7 @@ function PLUGIN:cmdFindDoor(player,com,args)
 	end
 end
 function PLUGIN:cmdFindTp( player, com, args )
-	local authlevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
+	local authlevel = player.net.connection.authLevel
 	local neededlevel = self.Config.authLevel 
 	if(authlevel >= neededlevel) then
 		if(not self.Find[player]) then
@@ -265,7 +251,7 @@ function PLUGIN:cmdFindTp( player, com, args )
 end
 function PLUGIN:cmdFindSleepingBag( player, com, args )
 	self.Find[player] = {}
-	local authlevel = player:GetComponent("BaseNetworkable").net.connection.authLevel
+	local authlevel = player.net.connection.authLevel
 	local neededlevel = self.Config.authLevel 
 	if(authlevel >= neededlevel) then
 		if(args.Length >= 1) then
@@ -300,7 +286,7 @@ function PLUGIN:FindDoorsByPlayer(player)
 	if(allDoors.Length == 0) then return false, "No Doors were found on your server" end
 	for i = 0, tonumber(allDoors.Length - 1) do
 		local currdoor = allDoors[i];
-		local steamid = buildingowners:FindBlockData(currdoor:GetComponent("BuildingBlock"))
+		local steamid = buildingOwners.CallHook("FindBlockData", currdoor:GetComponent("BuildingBlock"))
 		if(steamid and userID == steamid) then
 			doors[#doors + 1] = currdoor:GetComponent("BuildingBlock")
 		end
@@ -360,7 +346,7 @@ function PLUGIN:FindPlayers(target)
 	end
 	if(#found == 0) then 
 		if deadPlayerList then
-			local deadplayers, err = deadPlayerList:FindDeadPlayers(target)
+			local deadplayers, err = deadPlayerList.CallHook("FindDeadPlayers", target)
 			if(not deadplayers) then return false, err end
 			for k,v in pairs(deadplayers) do
 				v.userID = k
@@ -398,7 +384,7 @@ function PLUGIN:FindPlayer( target )
 	end
 	if(not targetplayer) then 
 		if deadPlayerList then
-			targetsteamid,targetplayer = deadPlayerList:FindDeadPlayer(target)
+			targetsteamid,targetplayer = deadPlayerList.CallHook("FindDeadPlayer", target)
 		end
 		if(not targetsteamid) then
 			return false, "No players found" 
@@ -409,16 +395,9 @@ function PLUGIN:FindPlayer( target )
 end
 
 function PLUGIN:Teleport( player, destination )
-    local preTeleportLocation = player.transform.position
-    preTeleportLocation.x = preTeleportLocation.x + 1000
-    preTeleportLocation.z = preTeleportLocation.z + 1000
-    
-    player.transform.position = preTeleportLocation
+    player:StartSleeping()
+    rust.ForcePlayerPosition( player, destination.x, destination.y, destination.z )
+    player:SetPlayerFlag( global["BasePlayer+PlayerFlags"].ReceivingSnapshot, true )
     player:UpdateNetworkGroup()
-    player.transform.position = destination
-    player:UpdateNetworkGroup()
-    player:UpdatePlayerCollider(true, false)
     player:SendFullSnapshot()
-	player:StartSleeping()
-	timer.Once(0.1, function() player.inventory:SendSnapshot() end)
 end
