@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", 2.2)]
+    [Info("RemoverTool", "Reneb & Mughisi", "2.2.11")]
     class RemoverTool : RustPlugin
     {
     	private static DateTime epoch;
@@ -22,6 +22,7 @@ namespace Oxide.Plugins
         private double deactivateTimer;
         private double deactivateMaxTimer;
         private bool refundAllowed;
+        private bool refundAllGrades;
         private decimal refundRate;
         private bool useToolCupboard;
         private string noAccess;
@@ -90,6 +91,7 @@ namespace Oxide.Plugins
             deactivateTimer = Convert.ToDouble(GetConfig("RemoveTimer", "default", 30));
             deactivateMaxTimer = Convert.ToDouble(GetConfig("RemoveTimer", "max", 120));
             refundAllowed = Convert.ToBoolean(GetConfig("Refund", "activated", true));
+            refundAllGrades = Convert.ToBoolean (GetConfig ("Refund", "all-grades", false));
             refundRate = Convert.ToDecimal(GetConfig("Refund", "rate", 0.5));
             useToolCupboard = Convert.ToBoolean(GetConfig("ToolCupboard", "activated", true));
 
@@ -113,7 +115,7 @@ namespace Oxide.Plugins
                 Changed = false;
             }
         }
-        void LoadDefaultConfig()
+        protected override void LoadDefaultConfig()
         {
             Puts("RemoverTool: Creating a new config file");
             Config.Clear();
@@ -140,12 +142,13 @@ namespace Oxide.Plugins
                         {
                             BuildingBlock fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
                             checkFrom.Add(fbuildingblock.transform.position);
-                            fbuildingblock.Kill(ProtoBuf.EntityDestroy.Mode.None, 2, 0f, fbuildingblock.transform.position);
-                        }
+                            if (!fbuildingblock.isDestroyed)
+                                fbuildingblock.KillMessage();
+                        } 
                         else if (hit.GetComponentInParent<BasePlayer>() == null && hit.GetComponentInParent<BaseEntity>() != null)
                         {
                             if(!(hit.GetComponentInParent<BaseEntity>().isDestroyed))
-                                hit.GetComponentInParent<BaseEntity>().Kill(ProtoBuf.EntityDestroy.Mode.None, 2, 0f, hit.transform.position);
+                                hit.GetComponentInParent<BaseEntity>().KillMessage();
                         }
                     }
                 }
@@ -157,38 +160,43 @@ namespace Oxide.Plugins
             {
                 WorldItem worlditem = entity as WorldItem;
                 if (worlditem.item != null && worlditem.item.info != null)
-                    player.inventory.GiveItem(worlditem.item.info.itemid, 1,true);
+                    player.inventory.GiveItem(worlditem.item.info.itemid, 1, true);
             }
             else if( entity as BuildingBlock )
                 RefundBuildingBlock(player, entity as BuildingBlock);
         }
         void RefundBuildingBlock(BasePlayer player, BuildingBlock buildingblock)
         {
-            if (buildingblock.blockDefinition != null)
-            {
-                for (int i = buildingblock.grade; i >= 0; i--)
-                {
-                    List<ItemAmount> currentCost = buildingblock.blockDefinition.grades[i].costToBuild as List<ItemAmount>;
-                    foreach (ItemAmount ia in currentCost)
-                    {
-                        player.inventory.GiveItem(ia.itemid, Convert.ToInt32((decimal)ia.amount * refundRate), true);
+            if (buildingblock.blockDefinition != null) {
+                int buildingblockGrade = (int) buildingblock.grade;
+
+                if (refundAllGrades) {
+                    for (int i = buildingblockGrade; i >= 0; i--) {
+                        if (buildingblock.blockDefinition.grades [i] != null) {
+                            List<ItemAmount> currentCost = buildingblock.blockDefinition.grades [i].costToBuild as List<ItemAmount>;
+                            foreach (ItemAmount ia in currentCost) {
+                                player.inventory.GiveItem (ia.itemid, Convert.ToInt32 ((decimal) ia.amount * refundRate), true);
+                            }
+                        }
+                    }
+                } else {
+                    if (buildingblock.blockDefinition.grades [buildingblockGrade] != null) {
+                        List<ItemAmount> currentCost = buildingblock.blockDefinition.grades [buildingblockGrade].costToBuild as List<ItemAmount>;
+                        foreach (ItemAmount ia in currentCost) {
+                            player.inventory.GiveItem (ia.itemid, Convert.ToInt32 ((decimal) ia.amount * refundRate), true);
+                        }
+                    }
+
+                    if (buildingblock.blockDefinition.grades [0] != null) {
+                        List<ItemAmount> currentCost = buildingblock.blockDefinition.grades [0].costToBuild as List<ItemAmount>;
+                        foreach (ItemAmount ia in currentCost) {
+                            player.inventory.GiveItem (ia.itemid, Convert.ToInt32 ((decimal) ia.amount * refundRate), true);
+                        }
                     }
                 }
             }
         }
         void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
-        {
-            OnEntityAttack(player, hitinfo);
-        }
-        void OnMeleeAttack(BaseMelee melee, HitInfo hitinfo)
-        {
-            object parent = melee.GetParentEntity();
-            if (parent is BasePlayer)
-            {
-                OnEntityAttack((BasePlayer)parent, hitinfo);
-            }
-        }
-        void OnEntityAttack(BasePlayer player, HitInfo hitinfo)
         {
             if (hitinfo.HitEntity != null)
             {
@@ -214,8 +222,8 @@ namespace Oxide.Plugins
             }
             if (refundAllowed)
                 Refund(player,target);
-            
-            target.Kill(ProtoBuf.EntityDestroy.Mode.None, 0, 0f, new Vector3(0f, 0f, 0f));
+
+            target.KillMessage();
         }
         bool hasTotalAccess(BasePlayer player)
         {
@@ -258,12 +266,6 @@ namespace Oxide.Plugins
                             return true;
                     }
                 }
-            }
-            else if (entity as DeployedItem)
-            {
-                DeployedItem deployeditem = entity as DeployedItem;
-                if (player.userID == deployeditem.deployerUserID)
-                    return true;
             }
             if (useToolCupboard)
             {
@@ -374,7 +376,7 @@ namespace Oxide.Plugins
                 SendReply(player, noAccess);
                 return;
             }
-            var target = BasePlayer.Find(args[0].ToString());
+            var target = BasePlayer.Find(args[1].ToString());
             if (target == null || target.net == null || target.net.connection == null)
             {
                 SendReply(player, noTargetFound);
@@ -449,11 +451,11 @@ namespace Oxide.Plugins
         [ChatCommand("rayremove")]
         void cmdChatRayRemove(BasePlayer player, string command, string[] args)
         {
-            if (player.net.connection.authLevel < removeAll)
+            /*if (player.net.connection.authLevel < removeAll)
             {
                 SendReply(player, "You are not allowed to use this command");
                 return;
-            }
+            }*/
             var input = serverinput.GetValue(player) as InputState;
             var currentRot = Quaternion.Euler(input.current.aimAngles);
             var target = FindBlockFromRay(player.transform.position, currentRot * Vector3.forward);
