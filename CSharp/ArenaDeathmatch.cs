@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", 1.0)]
+    [Info("Arena Deathmatch", "Reneb", "1.0.3", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -19,6 +19,7 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         [PluginReference]
         Plugin EventManager;
+         
 
         private bool launched;
         private bool useThisEvent;
@@ -94,7 +95,9 @@ namespace Oxide.Plugins
                     foreach (var gameObj in objects)
                         GameObject.Destroy(gameObj);
             }
-        }
+        } 
+
+
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Configurations ////////////////////////////////////////////////////////////////////
@@ -146,13 +149,12 @@ namespace Oxide.Plugins
             }
             else 
                 useThisEvent = false;
-        }
+        } 
         void OnEventPlayerSpawn(BasePlayer player)
         {
             if (useThisEvent && EventStarted) 
             {  
                 player.inventory.Strip();
-                EventManager.Call("TeleportPlayerToEvent", new object[] { player });
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
             }
         }
@@ -165,11 +167,25 @@ namespace Oxide.Plugins
             }
             return null;
         }
+        void OnSelectEventZone(MonoBehaviour monoplayer, string radius)
+        {
+            if (useThisEvent)
+            {
+                return;
+            }
+        } 
+        void OnPostZoneCreate(string name)
+        {
+            if(name == EventName)
+            {
+                EventManager.Call("UpdateZone", EventName, new string[] { "eject", "true", "undestr", "true", "autolights", "true", "nobuild", "true", "nodeploy", "true", "nokits", "true", "notp", "true", "killsleepers", "true", "nosuicide", "true", "nocorpse", "true" });
+            } 
+        }  
         object CanEventOpen()
         {
             if (useThisEvent)
             {
-
+                 
             }
             return null;
         }
@@ -196,9 +212,10 @@ namespace Oxide.Plugins
             if (useThisEvent)
             {
                 EventStarted = false;
+                DeathmatchPlayers.Clear();
             }
             return null;
-        }
+        } 
         object OnEventStartPre()
         {
             if (useThisEvent)
@@ -209,7 +226,6 @@ namespace Oxide.Plugins
         }
         object OnEventStartPost()
         {
-
             return null;
         }
         object CanEventJoin()
@@ -242,14 +258,14 @@ namespace Oxide.Plugins
         void OnEventPlayerAttack(BasePlayer attacker, HitInfo hitinfo)
         {
             if (useThisEvent)
-            {
+            { 
                 if (!(hitinfo.HitEntity is BasePlayer))
                 {
                     hitinfo.damageTypes = new DamageTypeList();
                     hitinfo.DoHitEffects = false;
                 }
             }
-        }
+        } 
 
         void OnEventPlayerDeath(BasePlayer victim, HitInfo hitinfo)
         {
@@ -277,9 +293,9 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         // End Of Event Manager Hooks ////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
-
+         
         void AddKill(BasePlayer player)
-        {
+        { 
             if (!player.GetComponent<DeathmatchPlayer>())
                 return;
 
@@ -288,7 +304,7 @@ namespace Oxide.Plugins
             CheckScores();
         } 
         void CheckScores()
-        {    
+        {     
             if(DeathmatchPlayers.Count == 0)
             {
                 var emptyobject = new object[] { };
@@ -299,6 +315,7 @@ namespace Oxide.Plugins
             }
             foreach (DeathmatchPlayer deathmatchplayer in DeathmatchPlayers)
             {
+                if (deathmatchplayer == null) continue;
                 if (deathmatchplayer.kills >= EventWinKills || DeathmatchPlayers.Count == 1)
                 {
                     Winner(deathmatchplayer.player);
