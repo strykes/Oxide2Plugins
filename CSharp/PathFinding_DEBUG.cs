@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PathFinding", "Reneb", "0.0.6")]
+    [Info("PathFinding", "Reneb", "0.0.7")]
     class PathFinding : RustPlugin
     {
         [PluginReference]
@@ -337,7 +337,7 @@ namespace Oxide.Plugins
                     waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                     nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
                     entity.transform.position = nextPos; 
-                    if (player != null) player.ClientRPC(null, player, "ForcePositionTo", nextPos);
+                    if (player != null) player.ClientRPCPlayer(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
                 } 
             } 
