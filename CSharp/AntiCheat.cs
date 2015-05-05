@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb", "2.2.11", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb", "2.2.12", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -38,7 +38,7 @@ namespace Oxide.Plugins
         Oxide.Plugins.Timer activateTimer;
 
         GameObject originalWallhack;
-
+        
         List<GameObject> ListGameObjects = new List<GameObject>();
         static List<BasePlayer> adminList = new List<BasePlayer>();
         Hash<TriggerBase, Hash<BaseEntity, Vector3>> TriggerData = new Hash<TriggerBase, Hash<BaseEntity, Vector3>>();
@@ -923,11 +923,29 @@ namespace Oxide.Plugins
                 logs.Add(new AcLog(aclog.FromPos(), aclog.ToPos(), detectionText));
             }
         }
+		
+		void TeleportAdmin(BasePlayer player, Vector3 destination)
+        {
+            player.StartSleeping();
+            player.transform.position = destination;
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
+            player.TransformChanged();
 
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
+            player.UpdateNetworkGroup();
+            player.UpdatePlayerCollider(true, false);
+            player.SendNetworkUpdateImmediate(false);
+            player.ClientRPCPlayer(null, player, "StartLoading");
+            player.SendFullSnapshot();
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, false);
+            player.ClientRPCPlayer(null, player, "FinishLoading");
+
+        }
+		
         ////////////////////////////////////////////////////////////
         // Chat Commands
         ////////////////////////////////////////////////////////////
-
+		
         [ChatCommand("ac")]
         void cmdChatAC(BasePlayer player, string command, string[] args)
         {
@@ -968,6 +986,7 @@ namespace Oxide.Plugins
                 {
                     playerlog.AddLog(aclog, targetid);
                 }
+                SendReply(player, string.Format("You may say: /ac_tp NUMBER, to teleport to the specific detection (0-{0})", (playerlog.logs.Count - 1).ToString()));
             } 
             else if (args[0].ToLower() == "radius")
             {
@@ -992,13 +1011,53 @@ namespace Oxide.Plugins
                         }
                     }
                 }
+                SendReply(player, string.Format("{0} detections were made in a {1}m radius around you",playerlog.logs.Count.ToString(),radius.ToString()));
+                SendReply(player, string.Format("You may say: /ac_tp NUMBER, to teleport to the specific detection (0-{0})",(playerlog.logs.Count-1).ToString()));
             } 
             else
             {
                 SendReply(player, string.Format("This argument: \"{0}\" doesn't exist", args[0]));
             }
         }
-
+        
+		[ChatCommand("ac_tp")]
+        void cmdChatACTP(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
+            PlayerLog playerlog = player.GetComponent<PlayerLog>();
+            if (playerlog == null)
+        	{
+            	SendReply(player, "You must use /ac player NAME/STEAMID or /ac radius XXX before using this command"); 
+                return;
+            }
+            if(playerlog.logs == null  || playerlog.logs.Count == 0)
+            {
+            	SendReply(player, "Couldn't find any logs in your current log list, use /ac first");
+            	return;
+            }
+            if(args.Length == 0)
+            {
+            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString())));
+            	return;
+            }
+            int lognumber = 0;
+            if(!int.TryParse(args[0], out lognumber))
+            {
+            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString())));
+            	return;
+            }
+            if(lognumber < 0 || lognumber >= playerlog.logs.Count)
+            {
+            	SendReply(player, string.Format("You must select a number of the detection between 0 and {0}",(playerlog.logs.Count-1).ToString())));
+            	return;
+            }
+            if(Vector3.Distance(player.transform.position, playerlog.logs[lognumber].frompos) < 100f)
+            	ForcePlayerPosition(player, playerlog.logs[lognumber].frompos);
+            else
+            	TeleportAdmin(player, playerlog.logs[lognumber].frompos);
+            SendReply(player, string.Format("{0} - {1} - {2}", playerlog.logs[lognumber].message.ToString(), playerlog.logs[lognumber].frompos.ToString(), playerlog.logs[lognumber].topos.ToString()));
+        }
+		
         [ChatCommand("ac_list")]
         void cmdChatACList(BasePlayer player, string command, string[] args)
         {
