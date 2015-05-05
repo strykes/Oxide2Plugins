@@ -71,11 +71,13 @@ namespace Oxide.Plugins
         public static int triggerLayer;
         public static int playersMask;
         public static int buildingMask;
+        public static int AIMask;
 
         public FieldInfo[] allZoneFields;
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
-         
+
+        public Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         /////////////////////////////////////////
         /// Cached Fields, used to make the plugin faster
         /////////////////////////////////////////
@@ -84,7 +86,7 @@ namespace Oxide.Plugins
         public DamageTypeList emptyDamageType;
         public List<DamageTypeEntry> emptyDamageList;
         public BasePlayer cachedPlayer;
-
+        public RaycastHit cachedRaycasthit;
         /////////////////////////////////////////
         // ZoneLocation
         // Stored information for the zone location and radius
@@ -199,7 +201,7 @@ namespace Oxide.Plugins
                     zoneMask |= ((int)1) << LayerMask.NameToLayer("Resource");
                     zoneMask |= ((int)1) << LayerMask.NameToLayer("Tree");
                 }
-                if (info.nopve != null || info.nocorpse != null)
+                if (info.nopve != null)
                 {
                     zoneMask |= ((int)1) << LayerMask.NameToLayer("AI");
                 }
@@ -269,18 +271,6 @@ namespace Oxide.Plugins
                         buildingblocks.Add(col);
                         BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
                         ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
-                        if (info.nocorpse != null)
-                        {
-                            if (basecombat != null)
-                            {
-                                BaseCorpse corpse = basecombat.GetComponent<BaseCorpse>();
-                                if (corpse != null)
-                                {
-                                    corpse.Kill(BaseNetworkable.DestroyMode.None);
-                                    continue;
-                                }
-                            }
-                        }
                         if (baseresource != null)
                         {
                             if (baseresource == null) return;
@@ -393,13 +383,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         // OXIDE HOOKS
         /////////////////////////////////////////
-        void OnEntitySpawned(BaseNetworkable entity)
-        {
-            if(entity.GetComponent<BaseCorpse>() != null)
-            {
-                Debug.Log(LayerMask.LayerToName(entity.gameObject.layer));
-            }
-        }
+
         /////////////////////////////////////////
         // Loaded()
         // Called when the plugin is loaded
@@ -412,10 +396,11 @@ namespace Oxide.Plugins
             triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
             playersMask = LayerMask.GetMask(new string[] { "Player (Server)" });
             buildingMask = LayerMask.GetMask(new string[] { "Deployed" });
-           /* for(int i = 0; i < 25; i ++)
-            {
-                Debug.Log(LayerMask.LayerToName(i));
-            }*/
+            AIMask = LayerMask.GetMask(new string[] { "AI" });
+            /* for(int i = 0; i < 25; i ++)
+             {
+                 Debug.Log(LayerMask.LayerToName(i));
+             }*/
             LoadData();
             LoadVariables();
         }
@@ -602,12 +587,28 @@ namespace Oxide.Plugins
             if(entity is BasePlayer)
             {
                 cachedPlayer = entity as BasePlayer;
+                if(hasTag(cachedPlayer, "nocorpse"))
+                {
+                    timer.Once(0.1f, () => EraseCorpse(entity.transform.position));
+                }
                 if(playerZones[cachedPlayer] != null)
                     playerZones[cachedPlayer].Clear(); 
             }
         }
-
-
+        void EraseCorpse(Vector3 position)
+        {
+            if (Physics.Raycast(position, Vector3Down, out cachedRaycasthit))
+            {
+                position = cachedRaycasthit.point;
+            }
+            foreach (Collider collider in Physics.OverlapSphere(position, 2f, AIMask))
+            {
+                BaseCorpse corpse = collider.GetComponentInParent<BaseCorpse>();
+                if (corpse == null)
+                    continue;
+                corpse.Kill(BaseNetworkable.DestroyMode.None);
+            }
+        }
         /////////////////////////////////////////
         // Outside Plugin Hooks
         /////////////////////////////////////////
