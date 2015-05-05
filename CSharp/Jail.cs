@@ -11,12 +11,12 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Jail", "Reneb", "2.0.1")]
+    [Info("Jail", "Reneb", "2.0.5")]
     class Jail : RustPlugin
     {
         [PluginReference] Plugin ZoneManager;
 
-        [PluginReference] Plugin spawns;
+        [PluginReference] Plugin Spawns;
 
         ////////////////////////////////////////////
         /// FIELDS
@@ -173,7 +173,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         // Oxide Permission system
         /////////////////////////////////////////
-        bool hasPermission(BasePlayer player) { if (player.net.connection.authLevel > 1) return true; return permission.UserHasPermission(player.userID.ToString(), "canjail"); }
+        bool hasPermission(BasePlayer player) { if (player.net != null && player.net.connection.authLevel > 1) return true; return permission.UserHasPermission(player.userID.ToString(), "canjail"); }
 
         /////////////////////////////////////////
         // ZoneManager Hooks
@@ -227,18 +227,20 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         object FindCell(string userid)
         {
-            if (spawns == null) { Puts(NoSpawnDatabase); return null; }
+            if (Spawns == null) { Puts(NoSpawnDatabase); return null; }
             if (spawnfile == null) { Puts(NoSpawnFile); return null; }
-            var count = spawns.Call("GetSpawnsCount", spawnfile);
+            var count = Spawns.Call("GetSpawnsCount", spawnfile);
+            
             if (count is bool) return null;
-            if ((int)count == 0) { Puts(EmptySpawnFile); return null; }
-            return spawns.Call("GetRandomSpawnVector3", spawnfile, count);
+            if (Convert.ToInt32(count) == 0) { Puts(EmptySpawnFile); return null; }
+            
+            return Spawns.Call("GetRandomSpawn", spawnfile, count);
         }
 
         void LoadSpawnfile()
         {
             if (spawnfile == null) { Puts(NoSpawnFile); return; }
-            var count = spawns.Call("GetSpawnsCount", spawnfile);
+            var count = Spawns.Call("GetSpawnsCount", spawnfile);
             if (count is bool)
             {
                 Puts("{0} is not a valid spawnfile", spawnfile.ToString());
@@ -256,7 +258,7 @@ namespace Oxide.Plugins
         void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
             player.transform.position = destination;
-            player.ClientRPC(null, player, "ForcePositionTo", new object[] { destination });
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
         }
 
@@ -375,6 +377,7 @@ namespace Oxide.Plugins
             if (player.IsDead()) return;
             if (jailinmates[player.userID.ToString()] == null) return;
             cachedJail = jailinmates[player.userID.ToString()];
+            if (cachedJail.GetExpireTime() < 0) return;
             cachedInterval = cachedJail.GetExpireTime() - CurrentTime();
             if (cachedInterval < 1)
             {
@@ -393,7 +396,7 @@ namespace Oxide.Plugins
         {
             if (!hasPermission(player)) { SendReply(player, NoPermission); return; }
             if(ZoneManager == null) { SendReply(player, NoZoneManager); return; }
-            if (spawns == null) { SendReply(player, NoSpawnDatabase); return; }
+            if (Spawns == null) { SendReply(player, NoSpawnDatabase); return; }
             if (args.Length < 2)
             {
                 SendReply(player, "/jail_config spawnfile jailspawnfile => set the spawns where players will be jailed");
@@ -409,7 +412,7 @@ namespace Oxide.Plugins
                     SendReply(player, JailCreated);
                 break;
                 case "spawnfile":
-                    var count = Interface.GetMod().CallHook("GetSpawnsCount", new object[] { args[1] });
+                    var count = Spawns.Call("GetSpawnsCount", new object[] { args[1] });
                     if (count == null)
                     {
                         SendReply(player, "SpawnFile {0} is not a valid spawnfile", args[0].ToString());
@@ -436,7 +439,7 @@ namespace Oxide.Plugins
         {
             if (!hasPermission(player)) { SendReply(player, NoPermission); return; }
             if (ZoneManager == null) { SendReply(player, NoZoneManager); return; }
-            if(spawns == null) { SendReply(player, NoSpawnDatabase); return; }
+            if(Spawns == null) { SendReply(player, NoSpawnDatabase); return; }
             if (args.Length  == 0) { SendReply(player, "/jail PLAYER option:Time(seconds)"); return; }
 
             var target = FindPlayer(args[0].ToString());
@@ -460,7 +463,7 @@ namespace Oxide.Plugins
         {
             if (!hasPermission(player)) { SendReply(player, NoPermission); return; }
             if (ZoneManager == null) { SendReply(player, NoZoneManager); return; }
-            if (spawns == null) { SendReply(player, NoSpawnDatabase); return; }
+            if (Spawns == null) { SendReply(player, NoSpawnDatabase); return; }
             if (args.Length == 0) { SendReply(player, "/jail PLAYER option:Time(seconds)"); return; }
 
             var target = FindPlayer(args[0].ToString());
