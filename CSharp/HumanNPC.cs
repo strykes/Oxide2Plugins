@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.9", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.10", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
          
@@ -370,6 +370,7 @@ namespace Oxide.Plugins
             public void Disable() { this.enabled = false; }
         }
 
+        
         ////////////////////////////////////////////////////// 
         ///  class HumanPlayer : MonoBehaviour
         ///  MonoBehaviour: managed by UnityEngine
@@ -390,6 +391,12 @@ namespace Oxide.Plugins
             public float stopandtalkSeconds;
 
             public float lastMessage;
+
+            public List<TuneNote> tunetoplay = new List<TuneNote>();
+            public int currentnote = 0;
+            Effect effectP = new Effect("fx/gestures/guitarpluck", new Vector3(0, 0, 0), Vector3.forward);
+            Effect effectS = new Effect("fx/gestures/guitarstrum", new Vector3(0, 0, 0), Vector3.forward);
+
 
 
             void Awake()
@@ -415,7 +422,7 @@ namespace Oxide.Plugins
                 player.EndSleeping();
                 player.UpdateNetworkGroup();
                 Interface.CallHook("OnNPCRespawn", player);
-
+                if (info.minstrel != null) PlayTune();
                 locomotion = player.gameObject.AddComponent<HumanLocomotion>();
                 trigger = player.gameObject.AddComponent<HumanTrigger>();
                 enabled = true;
@@ -440,6 +447,34 @@ namespace Oxide.Plugins
                 locomotion.attackEntity = null;
                 player.health = float.Parse(info.health);
                 locomotion.GetBackToLastPos();
+            }
+            public void PlayTune()
+            {
+                if (info.minstrel == null) return;
+                if (tunetoplay.Count == 0) GetTune(this);
+                if (tunetoplay.Count == 0) return;
+                Invoke("PlayNote", 1);
+            }
+            public void PlayNote()
+            {
+                if (tunetoplay[currentnote].Pluck)
+                {
+                    effectP.worldPos = player.transform.position;
+                    effectP.origin = player.transform.position;
+                    effectP.scale = tunetoplay[currentnote].NoteScale;
+                    EffectNetwork.Send(effectP);
+                }
+                else
+                {
+                    effectS.worldPos = player.transform.position;
+                    effectS.origin = player.transform.position;
+                    effectS.scale = tunetoplay[currentnote].NoteScale;
+                    EffectNetwork.Send(effectS);
+                }
+                currentnote++;
+                if (currentnote >= tunetoplay.Count)
+                    currentnote = 0;
+                Invoke("PlayNote", tunetoplay[currentnote].Delay);
             }
             public void StartAttackingEntity(BaseEntity entity)
             {
@@ -487,6 +522,7 @@ namespace Oxide.Plugins
             public string damageInterval;
             public string attackDistance;
             public string maxDistance;
+            public string minstrel;
             public string hostile;
             public string speed;
             public string stopandtalk;
@@ -544,6 +580,7 @@ namespace Oxide.Plugins
                 clone.stopandtalkSeconds = this.stopandtalkSeconds;
                 clone.lootable = this.lootable;
                 clone.damageInterval = this.damageInterval;
+                clone.minstrel = this.minstrel;
                 clone.message_hello = this.message_hello;
                 clone.message_bye = this.message_bye;
                 clone.message_use = this.message_use;
@@ -665,12 +702,40 @@ namespace Oxide.Plugins
 
 
 
+        public class TuneNote
+        {
+            public float NoteScale, Delay;
+            public bool Pluck;
+            public TuneNote()
+            {
+            }
+        }
 
 
 
-
-
-
+         
+        static void GetTune(HumanPlayer hp)
+        {
+            var tune = Interface.CallHook("getTune", hp.info.minstrel);
+            if(tune == null)
+            {
+                hp.CancelInvoke("PlayTune");
+                return;
+            }
+            var newtune = new List<TuneNote>();
+            foreach(var note in (List<object>)tune)
+            {
+                var newnote = new TuneNote();
+                foreach (KeyValuePair<string, object> pair in (Dictionary<string,object>)note)
+                {
+                    if (pair.Key == "NoteScale") newnote.NoteScale = Convert.ToSingle(pair.Value);
+                    if (pair.Key == "Delay") newnote.Delay = Convert.ToSingle(pair.Value);
+                    if (pair.Key == "Pluck") newnote.Pluck = Convert.ToBoolean(pair.Value);
+                }
+                newtune.Add(newnote);
+            }
+            hp.tunetoplay = newtune;
+        }
 
 
         ////////////////////////////////////////////////////// 
@@ -686,7 +751,7 @@ namespace Oxide.Plugins
             playerLayer = LayerMask.GetMask(new string[] { "Player (Server)" });
             groundLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
             blockshootLayer = LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
-            RefreshAllNPC();
+            timer.Once(0.1f, () => RefreshAllNPC());
             emptyDamage = new DamageTypeList();
         }
 
@@ -1023,6 +1088,7 @@ namespace Oxide.Plugins
                 SendReply(player, "<color=#81F781>/npc kit</color> <color=#F6CECE>reset</color>/<color=#F2F5A9>\"KitName\" </color>=> <color=#D8D8D8>To set the kit of this NPC, requires the Kit plugin</color>");
                 SendReply(player, "<color=#81F781>/npc lootable</color> <color=#F2F5A9>true</color>/<color=#F6CECE>false</color> <color=#F2F5A9>XX </color>=> <color=#D8D8D8>To set it if the NPC corpse is lootable or not</color>");
                 SendReply(player, "<color=#81F781>/npc maxdistance</color> <color=#F2F5A9>XXX </color>=><color=#D8D8D8> Max distance from the spawn point that the NPC can run from (while attacking a player)</color>");
+                SendReply(player, "<color=#81F781>/npc minstrel</color> <color=#F6CECE>reset</color>/<color=#F2F5A9>\"TuneName\" </color>=> <color=#D8D8D8>To set tunes to play by the NPC.</color>");
                 SendReply(player, "<color=#81F781>/npc name</color> <color=#F2F5A9>\"THE NAME\"</color> =><color=#D8D8D8> To set a name to the NPC</color>");
                 SendReply(player, "<color=#81F781>/npc radius</color> <color=#F2F5A9>XXX</color> =><color=#D8D8D8> Radius of which the NPC will detect the player</color>");
                 SendReply(player, "<color=#81F781>/npc respawn</color> <color=#F2F5A9>true</color>/<color=#F6CECE>false</color> <color=#F2F5A9>XX </color>=> <color=#D8D8D8>To set it to respawn on death after XX seconds, default is instant respawn</color>");
@@ -1141,6 +1207,15 @@ namespace Oxide.Plugins
                     if (args[1] == "reset") npceditor.targetNPC.info.waypoint = "";
                     else if (Interface.CallHook("GetWaypointsList",args[1]) == null) { SendReply(player, "This waypoint doesn't exist"); return; }
                     else npceditor.targetNPC.info.waypoint = args[1];
+                    break;
+                case "minstrel":
+                    if (args.Length == 1)
+                    {
+                        if (npceditor.targetNPC.info.minstrel == null || npceditor.targetNPC.info.minstrel == "") SendReply(player, "No tune set for this NPC yet");
+                        else SendReply(player, string.Format("This NPC Tune is: {0}", npceditor.targetNPC.info.minstrel));
+                        return;
+                    }
+                    npceditor.targetNPC.info.minstrel = args[1];
                     break;
                 case "kit":
                 case "kits":
@@ -1311,7 +1386,7 @@ namespace Oxide.Plugins
                     if (hinfo.Initiator.ToPlayer() != null)
                         SendMessage(npc.GetComponent<HumanPlayer>(), hinfo.Initiator.ToPlayer(), GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hurt));
         }
-
+         
 
         ////////////////////////////////////////////////////// 
         ///  OnUseNPC(BasePlayer npc, BasePlayer player)
