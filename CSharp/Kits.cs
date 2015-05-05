@@ -11,31 +11,40 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.0.5")]
+    [Info("Kits", "Reneb", "2.0.10")]
     class Kits : RustPlugin
     {
-        private string noAccess;
-        private int authlevel;
-        private string itemNotFound;
-        private string cantUseKit;
-        private string maxKitReached;
-        private string unknownKit;
-        private string kitredeemed;
-        private string kitsreset;
+        static string noAccess = "You are not allowed to use this command";
+        static List<object> permissionsList = GetDefaultPermList();
+        static int authLevel = 1;
+        static string itemNotFound = "Item not found: ";
+        static string cantUseKit = "You are not allowed to use this kit";
+        static string maxKitReached = "You've used all your tokens for this kit";
+        static string unknownKit = "This kit doesn't exist";
+        static string kitredeemed = "You've redeemed a kit";
+        static string kitsreset = "All kits data from players were deleted";
 
         private DateTime epoch;
         private Core.Configuration.DynamicConfigFile KitsConfig;
         private Core.Configuration.DynamicConfigFile KitsData;
         private bool Changed;
         private Dictionary<string, string> displaynameToShortname;
-
+        private List<string> permNames = new List<string>();
+         
         void Loaded()
         {
             epoch = new System.DateTime(1970, 1, 1);
             displaynameToShortname = new Dictionary<string, string>();
-            if (!permission.PermissionExists("vip")) permission.RegisterPermission("vip", this);
-            LoadVariables();
+            foreach (var perm in permissionsList)
+            {
+                if (!permission.PermissionExists(perm.ToString())) permission.RegisterPermission(perm.ToString(), this);
+                if(!permNames.Contains(perm.ToString())) permNames.Add(perm.ToString());
+            }
             InitializeKits();
+            foreach(Signage sign in Resources.FindObjectsOfTypeAll<Signage>())
+            {
+                sign.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+            }
         }
         void OnServerInitialized()
         {
@@ -67,57 +76,51 @@ namespace Oxide.Plugins
                 displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
-        private object GetConfig(string menu, string datavalue, object defaultValue)
+
+        private void CheckCfg<T>(string Key, ref T var)
         {
-            var data = Config[menu] as Dictionary<string, object>;
-            if (data == null)
-            {
-                data = new Dictionary<string, object>();
-                Config[menu] = data;
-                Changed = true;
-            }
-            object value;
-            if (!data.TryGetValue(datavalue, out value))
-            {
-                value = defaultValue;
-                data[datavalue] = value;
-                Changed = true;
-            }
-            return value;
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
         }
-        private void LoadVariables()
+
+        void Init()
         {
-            authlevel = Convert.ToInt32(GetConfig("Settings", "authLevel", 1));
-            noAccess = Convert.ToString(GetConfig("Messages", "noAccess", "You are not allowed to use this command"));
-            itemNotFound = Convert.ToString(GetConfig("Messages", "itemNotFound", "Item not found: "));
-            cantUseKit = Convert.ToString(GetConfig("Messages", "cantUseKit", "You are not allowed to use this kit"));
-            maxKitReached = Convert.ToString(GetConfig("Messages", "maxKitReached", "You've used all your tokens for this kit"));
-            unknownKit = Convert.ToString(GetConfig("Messages", "unknownKit", "This kit doesn't exist"));
-            kitredeemed = Convert.ToString(GetConfig("Messages", "kitredeemed", "You've redeemed a kit"));
-            kitsreset = Convert.ToString(GetConfig("Messages", "kitsreset", "All kits data from players were deleted"));
-            if (Changed)
-            {
-                SaveConfig();
-                Changed = false;
-            }
+            CheckCfg<int>("Settings: authLevel", ref authLevel);
+            CheckCfg<List<object>>("Settings: Permissions List", ref permissionsList);
+            CheckCfg<string>("Messages: noAccess", ref noAccess);
+            CheckCfg<string>("Messages: itemNotFound", ref itemNotFound);
+            CheckCfg<string>("Messages: cantUseKit", ref cantUseKit);
+            CheckCfg<string>("Messages: maxKitReached", ref maxKitReached);
+            CheckCfg<string>("Messages: unknownKit", ref unknownKit);
+            CheckCfg<string>("Messages: kitredeemed", ref kitredeemed);
+            CheckCfg<string>("Messages: kitsreset", ref kitsreset);
+            SaveConfig();
+
         }
-        void LoadDefaultConfig()
+
+        void LoadDefaultConfig() { }
+
+        static List<object> GetDefaultPermList()
         {
-            Puts("Kits: Creating a new config file");
-            Config.Clear();
-            LoadVariables();
+            var newobject = new List<object>();
+            newobject.Add("vip");
+            newobject.Add("donator");
+            return newobject;
         }
+
         bool hasAccess(BasePlayer player)
         {
-            if (player.net.connection.authLevel >= authlevel)
+            if (player.net.connection.authLevel >= authLevel)
                 return true;
             return false;
         }
-        bool hasVip(object source)
+        bool hasVip(object source, string name)
         {
             if (!(source is BasePlayer)) return true;
-            if (((BasePlayer)source).net.connection.authLevel >= authlevel) return true;
-            return permission.UserHasPermission(((BasePlayer)source).userID.ToString(), "vip");
+            if (((BasePlayer)source).net.connection.authLevel >= authLevel) return true;
+            return permission.UserHasPermission(((BasePlayer)source).userID.ToString(), name);
         }
         public object GiveItem(BasePlayer player, string itemname, int amount, ItemContainer pref)
         {
@@ -163,7 +166,6 @@ namespace Oxide.Plugins
         {
             var kitEnum = KitsConfig.GetEnumerator();
             int authlevel = GetSourceLevel(source);
-            bool isvip = hasVip(source);
 
             while (kitEnum.MoveNext())
             {
@@ -180,13 +182,16 @@ namespace Oxide.Plugins
                 {
                     kitlvl = (int)kitdata["level"];
                     options = string.Format("{0} - {1}+", options, kitlvl.ToString());
-
                 }
-                if (kitdata.ContainsKey("vip"))
+                foreach (string name in permNames)
                 {
-                    options = string.Format("{0} - {1}", options, "vip");
-                    if (!isvip) continue;
+                    if (kitdata.ContainsKey(name))
+                    {
+                        options = string.Format("{0} - {1}", options, name);
+                        if (!hasVip(source, name)) kitlvl = authLevel;
+                    }
                 }
+                
                 if (kitdata.ContainsKey("max"))
                 {
                     options = string.Format("{0} - {1} max", options, kitdata["max"].ToString());
@@ -218,15 +223,18 @@ namespace Oxide.Plugins
                 SendTheReply(player, "Options avaible:");
                 SendTheReply(player, "-maxXX => max times someone can use this kit. Default is infinite.");
                 SendTheReply(player, "-cooldownXX => cooldown of the kit. Default is none.");
-                SendTheReply(player, "-vip => Allow to give this kit only to vip & admins");
                 SendTheReply(player, "-authlevelXX => Level needed to use this plugin: 0, 1 or 2. Default is 0");
+                foreach( string name in permNames)
+                {
+                    SendTheReply(player, string.Format("-{0} => Allow to give this kit only to {0}s", name));
+                }
                 return;
             }
             string kitname = args[1].ToString();
             string desription = args[2].ToString();
             int authlevel = 0;
             int max = -1;
-            bool vip = false;
+            var vip = new List<string>();
             double cooldown = 0.0;
             if (KitsConfig[kitname] != null)
             {
@@ -249,8 +257,10 @@ namespace Oxide.Plugins
                 newkit.Add("level", authlevel);
             if (max >= 0)
                 newkit.Add("max", max);
-            if (vip)
-                newkit.Add("vip", true);
+            foreach (string name in vip)
+            {
+                newkit.Add(name, true);
+            }
             if (cooldown > 0.0)
                 newkit.Add("cooldown", cooldown);
             newkit.Add("description", desription);
@@ -302,12 +312,13 @@ namespace Oxide.Plugins
             kitsitems.Add("belt", beltList);
             return kitsitems;
         }
-        object VerifyOptions(string[] args, out int authlevel, out int max, out double cooldown, out bool vip)
+        object VerifyOptions(string[] args, out int authlevel, out int max, out double cooldown, out List<string> vip)
         {
             authlevel = 0;
             max = -1;
             cooldown = 0.0;
-            vip = false;
+            vip = new List<string>();
+            bool error = true;
             for (var i = 3; i < args.Length; i++)
             {
                 int substring = 0;
@@ -323,10 +334,6 @@ namespace Oxide.Plugins
                     if (!(double.TryParse(args[i].Substring(substring), out cooldown)))
                         return string.Format("Wrong Number Value for : {0}", args[i].ToString());
                 }
-                else if (args[i].StartsWith("-vip"))
-                {
-                    vip = true;
-                }
                 else if (args[i].StartsWith("-authlevel"))
                 {
                     substring = 10;
@@ -338,8 +345,19 @@ namespace Oxide.Plugins
                         authlevel = 0;
                 }
                 else
-                    return string.Format("Wrong Options: {0}", args[i].ToString());
-                return true;
+                {
+                    error = true;
+                    foreach (string name in permNames)
+                    {
+                        if(args[i].StartsWith("-"+name))
+                        {
+                            if (!vip.Contains(name)) vip.Add(name);
+                            error = false;
+                        }
+                    }
+                    if(error)
+                        return string.Format("Wrong Options: {0}", args[i].ToString()); 
+                }
             }
             return true;
         }
@@ -349,7 +367,7 @@ namespace Oxide.Plugins
             SendTheReply(player, "All kits data from players were deleted");
             SaveKitsData();
         }
-        void OnPlayerSpawn(BasePlayer player)
+        void OnPlayerRespawned(BasePlayer player)
         {
             if (KitsConfig["autokit"] == null) return;
             object thereturn = Interface.GetMod().CallHook("canRedeemKit", new object[] { player });
@@ -357,7 +375,7 @@ namespace Oxide.Plugins
             {
                 player.inventory.Strip();
                 GiveKit(player, "autokit");
-            }
+            } 
         }
         void cmdRemoveKit(BasePlayer player, string[] args)
         {
@@ -456,12 +474,18 @@ namespace Oxide.Plugins
                 SendTheReply(player, maxKitReached);
                 return;
             }
-            if (kitdata.ContainsKey("vip"))
-                if (!hasVip(player))
+            foreach (string name in permNames)
+            {
+                if(kitdata.ContainsKey(name))
                 {
-                    SendReply(player, cantUseKit);
-                    return;
+                    if (!hasVip(player, name))
+                    {
+                        SendReply(player, cantUseKit);
+                        return;
+                    }
                 }
+            }
+                
             if (kitdata.ContainsKey("cooldown"))
                 cooldown = GetKitTimeleft(player, kitname, (double)(kitdata["cooldown"]));
             if (cooldown > 0.0)
