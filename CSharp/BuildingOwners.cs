@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Building Owners", "Reneb", 2.1)]
+    [Info("Building Owners", "Reneb", "2.1.2")]
     class BuildingOwners : RustPlugin
     {
     	private static DateTime epoch;
@@ -71,6 +71,7 @@ namespace Oxide.Plugins
             if (serverInitialized)
             {
                 var buildingblock = gameobject.GetComponent<BuildingBlock>();
+                if (buildingblock == null) return;
                 float posy = buildingblock.transform.position.y;
                 if (!(OwnersData.ContainsKey(posy)))
                 {
@@ -81,7 +82,6 @@ namespace Oxide.Plugins
                     var list = ReverseData[userid] as List<object>;
                     list.Add(posy);
                     ReverseData[userid] = list;
-                    SaveData();
                 }
             }
         }
@@ -163,9 +163,16 @@ namespace Oxide.Plugins
                     }
                     SendReply(player, string.Format("New owner of this house is: {0}",target.displayName));
                     SendReply(target, "An admin gave you the ownership of this house");
-                    SaveData();
                 }
             }
+        }
+        void OnServerSave()
+        {
+            SaveData();
+        }
+        void OnServerQuit()
+        {
+            SaveData();
         }
     }
 }
