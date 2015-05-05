@@ -12,9 +12,11 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PathFinding", "Reneb", "0.0.6")]
+    [Info("PathFinding", "Reneb", "0.0.7")]
     class PathFinding : RustPlugin
-    { 
+    {
+        [PluginReference]
+        Plugin Draw;
         public class Pathfinder
         {
             public SortedList<float, List<PathfindNode>> SortNode;
@@ -25,6 +27,8 @@ namespace Oxide.Plugins
             public PathfindNode targetNode;
 
             public float currentPriority;
+
+            public BasePlayer player;
 
             public int Loops;
 
@@ -68,7 +72,7 @@ namespace Oxide.Plugins
                     PlayerPath.Add(parentnode.position);
                     parentnode = parentnode.parentNode;
                     if (parentnode == null) break;
-                }
+                } 
                 PlayerPath.Reverse();
                 PlayerPath.RemoveAt(0);
                 Reset();
@@ -132,6 +136,8 @@ namespace Oxide.Plugins
                 CalculateMovementCost(this, diagonal);
                 this.F = this.H + this.G;
                 pathfinder.AddToPriorityList(this);
+                if (this.pathfinder.player != null)
+                    this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.green, position, 0.5f);
             }
 
             // METHODS 
@@ -140,31 +146,87 @@ namespace Oxide.Plugins
             // This automatically creates the surrounding pathnodes
             public void DetectAdjacentNodes()
             {
-                if(!pathfinder.ClosedList[this.positionEyes + VectorForward])
+                if (!pathfinder.ClosedList[this.positionEyes + VectorForward])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForward, blockLayer))
+                    {
                         north = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForward, false);
+                    }
+                    else
+                    {
+                        if(this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorForward, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorRight])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorRight, blockLayer))
+                    { 
                         east = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorRight, false);
+                    }
+                    else
+                    { 
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorRight, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorBack])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBack, blockLayer))
+                    {
                         south = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBack, false);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorBack, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorLeft, blockLayer))
+                    { 
                         west = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorLeft, false);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorLeft, 0.5f);
+                    }
 
                 if (!pathfinder.ClosedList[this.positionEyes + VectorForwardRight])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardRight, blockLayer))
+                    {
                         northeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardRight, true);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorForwardRight, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorForwardLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardLeft, blockLayer))
+                    { 
                         northwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardLeft, true);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorForwardLeft, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorBackLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackLeft, blockLayer))
+                    { 
                     southeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackLeft, true);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorBackLeft, 0.5f);
+                    }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorBackRight])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackRight, blockLayer))
+                    { 
                      southwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackRight, true);
+                    }
+                    else
+                    {
+                        if (this.pathfinder.player != null)
+                            this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorBackRight, 0.5f);
+                    }
             }
         }
         // Here we calculate the movement cost between 2 points.
@@ -177,7 +239,12 @@ namespace Oxide.Plugins
         public static PathfindNode FindPathNodeOrCreate(Pathfinder pathfinder, PathfindNode parentnode, Vector3 position, bool diagonal)
         {
             pathfinder.ClosedList[position] = true;
-            if (!FindGroundPosition(position, out GroundPosition, out FixedGroundPosition)) return null;
+            if (!FindGroundPosition(position, out GroundPosition, out FixedGroundPosition))
+            {
+                if(pathfinder.player != null)
+                    pathfinder.player.SendConsoleCommand("ddraw.box", 20f, UnityEngine.Color.yellow, position, 0.5f);
+                return null;
+            }
             if (pathfinder.NodeList[FixedGroundPosition] == null) pathfinder.NodeList[FixedGroundPosition] = new PathfindNode(pathfinder, parentnode, GroundPosition, diagonal);
             else if (pathfinder.NodeList[FixedGroundPosition].isGoal) { pathfinder.targetNode.parentNode = parentnode; parentnode.isGoal = true; }
             return null;
@@ -188,6 +255,7 @@ namespace Oxide.Plugins
             groundPos = fixedPos = sourcePos;
             if (Physics.Raycast(sourcePos, Vector3Down, out hitinfo, groundLayer))
             {
+                if (hitinfo.collider.gameObject.layer == 4) return false;
                 groundPos.y = hitinfo.point.y;
                 fixedPos.y = Mathf.Ceil(hitinfo.point.y);
                 return true;
@@ -255,7 +323,7 @@ namespace Oxide.Plugins
             {
                 entity = GetComponent<BaseEntity>();
                 if (GetComponent<BasePlayer>() != null) player = GetComponent<BasePlayer>();
-                speed = 4f;
+                speed = 10f;
             }
             void Move() {
                 if (secondsTaken == 0f) FindNextWaypoint();
@@ -271,12 +339,12 @@ namespace Oxide.Plugins
                     entity.transform.position = nextPos; 
                     if (player != null) player.ClientRPCPlayer(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
-                }
+                } 
             } 
             void FindNextWaypoint()
             {
                 if (Paths.Count == 0) { StartPos = EndPos = Vector3.zero; enabled = false; return; }
-                SetMovementPoint(Paths[0], 4f); 
+                SetMovementPoint(Paths[0], speed); 
             }
 
             public void SetMovementPoint(Vector3 endpos, float s)
@@ -332,7 +400,7 @@ namespace Oxide.Plugins
 
         private Oxide.Plugins.Timer PathfindingTimer;
 
-
+         
 
         private static int MaxLoops = 500;
 
@@ -378,7 +446,18 @@ namespace Oxide.Plugins
         ///////////////////////////////////////////// 
         /// Outside Plugin Calls
         ///////////////////////////////////////////// 
-        
+        bool FindAndShowPath(BasePlayer player, Vector3 sourcePosition, Vector3 targetPosition)
+        {
+            var curtime = Time.realtimeSinceStartup;
+            var bestPath = FindBestPathShow(player, sourcePosition, targetPosition);
+            SendReply(player, "Took: "+(Time.realtimeSinceStartup - curtime).ToString()+"seconds");
+            if (bestPath == null) return false;
+            foreach(Vector3 pos in (List<Vector3>)bestPath)
+            {
+                player.SendConsoleCommand("ddraw.sphere", 20f, UnityEngine.Color.blue, pos+EyesPosition, 1f);
+            } 
+            return true;
+        }
         bool FindAndFollowPath(BaseEntity entity, Vector3 sourcePosition, Vector3 targetPosition)
         {
             //var curtime = Time.realtimeSinceStartup;
@@ -397,6 +476,12 @@ namespace Oxide.Plugins
             pathfollower.Paths = pathpoints;
             pathfollower.enabled = true;
         }
+        List<Vector3> FindBestPathShow(BasePlayer player, Vector3 sourcePosition, Vector3 targetPosition)
+        {
+            List<Vector3> bestPath = FindLinePath(sourcePosition, targetPosition, player);
+            if (bestPath == null) bestPath = FindPath(sourcePosition, targetPosition, player);
+            return bestPath;
+        }
         List<Vector3> FindBestPath(Vector3 sourcePosition, Vector3 targetPosition)
         {
             List<Vector3> bestPath = FindLinePath(sourcePosition, targetPosition);
@@ -404,28 +489,34 @@ namespace Oxide.Plugins
             return bestPath;
         }
 
-        List<Vector3> FindPath(Vector3 sourcePosition, Vector3 targetPosition)
+        List<Vector3> FindPath(Vector3 sourcePosition, Vector3 targetPosition, BasePlayer player = null)
         {
             var path = new Pathfinder();
+            if (player != null)
+                path.player = player;
             var FoundPath = path.FindPath(sourcePosition, targetPosition);
             path = null;
             return FoundPath;
         }
 
-        List<Vector3> FindLinePath(Vector3 sourcePosition, Vector3 targetPosition)
+        List<Vector3> FindLinePath(Vector3 sourcePosition, Vector3 targetPosition, BasePlayer player = null)
         {
             float distance = (int)Mathf.Ceil(Vector3.Distance(sourcePosition, targetPosition));
             Hash<float,Vector3> StraightPath = new Hash<float, Vector3>();
             StraightPath[0f] = sourcePosition;
             Vector3 currentPos;
             for(float i = 1f; i < distance; i++)
-            {
+            { 
                 currentPos = Vector3.Lerp(sourcePosition, targetPosition, i/ distance);
                 if (!FindRawGroundPosition(currentPos, out GroundPosition))
                     if (!FindRawGroundPositionUP(currentPos, out GroundPosition))
                         return null;
                 if (Vector3.Distance(GroundPosition, StraightPath[i - 1f]) > 2) return null;
                 if (Physics.Linecast(StraightPath[i - 1f] + jumpPosition, GroundPosition + jumpPosition, blockLayer)) return null;
+                if (player != null)
+                {
+                    Draw.Call("Sphere",player, StraightPath[i], 0.5f, UnityEngine.Color.white, 20f);
+                }
                 StraightPath[i] = GroundPosition;
             }
             if (Physics.Linecast(StraightPath[distance - 1f] + jumpPosition, targetPosition + jumpPosition, blockLayer)) return null;
@@ -460,7 +551,7 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
 
-            FindAndFollowPath(player, player.transform.position, closestHitpoint);
+            FindAndShowPath(player, player.transform.position, closestHitpoint);
         }
 
         bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
