@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.9")]
+    [Info("Build", "Reneb", "1.0.10")]
     class Build : RustPlugin
     { 
         class BuildPlayer : MonoBehaviour
@@ -159,7 +159,7 @@ namespace Oxide.Plugins
                 if (resourcefile.Contains("autospawn/animals"))
                 {
                     animalList.Add(resourcefile.Substring(26),resourcefile.Substring(8));
-                }
+                } 
             }
         }
 
@@ -324,10 +324,11 @@ namespace Oxide.Plugins
             nameToSockets.Add("build/pillar", SocketType.Support);
             nameToSockets.Add("build/block.halfheight", SocketType.Block);
             nameToSockets.Add("build/block.halfheight.slanted", SocketType.Block);
-
+            nameToSockets.Add("build/block.stair.lshape", SocketType.Block);
+            nameToSockets.Add("build/block.stair.ushape", SocketType.Block);
             // Foundation steps are fucked up, i need to look how this works more
             //nameToSockets.Add("build/foundation.steps", SocketType.Floor);
-            
+
         }
         /////////////////////////////////////////////////////
         /// Get all blocknames from shortname to full prefabname
