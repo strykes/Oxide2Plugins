@@ -41,12 +41,12 @@ namespace Oxide.Plugins
         {
             InitializeTable();
 
-            pluginsfullib = (Oxide.Core.Libraries.Plugins)pluginslib.GetValue(Interface.GetMod());
+            /*pluginsfullib = (Oxide.Core.Libraries.Plugins)pluginslib.GetValue(Interface.GetMod());
             object findplugin = pluginsfullib.Find("Kits");
             if (findplugin == null)
                 return;
             kitsplugin = (Oxide.Core.Plugins.Plugin)findplugin;
-
+            */
         }
         
         private void InitializeTable()
