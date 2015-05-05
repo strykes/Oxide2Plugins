@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.0.2", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.0.5", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -222,7 +222,7 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
-            InitializeZones();
+            timer.Once(0.1f, () => InitializeZones());
         }
         void Unload()
         {
@@ -241,12 +241,12 @@ namespace Oxide.Plugins
         }
         void OnPlayerRespawned(BasePlayer player)
         {
-            if (!EventStarted) return;
             if (!(player.GetComponent<EventPlayer>())) return;  
             if (player.GetComponent<EventPlayer>().inEvent)
             {
+                if (!EventStarted) return;
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
-            }
+            } 
             else
             {
                 RedeemInventory(player);
@@ -423,7 +423,7 @@ namespace Oxide.Plugins
         static string MessagesEventNotInEvent = "You are not currently in the Event.";
         static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
         static string MessagesEventStatusClosed = "The Event is currently closed.";
-        static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before selecting a new game.";
+        static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
 
         void LoadVariables()
         {
@@ -535,26 +535,32 @@ namespace Oxide.Plugins
         }
         void SaveHomeLocation(BasePlayer player)
         {
-            var eventplayer = player.GetComponent<EventPlayer>();
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
             if (eventplayer == null) return;
             eventplayer.SaveHome();
         }
         void RedeemInventory(BasePlayer player)
         {
-            var eventplayer = player.GetComponent<EventPlayer>();
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
             if (eventplayer == null) return;
             if (player.IsDead())
                 return;
-            eventplayer.player.inventory.Strip();
-            eventplayer.RestoreInventory();
+            if (eventplayer.savedInventory)
+            {
+                eventplayer.player.inventory.Strip();
+                eventplayer.RestoreInventory();
+            }
         }
         void TeleportPlayerHome(BasePlayer player)
         {
-            var eventplayer = player.GetComponent<EventPlayer>();
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
             if (eventplayer == null) return;
             if (player.IsDead())
                 return;
-            eventplayer.TeleportHome();
+            if (eventplayer.savedHome)
+            {
+                eventplayer.TeleportHome();
+            }
         }
         void TryErasePlayer(BasePlayer player)
         {
@@ -655,14 +661,14 @@ namespace Oxide.Plugins
         {
             if (EventGameName == null) return MessagesEventNotSet;
             else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
-            else if (EventStarted) return "An Event game has already started.";
+            else if (EventStarted) return MessagesEventAlreadyStarted;
             object success = Interface.CallHook("CanEventStart", new object[] { });
             if (success is string)
             {
                 return (string)success;
             }
             Interface.CallHook("OnEventStartPre", new object[] { });
-            BroadcastToChat(string.Format("Event: {0} is about to begin!", EventGameName));
+            BroadcastToChat(string.Format(MessagesEventBegin, EventGameName));
             EventStarted = true;
             EventEnded = false;
 
@@ -675,47 +681,59 @@ namespace Oxide.Plugins
         object JoinEvent(BasePlayer player)
         {
             if (player.GetComponent<EventPlayer>())
-                return MessagesEventAlreadyJoined;
-            else if (!EventOpen)
+            {
+                if(EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+                    return MessagesEventAlreadyJoined;
+            }
+            if (!EventOpen)
                 return "The Event is currently closed.";
             object success = Interface.CallHook("CanEventJoin", new object[] { player });
             if (success is string)
             {
                 return (string)success;
             }
-            var event_player = player.gameObject.AddComponent<EventPlayer>();
+
+            EventPlayer event_player = player.GetComponent<EventPlayer>();
+            if(event_player == null) event_player = player.gameObject.AddComponent<EventPlayer>();
+
             event_player.enabled = true;
             EventPlayers.Add(event_player);
-
+             
             if (EventStarted)
             {
                 SaveHomeLocation(player);
                 SaveInventory(player);
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
-            }
+            } 
             BroadcastToChat(string.Format(MessagesEventJoined, player.displayName.ToString(), EventPlayers.Count.ToString()));
             Interface.CallHook("OnEventJoinPost", new object[] { player });
             return true;
-        }
+        } 
         object LeaveEvent(BasePlayer player)
         {
             if (player.GetComponent<EventPlayer>() == null)
+            {
                 return "You are not currently in the Event.";
-            player.inventory.Strip();
+            }
+            if(!EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+            {
+                return "You are not currently in the Event.";
+            }
+            
             player.GetComponent<EventPlayer>().inEvent = false;
-            if (!EventEnded)
+            if (!EventEnded || !EventStarted)
             {
                 BroadcastToChat(string.Format(MessagesEventLeft, player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             }
             ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
             if (EventStarted)
             {
+                player.inventory.Strip();
                 RedeemInventory(player);
                 TeleportPlayerHome(player);
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
                 TryErasePlayer(player);
                 Interface.CallHook("OnEventLeavePost", new object[] { player });
-                
             }
             else
             {
@@ -727,8 +745,8 @@ namespace Oxide.Plugins
          
         object SelectEvent(string name)
         {
-            if (!(EventGames.Contains(name))) return "This Game isn't registered, did you reload the game after loading Event - Core?";
-            if (EventStarted || EventOpen) return "The Event needs to be closed and ended before selecting a new game.";
+            if (!(EventGames.Contains(name))) return string.Format(MessagesEventNotAnEvent,name);
+            if (EventStarted || EventOpen) return MessagesEventCloseAndEnd;
             EventGameName = name;
             Interface.CallHook("OnSelectEventGamePost", new object[] { name });
             return true;
@@ -736,11 +754,11 @@ namespace Oxide.Plugins
         object SelectSpawnfile(string name)
         {
             if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
-            if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
             object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
             if (success == null)
             {
-                return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
+                return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
             }
             EventSpawnFile = name;
             success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
@@ -754,8 +772,8 @@ namespace Oxide.Plugins
         object SelectNewZone(MonoBehaviour monoplayer, string radius)
         {
             if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
-            if (!(EventGames.Contains(EventGameName))) return string.Format("This Game {0} isn't registered, did you reload the game after loading Event - Core?", EventGameName.ToString());
-            if (EventStarted || EventOpen) return "The Event needs to be closed and ended before selecting a new zone.";
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+            if (EventStarted || EventOpen) return MessagesEventCloseAndEnd;
             Interface.CallHook("OnSelectEventZone", new object[] { monoplayer, radius });
             if (zonelogs[EventGameName] != null) storedData.ZoneLogs.Remove(zonelogs[EventGameName]);
             zonelogs[EventGameName] = new EventZone(EventGameName, monoplayer.transform.position, Convert.ToSingle(radius));
@@ -778,7 +796,7 @@ namespace Oxide.Plugins
                 }
             }
             if(zonelogs[name] != null)
-                InitializeZone(name);
+                timer.Once(0.5f, () => InitializeZone(name));
             return true;
         }
 
@@ -805,7 +823,7 @@ namespace Oxide.Plugins
                 return;
             }
         }
-
+         
         //////////////////////////////////////////////////////////////////////////////////////
         // Console Commands //////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
