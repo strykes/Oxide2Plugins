@@ -258,7 +258,7 @@ namespace Oxide.Plugins
             originalWallhack.AddComponent<MeshCollider>();
             originalWallhack.AddComponent<TriggerBase>();
             originalWallhack.gameObject.layer = UnityEngine.LayerMask.NameToLayer("Trigger");
-            var newlayermask = new UnityEngine.LayerMask();
+            UnityEngine.LayerMask newlayermask = new UnityEngine.LayerMask();
             newlayermask.value = 133120;
             originalWallhack.GetComponent<TriggerBase>().interestLayers = newlayermask;
             timer.Once(0.5f, () => RefreshAllWalls());
@@ -669,7 +669,7 @@ namespace Oxide.Plugins
                         CancelDamage(info);
                         attackSpeedDetections[attacker]++;
                         if(attackSpeedDetections[attacker] > 1)
-                            SendDetection(string.Format("{0} - {1} was detected hiting too fast", attacker.userID.ToString(), attacker.displayName.ToString()));
+                            SendDetection(string.Format("{0} - {1} was detected hiting too fast - @ {2}", attacker.userID.ToString(), attacker.displayName.ToString(), attacker.transform.position.ToString()));
                     }
                 }
                 else
@@ -689,7 +689,7 @@ namespace Oxide.Plugins
                     {
                         CancelDamage(info);
                         if (Performance.frameRate > fpsIgnore)
-                            SendDetection(string.Format("{0} - {1} was detected attacking {2} from {3}m", attacker.userID.ToString(), attacker.displayName.ToString(), victim.displayName, Vector3.Distance(attacker.transform.position, info.HitPositionWorld)));
+                            SendDetection(string.Format("{0} - {1} was detected attacking {2} with {6} from {3}m - {4} to {5}", attacker.userID.ToString(), attacker.displayName.ToString(), victim.displayName, Vector3.Distance(attacker.transform.position, victim.transform.position).ToString(), attacker.transform.position.ToString(), victim.transform.position.ToString(), info.Weapon.LookupShortPrefabName().ToString()));
                     }
                 }
             }
@@ -1037,18 +1037,18 @@ namespace Oxide.Plugins
             }
             if(args.Length == 0)
             {
-            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString())));
+            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString()));
             	return;
             }
             int lognumber = 0;
             if(!int.TryParse(args[0], out lognumber))
             {
-            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString())));
+            	SendReply(player, string.Format("You must select the number of the detection you want to teleport to (0-{0})",(playerlog.logs.Count-1).ToString()));
             	return;
             }
             if(lognumber < 0 || lognumber >= playerlog.logs.Count)
             {
-            	SendReply(player, string.Format("You must select a number of the detection between 0 and {0}",(playerlog.logs.Count-1).ToString())));
+            	SendReply(player, string.Format("You must select a number of the detection between 0 and {0}",(playerlog.logs.Count-1).ToString()));
             	return;
             }
             if(Vector3.Distance(player.transform.position, playerlog.logs[lognumber].frompos) < 100f)
