@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.0.5", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.0.6", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -241,12 +241,13 @@ namespace Oxide.Plugins
         }
         void OnPlayerRespawned(BasePlayer player)
         {
-            if (!(player.GetComponent<EventPlayer>())) return;  
+            if (!(player.GetComponent<EventPlayer>())) return;
             if (player.GetComponent<EventPlayer>().inEvent)
             {
                 if (!EventStarted) return;
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
-            } 
+
+            }
             else
             {
                 RedeemInventory(player);
@@ -254,6 +255,7 @@ namespace Oxide.Plugins
                 TryErasePlayer(player);
             }
         }
+           
         void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
         {
             if (!EventStarted) return;
@@ -287,7 +289,7 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         void InitializeZones()
         {
-            foreach(KeyValuePair<string, EventZone> pair in zonelogs)
+            foreach (KeyValuePair<string, EventZone> pair in zonelogs)
             {
                 InitializeZone(pair.Key);
             }
@@ -296,11 +298,11 @@ namespace Oxide.Plugins
         {
             if (zonelogs[name] == null) return;
             ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
-            if(EventGames.Contains(name))
+            if (EventGames.Contains(name))
                 Interface.CallHook("OnPostZoneCreate", name);
-        } 
+        }
         void ResetZones()
-        { 
+        {
             foreach (string game in EventGames)
             {
                 ZoneManager?.Call("EraseZone", game);
@@ -487,14 +489,14 @@ namespace Oxide.Plugins
             {
                 SendReply(eventplayer.player, msg.QuoteSafe());
             }
-        } 
+        }
 
         void TeleportAllPlayersToEvent()
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { eventplayer.player });
-            }  
+            }
         }
         void OnEventPlayerSpawn(BasePlayer player)
         {
@@ -577,6 +579,12 @@ namespace Oxide.Plugins
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
+                if (eventplayer.player.IsAlive())
+                {
+                    eventplayer.player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
+                    eventplayer.player.CancelInvoke("WoundingEnd");
+                    eventplayer.player.health = 50f;
+                }
                 ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, eventplayer.player);
                 eventplayer.inEvent = false;
             }
@@ -682,7 +690,7 @@ namespace Oxide.Plugins
         {
             if (player.GetComponent<EventPlayer>())
             {
-                if(EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+                if (EventPlayers.Contains(player.GetComponent<EventPlayer>()))
                     return MessagesEventAlreadyJoined;
             }
             if (!EventOpen)
@@ -694,32 +702,32 @@ namespace Oxide.Plugins
             }
 
             EventPlayer event_player = player.GetComponent<EventPlayer>();
-            if(event_player == null) event_player = player.gameObject.AddComponent<EventPlayer>();
+            if (event_player == null) event_player = player.gameObject.AddComponent<EventPlayer>();
 
             event_player.enabled = true;
             EventPlayers.Add(event_player);
-             
+
             if (EventStarted)
             {
                 SaveHomeLocation(player);
                 SaveInventory(player);
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
-            } 
+            }
             BroadcastToChat(string.Format(MessagesEventJoined, player.displayName.ToString(), EventPlayers.Count.ToString()));
             Interface.CallHook("OnEventJoinPost", new object[] { player });
             return true;
-        } 
+        }
         object LeaveEvent(BasePlayer player)
         {
             if (player.GetComponent<EventPlayer>() == null)
             {
                 return "You are not currently in the Event.";
             }
-            if(!EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+            if (!EventPlayers.Contains(player.GetComponent<EventPlayer>()))
             {
                 return "You are not currently in the Event.";
             }
-            
+
             player.GetComponent<EventPlayer>().inEvent = false;
             if (!EventEnded || !EventStarted)
             {
@@ -732,6 +740,12 @@ namespace Oxide.Plugins
                 RedeemInventory(player);
                 TeleportPlayerHome(player);
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
+                if (player.IsAlive())
+                {
+                    player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
+                    player.CancelInvoke("WoundingEnd");
+                    player.health = 50f;
+                }
                 TryErasePlayer(player);
                 Interface.CallHook("OnEventLeavePost", new object[] { player });
             }
@@ -742,10 +756,10 @@ namespace Oxide.Plugins
             }
             return true;
         }
-         
+
         object SelectEvent(string name)
         {
-            if (!(EventGames.Contains(name))) return string.Format(MessagesEventNotAnEvent,name);
+            if (!(EventGames.Contains(name))) return string.Format(MessagesEventNotAnEvent, name);
             if (EventStarted || EventOpen) return MessagesEventCloseAndEnd;
             EventGameName = name;
             Interface.CallHook("OnSelectEventGamePost", new object[] { name });
@@ -795,7 +809,7 @@ namespace Oxide.Plugins
                     Puts((string)success);
                 }
             }
-            if(zonelogs[name] != null)
+            if (zonelogs[name] != null)
                 timer.Once(0.5f, () => InitializeZone(name));
             return true;
         }
@@ -823,7 +837,7 @@ namespace Oxide.Plugins
                 return;
             }
         }
-         
+
         //////////////////////////////////////////////////////////////////////////////////////
         // Console Commands //////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
@@ -913,7 +927,7 @@ namespace Oxide.Plugins
         void ccmdEventZone(ConsoleSystem.Arg arg)
         {
             if (!hasAccess(arg)) return;
-            if(arg.connection == null)
+            if (arg.connection == null)
             {
                 SendReply(arg, "To set the zone position & radius you must be connected");
                 return;
@@ -929,7 +943,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
-            SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0] ));
+            SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
         }
     }
 }
