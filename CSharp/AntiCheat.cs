@@ -1184,8 +1184,8 @@ namespace Oxide.Plugins
             	SendReply(arg, "No players found");
                 return;
             }
-            PlayerHack = targetplayer.GetComponent<PlayerHack>();
-            if(PlayerHack == null)
+            PlayerHack playerhack = targetplayer.GetComponent<PlayerHack>();
+            if(playerhack == null)
             {
             	targetplayer.gameObject.AddComponent<PlayerHack>();
             	SendReply(arg, string.Format("{0} is now being checked",targetplayer.displayName));
