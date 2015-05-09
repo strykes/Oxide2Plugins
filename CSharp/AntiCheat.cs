@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb", "2.2.12", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.2.16", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -31,7 +31,8 @@ namespace Oxide.Plugins
         static Vector3 VectorDown = new Vector3(0f, -1f, 0f);
         static int constructionColl;
         static int bulletmask;
-
+		static int flyColl;
+		
         float lastTime;
         bool serverInitialized = false;
 
@@ -44,7 +45,11 @@ namespace Oxide.Plugins
         Hash<TriggerBase, Hash<BaseEntity, Vector3>> TriggerData = new Hash<TriggerBase, Hash<BaseEntity, Vector3>>();
         Hash<TriggerBase, BuildingBlock> TriggerToBlock = new Hash<TriggerBase, BuildingBlock>();
         Hash<BaseEntity, float> lastDetections = new Hash<BaseEntity, float>();
-        Dictionary<uint, float> DoorCheck = new Dictionary<uint, float>();
+		Hash<ulong, int> whDetectCount = new Hash<ulong, int>();
+
+		Hash<ulong, float> whDetectReset = new Hash<ulong, float>();
+
+		Dictionary<uint, float> DoorCheck = new Dictionary<uint, float>();
 
         Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
 
@@ -56,6 +61,7 @@ namespace Oxide.Plugins
         static int fpsIgnore = 30;
         static bool banFamilyShare = true;
         static bool shouldBan = true;
+		static float resetTime = 60f;
 
         static bool speedhack = true;
         static bool speedhackPunish = true;
@@ -202,7 +208,11 @@ namespace Oxide.Plugins
 
             Vector3 frompos;
             Vector3 topos;
-
+			
+			public AntiCheatLog()
+            {
+            }
+			
             public AntiCheatLog(string userid, string logType, Vector3 frompos, Vector3 topos)
             {
                 this.userid = userid;
@@ -247,6 +257,7 @@ namespace Oxide.Plugins
         void Loaded()
         {
             constructionColl = LayerMask.GetMask(new string[] { "Construction" });
+            flyColl = LayerMask.GetMask(new string[] { "Construction", "Deployed", "Tree", "Terrain", "Resource", "World" });
             if (!permission.PermissionExists("cananticheat")) permission.RegisterPermission("cananticheat", this);
         }
 
@@ -261,6 +272,7 @@ namespace Oxide.Plugins
             UnityEngine.LayerMask newlayermask = new UnityEngine.LayerMask();
             newlayermask.value = 133120;
             originalWallhack.GetComponent<TriggerBase>().interestLayers = newlayermask;
+            
             timer.Once(0.5f, () => RefreshAllWalls());
             LoadData();
             timer.Once(1f, () => RefreshPlayers());
@@ -436,7 +448,8 @@ namespace Oxide.Plugins
                 {
                     if (buildingblock.blockDefinition.hierachyName.Contains("floor"))
                     {
-                        if ( Mathf.Abs(initialPos.y - buildingblock.transform.position.y) < 0.2f)
+                    // SHOULD REDO THIS PART AS IT4S HORRIBLE BUT IT WILL FIX THE FALSE DETECTIONS
+                        if ( buildingblock.transform.position.y - initialPos.y < 2f)
                         {
                             return false;
                         }
@@ -494,11 +507,25 @@ namespace Oxide.Plugins
                                     AddLog(player.userID.ToString(), "wall", (TriggerData[triggerbase])[entity], entity.transform.position);
                                 SendMsgAdmin(string.Format("{0} was detected wallhacking from {1} to {2}", player.displayName, (TriggerData[triggerbase])[entity].ToString(), entity.transform.position.ToString()));
                                 PrintWarning(string.Format("{0}[{3}] was detected wallhacking from {1} to {2}", player.displayName, (TriggerData[triggerbase])[entity].ToString(), entity.transform.position.ToString(), player.userID));
-                                if (wallhackPunish) 
-                                    if (lastDetections[entity] >= wallhackDetections)
-                                    {
-                                        Punish(player, string.Format("rWallhack ({0})", TriggerToBlock[triggerbase].blockDefinition.hierachyName.ToString()));
-                                        return;
+
+								if (wallhackPunish)
+									if (whDetectCount[player.userID] >= wallhackDetections)
+									{
+										Punish(player, string.Format("rWallhack ({0})", TriggerToBlock[triggerbase].blockDefinition.hierachyName.ToString()));
+										return;
+									}
+									else
+									{
+										if (Time.realtimeSinceStartup < whDetectReset[player.userID])
+										{
+											whDetectCount[player.userID]++;
+											whDetectReset[player.userID] = Time.realtimeSinceStartup + resetTime;
+										}
+										else
+										{
+											whDetectCount[player.userID] = 1;
+											whDetectReset[player.userID] = Time.realtimeSinceStartup + resetTime;
+										}
                                     }
                             }
                             lastDetections[entity] = Time.realtimeSinceStartup;
@@ -591,6 +618,10 @@ namespace Oxide.Plugins
             if (hack.player.transform.position.y < 5f) return;
             if (hack.VerticalDistance < -10f) return;
             if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) return;
+            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 3f, flyColl)
+            {
+            	return;
+            }
             if (hack.lastTickFly == hack.lastTick)
             {
                 hack.flyHackDetections++;
@@ -744,7 +775,10 @@ namespace Oxide.Plugins
             if (EnhancedBanSystem != null) return;
             ServerUsers.Set(target.userID, ServerUsers.UserGroup.Banned, target.displayName, msg);
             ServerUsers.Save();
-            ConsoleSystem.Broadcast("chat.add", new object[] { 0, "<color=orange>AntiCheat:</color> " + msg });
+
+			//ConsoleSystem.Broadcast("chat.add", new object[] { 0, "<color=orange>AntiCheat:</color> " + msg });
+
+			PrintWarning(string.Format("{0}[{1}] banned by AntiCheat", target.displayName, target.userID));
             Network.Net.sv.Kick(target.net.connection, "Banned for hacking");
         } 
 
