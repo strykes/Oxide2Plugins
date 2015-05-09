@@ -1178,7 +1178,22 @@ namespace Oxide.Plugins
             	SendReply(arg, "ac.check PLAYER/STEAMID");
                 return;
             }
-           
+            var targetplayer = rust.FindPlayer(arg.Args[0]);
+            if(targetplayer == null)
+            {
+            	SendReply(arg, "No players found");
+                return;
+            }
+            PlayerHack = targetplayer.GetComponent<PlayerHack>();
+            if(PlayerHack == null)
+            {
+            	targetplayer.gameObject.AddComponent<PlayerHack>();
+            	SendReply(arg, string.Format("{0} is now being checked",targetplayer.displayName));
+            }
+            else
+            {
+            	SendReply(arg, string.Format("{0} is already being checked",targetplayer.displayName));
+            }
         }
         
         void SendFPSCount()
