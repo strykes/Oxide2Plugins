@@ -1179,7 +1179,7 @@ namespace Oxide.Plugins
             	SendReply(arg, "ac.check PLAYER/STEAMID");
                 return;
             }
-            var targetplayer = rust.FindPlayer(arg.Args[0]);
+            var targetplayer = Rust.FindPlayer(arg.Args[0]);
             if(targetplayer == null)
             {
             	SendReply(arg, "No players found");
