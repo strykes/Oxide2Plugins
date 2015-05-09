@@ -1162,7 +1162,17 @@ namespace Oxide.Plugins
             fpsCalled.Clear();
             timer.Once(2f, () => SendFPSCount());
         }
-        
+        private BasePlayer FindPlayer(string nameOrIdOrIp)
+        {
+            var player = BasePlayer.Find(nameOrIdOrIp);
+            if (player == null)
+            {
+                ulong id;
+                if (ulong.TryParse(nameOrIdOrIp, out id))
+                    player = BasePlayer.FindSleeping(id);
+            }
+            return player;
+        }
         [ConsoleCommand("ac.check")]
         void cmdConsoleAcCheck(ConsoleSystem.Arg arg)
         {
@@ -1179,7 +1189,7 @@ namespace Oxide.Plugins
             	SendReply(arg, "ac.check PLAYER/STEAMID");
                 return;
             }
-            var targetplayer = Oxide.Core.Libraries.Rust.FindPlayer(arg.Args[0]);
+            var targetplayer = FindPlayer(arg.Args[0]);
             if(targetplayer == null)
             {
             	SendReply(arg, "No players found");
