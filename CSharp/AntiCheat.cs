@@ -1,3 +1,6 @@
+//player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
+//player.CancelInvoke("WoundingEnd");
+
 using System.Collections.Generic;
 using System;
 using System.Data;
