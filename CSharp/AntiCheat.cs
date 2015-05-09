@@ -618,7 +618,7 @@ namespace Oxide.Plugins
             if (hack.player.transform.position.y < 5f) return;
             if (hack.VerticalDistance < -10f) return;
             if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) return;
-            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 3f, flyColl)
+            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 3f, flyColl))
             {
             	return;
             }
@@ -1161,6 +1161,26 @@ namespace Oxide.Plugins
             fpsCalled.Clear();
             timer.Once(2f, () => SendFPSCount());
         }
+        
+        [ConsoleCommand("ac.check")]
+        void cmdConsoleAcCheck(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection != null)
+            {
+                if (arg.connection.authLevel < 1)
+                {
+                    SendReply(arg, "You dont have access to this command");
+                    return;
+                }
+            }
+            if(arg.Args.Length == 0)
+            {
+            	SendReply(arg, "ac.check PLAYER/STEAMID");
+                return;
+            }
+           
+        }
+        
         void SendFPSCount()
         {
             if (fpsCaller is ConsoleSystem.Arg)
