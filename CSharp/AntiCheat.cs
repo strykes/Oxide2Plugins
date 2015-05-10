@@ -1,6 +1,3 @@
-//player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
-//player.CancelInvoke("WoundingEnd");
-
 using System.Collections.Generic;
 using System;
 using System.Data;
@@ -11,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.2.16", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.2.7", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -55,7 +52,11 @@ namespace Oxide.Plugins
 		Dictionary<uint, float> DoorCheck = new Dictionary<uint, float>();
 
         Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
-
+		
+		DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
+		
+		static double currentTime;
+		
         ////////////////////////////////////////////////////////////
         // Config Fields
         ////////////////////////////////////////////////////////////
@@ -96,7 +97,7 @@ namespace Oxide.Plugins
         static bool fpsCheckCalled = false;
         static ConsoleSystem.Arg fpsCaller;
         static List<PlayerHack> fpsCalled = new List<PlayerHack>();
-        static float fpsTime;
+        static double fpsTime;
 
         static string multipleNames = "Multiple players found with this name";
         static string noPlayerFound = "No player found with this name";
@@ -312,7 +313,11 @@ namespace Oxide.Plugins
             if (activateTimer != null)
                 activateTimer.Destroy();
         }
-
+		
+		double CurrentTime()
+		{
+			return DateTime.UtcNow.Subtract(epoch).TotalMilliseconds;
+		}
 
 
         ////////////////////////////////////////////////////////////
@@ -327,14 +332,15 @@ namespace Oxide.Plugins
             public float VerticalDistance;
             public bool isonGround;
 
-            public float currentTick;
-            public float lastTick;
+            public double currentTick;
+            public double lastTick;
+            public double deltaTick;
 
             public float speedHackDetections = 0f;
-            public float lastTickSpeed;
+            public double lastTickSpeed;
 
             public float flyHackDetections = 0f;
-            public float lastTickFly;
+            public double lastTickFly;
 
             void Awake()
             {
@@ -345,12 +351,13 @@ namespace Oxide.Plugins
             void CheckPlayer()
             {
                 if (!player.IsConnected()) GameObject.Destroy(this);
-                currentTick = Time.realtimeSinceStartup;
-                Distance3D = Vector3.Distance(player.transform.position, lastPosition);
-                VerticalDistance = player.transform.position.y - lastPosition.y;
+                currentTick = CurrentTime();
+                deltaTick = lastTick - currentTick;
+                Distance3D = Vector3.Distance(player.transform.position, lastPosition)/deltaTick;
+                VerticalDistance = (player.transform.position.y - lastPosition.y)/deltaTick;
                 isonGround = player.IsOnGround();
 
-                if (!player.IsWounded() && !player.IsDead() && !player.IsSleeping() && Performance.frameRate > fpsIgnore)
+                if (!player.IsWounded() && !player.IsDead() && !player.IsSleeping() && deltaTick < 1.1 && Performance.frameRate > fpsIgnore)
                     CheckForHacks(this);
 
                 lastPosition = player.transform.position;
@@ -359,7 +366,7 @@ namespace Oxide.Plugins
                     if (!fpsCalled.Contains(this))
                     {
                         fpsCalled.Add(this);
-                        fpsTime += (Time.realtimeSinceStartup - currentTick);
+                        fpsTime += (CurrentTime() - currentTick);
                     }
 
                 lastTick = currentTick;
@@ -621,10 +628,7 @@ namespace Oxide.Plugins
             if (hack.player.transform.position.y < 5f) return;
             if (hack.VerticalDistance < -10f) return;
             if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) return;
-            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 3f, flyColl))
-            {
-            	return;
-            }
+            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 1f, flyColl)) { return; }
             if (hack.lastTickFly == hack.lastTick)
             {
                 hack.flyHackDetections++;
@@ -719,7 +723,7 @@ namespace Oxide.Plugins
                 if (victim == attacker) return;
                 if (Vector3.Distance(attacker.eyes.position, info.HitPositionWorld) > melee.maxDistance + 2f)
                 {
-                    if (Vector3.Distance(attacker.transform.position, victim.transform.position) > melee.maxDistance)
+                    if (Vector3.Distance(attacker.transform.position, victim.transform.position) > melee.maxDistance + 2f)
                     {
                         CancelDamage(info);
                         if (Performance.frameRate > fpsIgnore)
@@ -1140,7 +1144,7 @@ namespace Oxide.Plugins
             anticheatlogs.Clear();
             storedData.AntiCheatLogs.Clear();
             SaveData();
-            SendReply(player, "AntiCheat", "Logs were resetted");
+            SendReply(player, "AntiCheat: Logs were resetted");
         }
         ////////////////////////////////////////////////////////////
         // Console Commands
@@ -1160,7 +1164,7 @@ namespace Oxide.Plugins
             SendReply(arg, "Checking the time the anticheat takes to check all your current players");
             fpsCheckCalled = true;
             fpsCaller = arg;
-            fpsTime = 0f;
+            fpsTime = 0.0;
             fpsCalled.Clear();
             timer.Once(2f, () => SendFPSCount());
         }
