@@ -334,7 +334,7 @@ namespace Oxide.Plugins
 
             public double currentTick;
             public double lastTick;
-            public double deltaTick;
+            public float deltaTick;
 
             public float speedHackDetections = 0f;
             public double lastTickSpeed;
@@ -352,12 +352,12 @@ namespace Oxide.Plugins
             {
                 if (!player.IsConnected()) GameObject.Destroy(this);
                 currentTick = CurrentTime();
-                deltaTick = (lastTick - currentTick)/1000.0;
+                deltaTick = (float)((lastTick - currentTick)/1000.0);
                 Distance3D = Vector3.Distance(player.transform.position, lastPosition)/deltaTick;
                 VerticalDistance = (player.transform.position.y - lastPosition.y)/deltaTick;
                 isonGround = player.IsOnGround();
 
-                if (!player.IsWounded() && !player.IsDead() && !player.IsSleeping() && deltaTick < 1.1 && Performance.frameRate > fpsIgnore)
+                if (!player.IsWounded() && !player.IsDead() && !player.IsSleeping() && deltaTick < 1.1f && Performance.frameRate > fpsIgnore)
                     CheckForHacks(this);
 
                 lastPosition = player.transform.position;
