@@ -53,7 +53,7 @@ namespace Oxide.Plugins
 
         Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
 		
-		DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
+		static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
 		
 		static double currentTime;
 		
