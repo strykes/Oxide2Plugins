@@ -314,7 +314,7 @@ namespace Oxide.Plugins
                 activateTimer.Destroy();
         }
 		
-		double CurrentTime()
+		static double CurrentTime()
 		{
 			return DateTime.UtcNow.Subtract(epoch).TotalMilliseconds;
 		}
