@@ -820,7 +820,33 @@ namespace Oxide.Plugins
             if (player.net.connection.authLevel > 0) return true;
             return permission.UserHasPermission(player.userID.ToString(), "cananticheat");
         }
-
+		bool FindPlayerByID(string userID, out string targetname)
+		{
+			ulong userid;
+            targetname = string.Empty;
+            if (!(userID.Length == 17 && ulong.TryParse(userID, out userid)))
+            	return false;
+			foreach (BasePlayer player in UnityEngine.Object.FindObjectsOfTypeAll(typeof(BasePlayer)))
+			{
+				if(player.userID == userid)
+				{
+					targetname = player.displayName;
+				}
+			}
+			if(targetname != string.Empty)
+				return true;
+            if (DeadPlayersList == null)
+                return false;
+            Dictionary<string, string> deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
+            if (deadPlayers == null)
+                return false;
+            if(!deadPlayers.ContainsKey(userID))
+            	return false;
+            targetname = deadPlayers[userID];
+            return true;
+                
+		}	
+		
         bool FindPlayerByName(string name, out string targetid, out string targetname)
         {
             ulong userid;
@@ -1103,9 +1129,13 @@ namespace Oxide.Plugins
         void cmdChatACList(BasePlayer player, string command, string[] args)
         {
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
+            string targetname = string.Empty;
             foreach (KeyValuePair<string, List<AntiCheatLog>> pair in anticheatlogs)
             {
-                SendReply(player, string.Format("{0} - {1} detections", pair.Key, pair.Value.Count.ToString()));
+            	targetname = string.Empty;
+            	if(!FindPlayerByID(pair.Key, out targetname))
+            		targetname = "Unknown";
+                SendReply(player, string.Format("{0} - {1} - {2} detections", pair.Key, targetname, pair.Value.Count.ToString()));
             }
 
             SaveData();
