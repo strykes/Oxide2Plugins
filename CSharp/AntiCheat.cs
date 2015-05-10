@@ -352,7 +352,7 @@ namespace Oxide.Plugins
             {
                 if (!player.IsConnected()) GameObject.Destroy(this);
                 currentTick = CurrentTime();
-                deltaTick = lastTick - currentTick;
+                deltaTick = (lastTick - currentTick)/1000.0;
                 Distance3D = Vector3.Distance(player.transform.position, lastPosition)/deltaTick;
                 VerticalDistance = (player.transform.position.y - lastPosition.y)/deltaTick;
                 isonGround = player.IsOnGround();
