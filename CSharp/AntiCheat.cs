@@ -1192,6 +1192,7 @@ namespace Oxide.Plugins
                 }
             }
             SendReply(arg, "Checking the time the anticheat takes to check all your current players");
+            SendReply(arg, string.Format("You server current fps is: {0}ms",Performance.frameRate.ToString()));
             fpsCheckCalled = true;
             fpsCaller = arg;
             fpsTime = 0.0;
