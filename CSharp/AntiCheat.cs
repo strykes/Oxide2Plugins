@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.2.7", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.2.9", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -330,6 +330,7 @@ namespace Oxide.Plugins
             public Vector3 lastPosition;
             public float Distance3D;
             public float VerticalDistance;
+            public Vector3 currentDirection;
             public bool isonGround;
 
             public double currentTick;
@@ -341,6 +342,7 @@ namespace Oxide.Plugins
 
             public float flyHackDetections = 0f;
             public double lastTickFly;
+            public bool wasGround = true;
 
             void Awake()
             {
@@ -355,6 +357,7 @@ namespace Oxide.Plugins
                 deltaTick = (float)((lastTick - currentTick)/1000.0);
                 Distance3D = Vector3.Distance(player.transform.position, lastPosition)/deltaTick;
                 VerticalDistance = (player.transform.position.y - lastPosition.y)/deltaTick;
+                currentDirection = (player.transform.position - lastPosition).normalized;
                 isonGround = player.IsOnGround();
 
                 if (!player.IsWounded() && !player.IsDead() && !player.IsSleeping() && deltaTick < 1.1f && Performance.frameRate > fpsIgnore)
@@ -626,10 +629,10 @@ namespace Oxide.Plugins
         {
             if (hack.isonGround) return;
             if (hack.player.transform.position.y < 5f) return;
-            if (hack.VerticalDistance < -10f) return;
-            if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) return;
-            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 1f, flyColl)) { return; }
-            if (hack.lastTickFly == hack.lastTick)
+            if (Distance3D != 0f && hack.VerticalDistance < -5f && hack.VerticalDistance/Distance3D > -0.5) return;
+            if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) { hack.wasGround = true; return; }
+            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 1f, flyColl)) { hack.wasGround = true; return; }
+            if (!hack.wasGround && hack.lastTickFly == hack.lastTick)
             {
                 hack.flyHackDetections++;
                 if (flyhackLog)
@@ -645,6 +648,7 @@ namespace Oxide.Plugins
             {
                 hack.flyHackDetections = 0f;
             }
+            hack.wasGround = false;
             hack.lastTickFly = hack.currentTick;
         }
 
@@ -1248,7 +1252,7 @@ namespace Oxide.Plugins
         {
             if (fpsCaller is ConsoleSystem.Arg)
             {
-                SendReply((ConsoleSystem.Arg)fpsCaller, string.Format("Checking all players on your server took {0}s", fpsTime.ToString()));
+                SendReply((ConsoleSystem.Arg)fpsCaller, string.Format("Checking all players on your server took {0}s", (fpsTime/1000.0).ToString()));
             }
         }
     }
