@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.0.6", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.0.8", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -655,7 +655,7 @@ namespace Oxide.Plugins
             EventStarted = false;
             EventEnded = true;
 
-
+			
             SendPlayersHome();
             RedeemPlayersInventory();
             TryEraseAllPlayers();
@@ -812,6 +812,14 @@ namespace Oxide.Plugins
             if (zonelogs[name] != null)
                 timer.Once(0.5f, () => InitializeZone(name));
             return true;
+        }
+        
+        object canRedeemKit(BasePlayer player)
+        {
+        	if (!EventStarted) return null;
+        	EventPlayer eplayer = player.GetComponent<EventPlayer>();
+        	if(eplayer == null) return null;
+        	return false;
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
