@@ -629,7 +629,7 @@ namespace Oxide.Plugins
         {
             if (hack.isonGround) return;
             if (hack.player.transform.position.y < 5f) return;
-            if (Distance3D != 0f && hack.VerticalDistance < -5f && hack.VerticalDistance/Distance3D < -0.5) return;
+            if (hack.Distance3D != 0f && hack.VerticalDistance < -5f && hack.VerticalDistance/hack.Distance3D < -0.5) return;
             if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) { hack.wasGround = true; return; }
             foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 1f, flyColl)) { hack.wasGround = true; return; }
             if (!hack.wasGround && hack.lastTickFly == hack.lastTick)
