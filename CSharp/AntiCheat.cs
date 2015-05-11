@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.2.9", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.2.10", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -354,7 +354,7 @@ namespace Oxide.Plugins
             {
                 if (!player.IsConnected()) GameObject.Destroy(this);
                 currentTick = CurrentTime();
-                deltaTick = (float)((lastTick - currentTick)/1000.0);
+                deltaTick = (float)((currentTick - lastTick)/1000.0);
                 Distance3D = Vector3.Distance(player.transform.position, lastPosition)/deltaTick;
                 VerticalDistance = (player.transform.position.y - lastPosition.y)/deltaTick;
                 currentDirection = (player.transform.position - lastPosition).normalized;
