@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.2.10", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti & Bombardir", "2.3.0", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -27,20 +27,22 @@ namespace Oxide.Plugins
 
         [PluginReference]
         Plugin DeadPlayersList;
+        
+        [PluginReference]
+        Plugin Jail;
          
         static Vector3 VectorDown = new Vector3(0f, -1f, 0f);
         static int constructionColl;
         static int bulletmask;
 		static int flyColl;
+		static bool jailExists = false;
 		
-        float lastTime;
         bool serverInitialized = false;
 
         Oxide.Plugins.Timer activateTimer;
 
         GameObject originalWallhack;
-        
-        List<GameObject> ListGameObjects = new List<GameObject>();
+
         static List<BasePlayer> adminList = new List<BasePlayer>();
         Hash<TriggerBase, Hash<BaseEntity, Vector3>> TriggerData = new Hash<TriggerBase, Hash<BaseEntity, Vector3>>();
         Hash<TriggerBase, BuildingBlock> TriggerToBlock = new Hash<TriggerBase, BuildingBlock>();
@@ -49,13 +51,11 @@ namespace Oxide.Plugins
 
 		Hash<ulong, float> whDetectReset = new Hash<ulong, float>();
 
-		Dictionary<uint, float> DoorCheck = new Dictionary<uint, float>();
-
-        Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
+       
+		
+		Dictionary<string, string> deadPlayers = new Dictionary<string, string>();
 		
 		static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
-		
-		static double currentTime;
 		
         ////////////////////////////////////////////////////////////
         // Config Fields
@@ -64,7 +64,7 @@ namespace Oxide.Plugins
         static int authIgnore = 1;
         static int fpsIgnore = 30;
         static bool banFamilyShare = true;
-        static bool shouldBan = true;
+        static int punishType = 1;
 		static float resetTime = 60f;
 
         static bool speedhack = true;
@@ -106,7 +106,7 @@ namespace Oxide.Plugins
         // Config Management
         ////////////////////////////////////////////////////////////
 
-        void LoadDefaultConfig() { }
+        protected override void LoadDefaultConfig() { }
 
         private void CheckCfg<T>(string Key, ref T var)
         {
@@ -127,7 +127,7 @@ namespace Oxide.Plugins
         void Init()
         {
             CheckCfg<int>("Settings: Ignore Hacks for authLevel", ref authIgnore);
-            CheckCfg<bool>("Settings: Punish - true = Ban, false = Kick", ref shouldBan);
+            CheckCfg<int>("Settings: Punish - 0 = Kick, 1 = Ban, 2 = Jail", ref punishType);
             CheckCfg<int>("Settings: FPS Ignore", ref fpsIgnore);
             CheckCfg<bool>("Settings: Ban Also Family Owner", ref banFamilyShare);
             CheckCfg<bool>("MeleeSpeed Hack: activated", ref meleespeedhack);
@@ -142,9 +142,6 @@ namespace Oxide.Plugins
             CheckCfg<bool>("Flyhack: Log", ref flyhackLog);
             CheckCfg<int>("Flyhack: Punish Detections", ref flyhackDetections);
             CheckCfg<bool>("Wallhack: activated", ref wallhack);
-            CheckCfg<bool>("Wallhack: Protect - Walls", ref wallhackWalls);
-            CheckCfg<bool>("Wallhack: Protect - Doors", ref wallhackDoors);
-            CheckCfg<bool>("Wallhack: Protect - Floors", ref wallhackFloors);
             CheckCfg<bool>("Wallhack: Punish", ref wallhackPunish);
             CheckCfg<bool>("Wallhack: Log", ref wallhackLog);
             CheckCfg<int>("Wallhack: Punish Detections", ref wallhackDetections);
@@ -261,23 +258,14 @@ namespace Oxide.Plugins
         void Loaded()
         {
             constructionColl = LayerMask.GetMask(new string[] { "Construction" });
-            flyColl = LayerMask.GetMask(new string[] { "Construction", "Deployed", "Tree", "Terrain", "Resource", "World" });
+            flyColl = LayerMask.GetMask(new string[] { "Construction", "Deployed", "Tree", "Terrain", "Resource", "World", "Water" });
             if (!permission.PermissionExists("cananticheat")) permission.RegisterPermission("cananticheat", this);
         }
 
         void OnServerInitialized()
         {
             serverInitialized = true;
-            bulletmask = CollisionSettings.BulletAttack().value;
-            originalWallhack = new UnityEngine.GameObject("Anti Wallhack");
-            originalWallhack.AddComponent<MeshCollider>();
-            originalWallhack.AddComponent<TriggerBase>();
-            originalWallhack.gameObject.layer = UnityEngine.LayerMask.NameToLayer("Trigger");
-            UnityEngine.LayerMask newlayermask = new UnityEngine.LayerMask();
-            newlayermask.value = 133120;
-            originalWallhack.GetComponent<TriggerBase>().interestLayers = newlayermask;
-            
-            timer.Once(0.5f, () => RefreshAllWalls());
+            if(Jail != null) jailExists = true;
             LoadData();
             timer.Once(1f, () => RefreshPlayers());
         }
@@ -285,33 +273,38 @@ namespace Oxide.Plugins
         {
             foreach (BasePlayer player in BasePlayer.activePlayerList)
             {
-                if (player.GetComponent<PlayerHack>() != null) GameObject.Destroy(player.GetComponent<PlayerHack>());
-                if (player.net.connection.authLevel > 0 || permission.UserHasPermission(player.userID.ToString(), "cananticheat"))
-                {
-                    if (!adminList.Contains(player))
-                        adminList.Add(player);
-                    continue;
-                }
-                if (!speedhack && !flyhack) continue;
-                player.gameObject.AddComponent<PlayerHack>();
+            	RefreshPlayer( player );
+            	if (player.net.connection.authLevel > 0 || permission.UserHasPermission(player.userID.ToString(), "cananticheat"))
+				{
+					if (!adminList.Contains(player))
+						adminList.Add(player);
+					return;
+				}
             }
+        }
+        void RefreshPlayer(BasePlayer player)
+        {
+        	
+			if (player.net.connection.authLevel > 0 || permission.UserHasPermission(player.userID.ToString(), "cananticheat")) return;
+			if(wallhack) MakeTestCollider( player );
+			if (!speedhack && !flyhack) return;
+			if (player.GetComponent<PlayerHack>() == null) player.gameObject.AddComponent<PlayerHack>();
         }
         void Unload()
         {
-            foreach (GameObject gameObj in ListGameObjects)
-            {
-                GameObject.Destroy(gameObj);
-            }
-            var objects = GameObject.FindObjectsOfType(typeof(PlayerHack));
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
-            objects = GameObject.FindObjectsOfType(typeof(PlayerLog));
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
+            DestroyAll<PlayerHack>();
+            DestroyAll<ColliderCheckTest>();
+            DestroyAll<PlayerLog>();
             if (activateTimer != null)
                 activateTimer.Destroy();
+        }
+        
+        void DestroyAll<T>()
+        {
+            UnityEngine.Object[] objects = GameObject.FindObjectsOfType(typeof(T));
+            if (objects != null)
+                foreach (UnityEngine.Object gameObj in objects)
+                    GameObject.Destroy(gameObj);
         }
 		
 		static double CurrentTime()
@@ -385,213 +378,153 @@ namespace Oxide.Plugins
 
         void OnPlayerRespawned(BasePlayer player)
         {
-            if (player.net.connection.authLevel >= authIgnore) return;
-            if (player.GetComponent<PlayerHack>() == null)
-            {
-                player.gameObject.AddComponent<PlayerHack>();
-            }
+            RefreshPlayer(player);
         }
 
         ////////////////////////////////////////////////////////////
         // Wallhack related
         ////////////////////////////////////////////////////////////
-
-        void RefreshAllWalls()
+		
+		Hash<ulong, ColliderCheckTest> playerWallcheck = new Hash<ulong, ColliderCheckTest>();
+		static Hash<BuildingBlock, float> createdBuilding = new Hash<BuildingBlock, float>();
+		static Hash<uint, float> DoorCheck = new Hash<uint, float>();
+		Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
+		
+        
+		static bool isOpen(BuildingBlock block)
+		{
+			if (block.net != null && block.net.ID != null)
+				if (Time.realtimeSinceStartup - DoorCheck[block.net.ID] < 6f)
+					return true;
+			if(block.blockDefinition.hierachyName.StartsWith("block"))
+				return true;
+			return false;
+		}
+			
+		void OnDoorOpened(BuildingBlock door)
         {
-            if (!wallhack) return;
-            var currenttime = Time.realtimeSinceStartup;
-            foreach (BuildingBlock block in UnityEngine.Resources.FindObjectsOfTypeAll<BuildingBlock>())
-            {
-                if (block.blockDefinition != null)
-                {
-                    if ( wallhackWalls && block.blockDefinition.hierachyName == "wall")
-                    { 
-                        CreateNewProtectionFromBlock(block, true);
-                    }
-                    else if ( wallhackDoors && block.blockDefinition.hierachyName == "door.hinged")
-                    {
-                        CreateNewProtectionFromBlock(block, true);
-                        if(block.net != null && block.net.ID is uint)
-                            if(!DoorCheck.ContainsKey(block.net.ID))
-                                DoorCheck.Add(block.net.ID, Time.realtimeSinceStartup);
-                    }
-                    else if (wallhackFloors && (block.blockDefinition.hierachyName == "floor" || block.blockDefinition.hierachyName == "floor.triangle"))
-                    {
-                        CreateNewProtectionFromBlock(block, true);
-                    }
-                }
-            }
-            Debug.Log(string.Format("AntiCheat: Took {0} seconds to protect all walls & doors", (Time.realtimeSinceStartup - currenttime).ToString()));
-        }
-
-        void OnDoorOpened(BuildingBlock door)
-        {
-            if (DoorCheck.ContainsKey(door.net.ID))
-                DoorCheck[door.net.ID] = Time.realtimeSinceStartup;
-            else
-                DoorCheck.Add(door.net.ID, Time.realtimeSinceStartup);
+            DoorCheck[door.net.ID] = Time.realtimeSinceStartup;
         }
 
         void OnDoorClosed(BuildingBlock door)
         {
-            if (DoorCheck.ContainsKey(door.net.ID))
-                DoorCheck[door.net.ID] = Time.realtimeSinceStartup;
-            else
-                DoorCheck.Add(door.net.ID, Time.realtimeSinceStartup);
+            DoorCheck[door.net.ID] = Time.realtimeSinceStartup;
         }
-
-        bool isOpen(BuildingBlock block)
+		
+		public class ColliderCheckTest : MonoBehaviour
         {
-            if (DoorCheck.ContainsKey(block.net.ID))
+            BasePlayer player;
+			Hash<Collider, Vector3> entryPosition = new Hash<Collider, Vector3>();
+			SphereCollider col;
+			
+            void Awake()
             {
-                if (Time.realtimeSinceStartup - DoorCheck[block.net.ID] < 6f)
-                    return true;
+                player = transform.parent.GetComponent<BasePlayer>();
+                // Collider that will be detected
+                col = gameObject.AddComponent<SphereCollider>();
+                col.radius = 0.1f;
+                col.isTrigger = true;
+                col.center = Vector3.up;
+				
+				//Debug.Log(string.Format("New AntiCheat (in creation): Init {0}", player.displayName));
             }
-            return block.IsOpen();
-        }
-
-        bool CheckWallhack(BuildingBlock buildingblock, BaseEntity col, Vector3 initialPos)
-        {
-            Vector3 cachedDiff = col.transform.position - initialPos;
-            if (initialPos.y - buildingblock.transform.position.y > 2) return false;
-           
-            if (UnityEngine.Physics.Linecast(initialPos, col.transform.position, out cachedRaycasthit, constructionColl))
+			void OnTriggerEnter(Collider collision)
             {
-                if (cachedRaycasthit.collider.GetComponentInParent<BuildingBlock>() == buildingblock)
+                if( collision.GetComponentInParent<BuildingBlock>() || collision.GetComponentInParent<Mesh>() )
                 {
-                    if (buildingblock.blockDefinition.hierachyName.Contains("floor"))
-                    {
-                    // SHOULD REDO THIS PART AS IT4S HORRIBLE BUT IT WILL FIX THE FALSE DETECTIONS
-                        if ( buildingblock.transform.position.y - initialPos.y < 2f)
-                        {
-                            return false;
-                        }
-                    }
-                    return true;
+                	BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
+                	if(block != null)
+                	{
+                		if(Time.realtimeSinceStartup - createdBuilding[block] > 20)
+                		{
+                			if(!isOpen(block))
+                				entryPosition[collision] = player.transform.position;
+                		}
+                	}
+                	else
+                	{
+                		entryPosition[collision] = player.transform.position;
+                	}
                 }
+			} 
+			
+            void OnTriggerExit(Collider collision)
+            {
+            	if(entryPosition.ContainsKey(collision))
+            	{
+            		BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
+            		
+            		if (wallhackLog)
+                    	AddLog(player.userID.ToString(), "wall", entryPosition[collision], player.transform.position);
+            		
+            		if(block != null)
+            			Interface.GetMod().LogWarning(string.Format("New AntiCheat (in creation): {0} was detected colliding with {1}", player.displayName, block.blockDefinition.hierachyName));
+            		else
+            			Interface.GetMod().LogWarning(string.Format("New AntiCheat (in creation): {0} was detected colliding with {1}", player.displayName, collision.gameObject.name));
+                	
+                	ForcePlayerBack(player, collision, entryPosition[collision], player.transform.position);
+                	
+                	entryPosition.Remove(collision);
+            	}		
             }
-            return false;
-        }
 
-        void ForcePlayerBack(BasePlayer player, Vector3 entryposition, Vector3 exitposition)
+            void OnDestroy()
+            {
+                GameObject.Destroy(gameObject);
+                GameObject.Destroy(col);
+            }
+        }
+       	
+
+        static void ForcePlayerBack(BasePlayer player, Collider collision, Vector3 entryposition, Vector3 exitposition)
         {
-            var distance = Vector3.Distance(exitposition, entryposition) + 0.5f;
+        	Vector3 rollBackPosition = GetRollBackPosition(entryposition, exitposition, 2f);
+        	Vector3 rollDirection = (entryposition - exitposition).normalized;
+            foreach( RaycastHit rayhit in UnityEngine.Physics.RaycastAll( rollBackPosition, (exitposition - entryposition).normalized, 3f ))
+            {
+            	if(rayhit.collider == collision)
+            	{
+            		rollBackPosition = rayhit.point + rollDirection*0.5f;
+            	}
+            }
+            ForcePlayerPosition(player, rollBackPosition );
+        }
+        static Vector3 GetRollBackPosition( Vector3 entryposition, Vector3 exitposition, float distance)
+        {
+        	distance = Vector3.Distance(exitposition, entryposition) + distance;
             var direction = (entryposition - exitposition).normalized;
-            ForcePlayerPosition(player, exitposition + (direction * distance));
+            return (exitposition + (direction * distance));
         }
 
-        void ForcePlayerPosition(BasePlayer player, Vector3 destination)
+        static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
         }
 
-        void OnEntityEnter(TriggerBase triggerbase, BaseEntity entity)
-        {
-            if (triggerbase.gameObject.name != "Anti Wallhack(Clone)") return;
-            if (entity.GetComponent<BasePlayer>() == null) return;
-            if (TriggerData[triggerbase] == null)
-                TriggerData[triggerbase] = new Hash<BaseEntity, Vector3>();
-            (TriggerData[triggerbase])[entity] = entity.transform.position;
-        }
-
-        void OnEntityLeave(TriggerBase triggerbase, BaseEntity entity)
-        {
-            if (entity == null || triggerbase == null || triggerbase.gameObject.name != "Anti Wallhack(Clone)") return;
-            if (entity.GetComponent<BasePlayer>() == null) return;
-            if (TriggerToBlock[triggerbase] == null)
-            {
-                GameObject.Destroy(triggerbase.gameObject);
-                return;
-            }
-
-            if (!isOpen(TriggerToBlock[triggerbase]))
-            {
-                BasePlayer player = entity.GetComponent<BasePlayer>();
-                if (player.net.connection != null)
-                {
-                    if (player.net.connection.authLevel < authIgnore)
-                        if (CheckWallhack(TriggerToBlock[triggerbase], entity, (TriggerData[triggerbase])[entity]))
-                        {
-                            if (Performance.frameRate > fpsIgnore && (Time.realtimeSinceStartup - lastDetections[entity]) < 2f)
-                            {
-                                if (wallhackLog)
-                                    AddLog(player.userID.ToString(), "wall", (TriggerData[triggerbase])[entity], entity.transform.position);
-                                SendMsgAdmin(string.Format("{0} was detected wallhacking from {1} to {2}", player.displayName, (TriggerData[triggerbase])[entity].ToString(), entity.transform.position.ToString()));
-                                PrintWarning(string.Format("{0}[{3}] was detected wallhacking from {1} to {2}", player.displayName, (TriggerData[triggerbase])[entity].ToString(), entity.transform.position.ToString(), player.userID));
-
-								if (wallhackPunish)
-									if (whDetectCount[player.userID] >= wallhackDetections)
-									{
-										Punish(player, string.Format("rWallhack ({0})", TriggerToBlock[triggerbase].blockDefinition.hierachyName.ToString()));
-										return;
-									}
-									else
-									{
-										if (Time.realtimeSinceStartup < whDetectReset[player.userID])
-										{
-											whDetectCount[player.userID]++;
-											whDetectReset[player.userID] = Time.realtimeSinceStartup + resetTime;
-										}
-										else
-										{
-											whDetectCount[player.userID] = 1;
-											whDetectReset[player.userID] = Time.realtimeSinceStartup + resetTime;
-										}
-                                    }
-                            }
-                            lastDetections[entity] = Time.realtimeSinceStartup;
-                            ForcePlayerBack(player, (TriggerData[triggerbase])[entity], entity.transform.position);
-                        }
-                }
-            }
-            (TriggerData[triggerbase]).Remove(entity);
-        }
-
-        void CreateNewProtectionFromBlock(BuildingBlock buildingblock, bool Immediate)
-        {
-            var newgameobject = UnityEngine.Object.Instantiate(originalWallhack);
-            ListGameObjects.Add(newgameobject);
-            var mesh = newgameobject.GetComponent<MeshCollider>();
-            newgameobject.transform.position = buildingblock.transform.position;
-            newgameobject.transform.rotation = buildingblock.transform.rotation;
-            mesh.convex = false;
-            mesh.sharedMesh = buildingblock.GetComponentInChildren<UnityEngine.MeshCollider>().sharedMesh;
-            mesh.enabled = true;
-            if (Immediate) newgameobject.SetActive(true);
-            else
-            {
-                newgameobject.SetActive(false);
-                timer.Once(20f, () => ActivateGameObject(newgameobject));
-            }
-            TriggerToBlock[newgameobject.GetComponent<TriggerBase>()] = buildingblock;
-        }
-
-        void ActivateGameObject(UnityEngine.GameObject gameObj)
-        {
-            if (gameObj == null) return;
-            gameObj.SetActive(true);
-        }
-
-        ////////////////////////////////////////////////////////////
-        // Anti Wallhack kills related
-        ////////////////////////////////////////////////////////////
-
         void OnEntityBuilt(Planner planner, GameObject gameobject)
         {
-            if (!serverInitialized) return;
             if (!wallhack) return;
-            var buildingblock = gameobject.GetComponentInParent<BuildingBlock>();
+            if (!serverInitialized) return;
+            BuildingBlock buildingblock = gameobject.GetComponentInParent<BuildingBlock>();
             if (buildingblock == null) return;
-            if (buildingblock.blockDefinition.hierachyName == "wall" || buildingblock.blockDefinition.hierachyName == "door.hinged")
-            {
-                CreateNewProtectionFromBlock(buildingblock, false);
-                if (buildingblock.blockDefinition.hierachyName == "door.hinged")
-                    DoorCheck.Add(buildingblock.net.ID, Time.realtimeSinceStartup);
-            }
+            createdBuilding[buildingblock] = Time.realtimeSinceStartup;
         }
         
+        void MakeTestCollider(BasePlayer player, bool force = false)
+        {
+        	if(playerWallcheck[player.userID] == null && player != null && player.transform != null && player.transform.position != null)
+        	{
+        		if(player.net.connection.authLevel < 1 || force)
+        		{
+					var newObject = new GameObject("ColliderTest");
+					newObject.transform.position = player.transform.position;
+					newObject.transform.parent = player.transform;
+					playerWallcheck[player.userID] = newObject.AddComponent<ColliderCheckTest>();
+        		}
+        	}
+        }
 
         ////////////////////////////////////////////////////////////
         // Speedhack related
@@ -628,10 +561,11 @@ namespace Oxide.Plugins
         static void CheckForFlyhack(PlayerHack hack)
         {
             if (hack.isonGround) return;
-            if (hack.player.transform.position.y < 5f) return;
+            //if (hack.player.transform.position.y < 5f) return;
             if (hack.Distance3D != 0f && hack.VerticalDistance < -5f && hack.VerticalDistance/hack.Distance3D < -0.5) return;
-            if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 5f)) { hack.wasGround = true; return; }
-            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 1f, flyColl)) { hack.wasGround = true; return; }
+            if (UnityEngine.Physics.Raycast(hack.player.transform.position, VectorDown, 3f)) { hack.wasGround = true; return; }
+            foreach(Collider col in UnityEngine.Physics.OverlapSphere(hack.player.transform.position, 2f, flyColl)) { hack.wasGround = true; return; }
+            if (WaterLevel.Factor(hack.player.GetComponent<Collider>()) > 0) return;
             if (!hack.wasGround && hack.lastTickFly == hack.lastTick)
             {
                 hack.flyHackDetections++;
@@ -651,13 +585,20 @@ namespace Oxide.Plugins
             hack.wasGround = false;
             hack.lastTickFly = hack.currentTick;
         }
-
+		
+		////////////////////////////////////////////////////////////
+        // Wallhack Kills related
+        ////////////////////////////////////////////////////////////
+		
         void WallhackKillCheck(BasePlayer player, BasePlayer attacker, HitInfo hitInfo)
         {
             if (Physics.Linecast(attacker.eyes.position, hitInfo.HitPositionWorld, out cachedRaycasthit, bulletmask))
             {
-                if (cachedRaycasthit.collider.GetComponentInParent<BuildingBlock>() != null)
+            	BuildingBlock block = cachedRaycasthit.collider.GetComponentInParent<BuildingBlock>();
+                if (block != null)
                 {
+                	if(block.blockDefinition.hierachyName == "wall.window") return;
+                	
                     CancelDamage(hitInfo);
                     if (Time.realtimeSinceStartup - lastWallhack[attacker] > 0.5f)
                     {
@@ -693,7 +634,7 @@ namespace Oxide.Plugins
         // Anti OverKill related
         ////////////////////////////////////////////////////////////
 
-        public Hash<BasePlayer, float> lastAttack = new Hash<BasePlayer, float>();
+        public Hash<BasePlayer, double> lastAttack = new Hash<BasePlayer, double>();
         public Hash<BasePlayer, int> attackSpeedDetections = new Hash<BasePlayer, int>();
 
         void OnMeleeAttack(BaseMelee melee, HitInfo info)
@@ -704,20 +645,17 @@ namespace Oxide.Plugins
 
             if (meleespeedhack)
             {
-                if ((Time.realtimeSinceStartup - lastAttack[attacker]) < melee.repeatDelay - 0.2f)
+                if ((CurrentTime() - lastAttack[attacker]) < melee.repeatDelay - 0.2)
                 {
-                    if (Performance.frameRate > fpsIgnore)
-                    {
                         CancelDamage(info);
                         attackSpeedDetections[attacker]++;
                         if(attackSpeedDetections[attacker] > 1)
                             SendDetection(string.Format("{0} - {1} was detected hiting too fast - @ {2}", attacker.userID.ToString(), attacker.displayName.ToString(), attacker.transform.position.ToString()));
-                    }
                 }
                 else
                     attackSpeedDetections[attacker] = 0;
 
-                lastAttack[attacker] = Time.realtimeSinceStartup;
+                lastAttack[attacker] = CurrentTime();
             }
             if (meleeoverrangehack)
             {
@@ -770,6 +708,7 @@ namespace Oxide.Plugins
                 if (!adminList.Contains(player))
                     adminList.Add(player);
             }
+            RefreshPlayer( player );
         }
         void OnPlayerDisconnected(BasePlayer player)
         {
@@ -797,7 +736,7 @@ namespace Oxide.Plugins
         {
             if (player.net.connection.authLevel < authIgnore)
             {
-                if (shouldBan)
+                if (punishType == 1)
                 {
                     if (banFamilyShare)
                         if (player.net.connection.ownerid != player.userID)
@@ -807,10 +746,13 @@ namespace Oxide.Plugins
                         }
                     Interface.GetMod().CallHook("Ban", null, player, msg, false);
                 }
-                else
+                else if(punishType == 2 && jailExists )
                 {
-                    player.Kick(msg);
+                	Interface.CallHook("AddPlayerToJail", player, -1);
+                	Interface.CallHook("SendPlayerToJail", player);
                 }
+                else
+                    player.Kick(msg);
             }
             else
             {
@@ -830,7 +772,7 @@ namespace Oxide.Plugins
             targetname = string.Empty;
             if (!(userID.Length == 17 && ulong.TryParse(userID, out userid)))
             	return false;
-			foreach (BasePlayer player in UnityEngine.Object.FindObjectsOfTypeAll(typeof(BasePlayer)))
+			foreach (BasePlayer player in Resources.FindObjectsOfTypeAll(typeof(BasePlayer)))
 			{
 				if(player.userID == userid)
 				{
@@ -839,9 +781,6 @@ namespace Oxide.Plugins
 			}
 			if(targetname != string.Empty)
 				return true;
-            if (DeadPlayersList == null)
-                return false;
-            Dictionary<string, string> deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
             if (deadPlayers == null)
                 return false;
             if(!deadPlayers.ContainsKey(userID))
@@ -862,7 +801,7 @@ namespace Oxide.Plugins
                 return true;
             }
 
-            foreach (BasePlayer player in UnityEngine.Object.FindObjectsOfTypeAll(typeof(BasePlayer)))
+            foreach (BasePlayer player in Resources.FindObjectsOfTypeAll(typeof(BasePlayer)))
             {
                 if (player.displayName == name)
                 {
@@ -890,7 +829,7 @@ namespace Oxide.Plugins
             targetid = noPlayerFound;
             if (DeadPlayersList == null)
                 return false;
-            Dictionary<string, string> deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
+            deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
             if (deadPlayers == null)
                 return false;
 
@@ -1134,6 +1073,7 @@ namespace Oxide.Plugins
         {
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             string targetname = string.Empty;
+            deadPlayers = DeadPlayersList?.Call("GetPlayerList", null) as Dictionary<string, string>;
             foreach (KeyValuePair<string, List<AntiCheatLog>> pair in anticheatlogs)
             {
             	targetname = string.Empty;
@@ -1179,6 +1119,12 @@ namespace Oxide.Plugins
             storedData.AntiCheatLogs.Clear();
             SaveData();
             SendReply(player, "AntiCheat: Logs were resetted");
+        }
+        
+        [ChatCommand("actest")]
+        void ttest(BasePlayer player, string command, string[] args)
+        {
+            MakeTestCollider(player, true);
         }
         ////////////////////////////////////////////////////////////
         // Console Commands
@@ -1252,6 +1198,7 @@ namespace Oxide.Plugins
         {
             if (fpsCaller is ConsoleSystem.Arg)
             {
+            	fpsCheckCalled = false;
                 SendReply((ConsoleSystem.Arg)fpsCaller, string.Format("Checking all players on your server took {0}s", (fpsTime/1000.0).ToString()));
             }
         }
