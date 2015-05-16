@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti & Bombardir", "2.3.0", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.2.13", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -484,7 +484,7 @@ namespace Oxide.Plugins
             {
             	if(rayhit.collider == collision)
             	{
-            		rollBackPosition = rayhit.point + rollDirection*0.5f;
+            		rollBackPosition = rayhit.point + rollDirection*1f;
             	}
             }
             ForcePlayerPosition(player, rollBackPosition );
