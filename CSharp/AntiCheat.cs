@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System;
+using System.Reflection;
 using System.Data;
 using UnityEngine;
 using Oxide.Core;
@@ -267,6 +268,7 @@ namespace Oxide.Plugins
             serverInitialized = true;
             if(Jail != null) jailExists = true;
             LoadData();
+            localbuildingPrivileges = typeof(BasePlayer).GetField("buildingPrivlidges", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             timer.Once(1f, () => RefreshPlayers());
         }
         void RefreshPlayers()
@@ -387,10 +389,9 @@ namespace Oxide.Plugins
 		
 		Hash<ulong, ColliderCheckTest> playerWallcheck = new Hash<ulong, ColliderCheckTest>();
 		static Hash<BuildingBlock, float> createdBuilding = new Hash<BuildingBlock, float>();
-		static Hash<BasePlayer, float> teleportedBack = new Hash<BasePlayer, float>();
 		static Hash<uint, float> DoorCheck = new Hash<uint, float>();
 		Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
-		
+		static FieldInfo localbuildingPrivileges;
         
 		static bool isOpen(BuildingBlock block)
 		{
@@ -434,9 +435,11 @@ namespace Oxide.Plugins
 		
 		public class ColliderCheckTest : MonoBehaviour
         {
-            BasePlayer player;
+            public BasePlayer player;
 			Hash<Collider, Vector3> entryPosition = new Hash<Collider, Vector3>();
 			SphereCollider col;
+			public float teleportedBack;
+			public Collider lastCollider;
 			
             void Awake()
             {
@@ -451,7 +454,8 @@ namespace Oxide.Plugins
             }
 			void OnTriggerEnter(Collider collision)
             {
-            	if(teleportedBack[player] == Time.realtimeSinceStartup) return;
+            	if(Time.realtimeSinceStartup < teleportedBack + 0.2f && collision != lastCollider ) return;
+				if(hasBuildingPrivileges( player )) return;
                 if( collision.GetComponentInParent<BuildingBlock>() )
                 {
                 	BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
@@ -484,7 +488,7 @@ namespace Oxide.Plugins
             		else
             			Interface.GetMod().LogWarning(string.Format("New AntiCheat (in creation): {0} was detected colliding with {1}", player.displayName, collision.gameObject.name));
                 	
-                	ForcePlayerBack(player, collision, entryPosition[collision], player.transform.position);
+                	ForcePlayerBack(this, collision, entryPosition[collision], player.transform.position);
                 	
                 	entryPosition.Remove(collision);
             	}		
@@ -496,9 +500,19 @@ namespace Oxide.Plugins
                 GameObject.Destroy(col);
             }
         }
-       	
+       	static bool hasBuildingPrivileges(BasePlayer player)
+       	{
+       		foreach (BuildingPrivlidge bldpriv in (List<BuildingPrivlidge>)localbuildingPrivileges.GetValue(player))
+            {
+                foreach (ProtoBuf.PlayerNameID ply in bldpriv.authorizedPlayers)
+                {
+                    if(ply.userid == player.userID) return true;
+                }
+            }
+            return false;
+       	}
 
-        static void ForcePlayerBack(BasePlayer player, Collider collision, Vector3 entryposition, Vector3 exitposition)
+        static void ForcePlayerBack(ColliderCheckTest colcheck, Collider collision, Vector3 entryposition, Vector3 exitposition)
         {
         	Vector3 rollBackPosition = GetRollBackPosition(entryposition, exitposition, 2f);
         	Vector3 rollDirection = (entryposition - exitposition).normalized;
@@ -509,7 +523,9 @@ namespace Oxide.Plugins
             		rollBackPosition = rayhit.point + rollDirection*1f;
             	}
             }
-            ForcePlayerPosition(player, rollBackPosition );
+            colcheck.teleportedBack = Time.realtimeSinceStartup;
+            colcheck.lastCollider = collision;
+            ForcePlayerPosition(colcheck.player, rollBackPosition );
         }
         static Vector3 GetRollBackPosition( Vector3 entryposition, Vector3 exitposition, float distance)
         {
@@ -520,7 +536,7 @@ namespace Oxide.Plugins
 
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
-        	teleportedBack[player] = Time.realtimeSinceStartup;
+        	
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
