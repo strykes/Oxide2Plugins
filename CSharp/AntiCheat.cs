@@ -80,9 +80,6 @@ namespace Oxide.Plugins
         static bool flyhackLog = true;
 
         static bool wallhack = true;
-        static bool wallhackDoors = true;
-        static bool wallhackFloors = true;
-        static bool wallhackWalls = true;
         static bool wallhackPunish = true;
         static bool wallhackLog = true;
         static int wallhackDetections = 2;
@@ -91,7 +88,7 @@ namespace Oxide.Plugins
         static bool wallhackkills = true;
         static bool wallhackkillsLog = true;
 
-        static bool meleeoverrangehack = true;
+        //static bool meleeoverrangehack = true;
 
         static bool meleespeedhack = true;
 
@@ -132,7 +129,7 @@ namespace Oxide.Plugins
             CheckCfg<int>("Settings: FPS Ignore", ref fpsIgnore);
             CheckCfg<bool>("Settings: Ban Also Family Owner", ref banFamilyShare);
             CheckCfg<bool>("MeleeSpeed Hack: activated", ref meleespeedhack);
-            CheckCfg<bool>("MeleeOverRange Hack: activated", ref meleeoverrangehack);
+            //CheckCfg<bool>("MeleeOverRange Hack: activated", ref meleeoverrangehack);
             CheckCfg<bool>("SpeedHack: activated", ref speedhack);
             CheckCfg<bool>("SpeedHack: Punish", ref speedhackPunish);
             CheckCfg<bool>("SpeedHack: Log", ref speedhackLog);
@@ -390,7 +387,8 @@ namespace Oxide.Plugins
 		Hash<ulong, ColliderCheckTest> playerWallcheck = new Hash<ulong, ColliderCheckTest>();
 		static Hash<BuildingBlock, float> createdBuilding = new Hash<BuildingBlock, float>();
 		static Hash<uint, float> DoorCheck = new Hash<uint, float>();
-		Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
+		static Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
+		static Hash<BasePlayer, int> wallhackDetec = new Hash<BasePlayer, int>();
 		static FieldInfo localbuildingPrivileges;
         
 		static bool isOpen(BuildingBlock block)
@@ -454,8 +452,8 @@ namespace Oxide.Plugins
             }
 			void OnTriggerEnter(Collider collision)
             {
-            	if(Time.realtimeSinceStartup < teleportedBack + 0.2f && collision != lastCollider ) return;
-				if(hasBuildingPrivileges( player )) return;
+            	if( Time.realtimeSinceStartup < teleportedBack + 0.2f && collision != lastCollider ) return;
+				if( hasBuildingPrivileges( player ) ) return;
                 if( collision.GetComponentInParent<BuildingBlock>() )
                 {
                 	BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
@@ -480,9 +478,6 @@ namespace Oxide.Plugins
             	{
             		BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
             		
-            		if (wallhackLog)
-                    	AddLog(player.userID.ToString(), "wall", entryPosition[collision], player.transform.position);
-            		
             		if(block != null)
             			Interface.GetMod().LogWarning(string.Format("New AntiCheat (in creation): {0} was detected colliding with {1}", player.displayName, block.blockDefinition.hierachyName));
             		else
@@ -490,6 +485,23 @@ namespace Oxide.Plugins
                 	
                 	ForcePlayerBack(this, collision, entryPosition[collision], player.transform.position);
                 	
+                	if(Time.realtimeSinceStartup - lastWallhack[player] < 10f)
+            		{
+            			if (wallhackLog)
+                    		AddLog(player.userID.ToString(), "wall", entryPosition[collision], player.transform.position);
+            			if(wallhackPunish)
+            			{
+            				wallhackDetec[player]++;
+            				if(wallhackDetec[player] >= wallhackDetections)
+            				{
+            					Punish(player, string.Format("rWallhack ({0})", (block!=null) ? block.blockDefinition.hierachyName : collision.gameObject.name));
+            				}
+            			}
+            		}
+            		else if(wallhackPunish)
+            			wallhackDetec[player] = 0;
+                	
+                	lastWallhack[player] = Time.realtimeSinceStartup;
                 	entryPosition.Remove(collision);
             	}		
             }
@@ -502,14 +514,7 @@ namespace Oxide.Plugins
         }
        	static bool hasBuildingPrivileges(BasePlayer player)
        	{
-       		foreach (BuildingPrivlidge bldpriv in (List<BuildingPrivlidge>)localbuildingPrivileges.GetValue(player))
-            {
-                foreach (ProtoBuf.PlayerNameID ply in bldpriv.authorizedPlayers)
-                {
-                    if(ply.userid == player.userID) return true;
-                }
-            }
-            return false;
+       		return player.HasPlayerFlag(BasePlayer.PlayerFlags.HasBuildingPrivilege);
        	}
 
         static void ForcePlayerBack(ColliderCheckTest colcheck, Collider collision, Vector3 entryposition, Vector3 exitposition)
@@ -696,6 +701,7 @@ namespace Oxide.Plugins
 
                 lastAttack[attacker] = CurrentTime();
             }
+            /*
             if (meleeoverrangehack)
             {
                 if (info.HitEntity == null) return;
@@ -711,7 +717,7 @@ namespace Oxide.Plugins
                             SendDetection(string.Format("{0} - {1} was detected attacking {2} with {6} from {3}m - {4} to {5}", attacker.userID.ToString(), attacker.displayName.ToString(), victim.displayName, Vector3.Distance(attacker.transform.position, victim.transform.position).ToString(), attacker.transform.position.ToString(), victim.transform.position.ToString(), info.Weapon.LookupShortPrefabName().ToString()));
                     }
                 }
-            }
+            }*/
         }
 
         ////////////////////////////////////////////////////////////
