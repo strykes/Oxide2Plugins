@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.2.13", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.3.0", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -286,7 +286,7 @@ namespace Oxide.Plugins
         {
         	
 			if (player.net.connection.authLevel > 0 || permission.UserHasPermission(player.userID.ToString(), "cananticheat")) return;
-			if(wallhack) MakeTestCollider( player );
+			if (wallhack) MakeTestCollider( player );
 			if (!speedhack && !flyhack) return;
 			if (player.GetComponent<PlayerHack>() == null) player.gameObject.AddComponent<PlayerHack>();
         }
@@ -387,17 +387,38 @@ namespace Oxide.Plugins
 		
 		Hash<ulong, ColliderCheckTest> playerWallcheck = new Hash<ulong, ColliderCheckTest>();
 		static Hash<BuildingBlock, float> createdBuilding = new Hash<BuildingBlock, float>();
+		static Hash<BasePlayer, float> teleportedBack = new Hash<BasePlayer, float>();
 		static Hash<uint, float> DoorCheck = new Hash<uint, float>();
 		Hash<BasePlayer, float> lastWallhack = new Hash<BasePlayer, float>();
 		
         
 		static bool isOpen(BuildingBlock block)
 		{
+			
 			if (block.net != null && block.net.ID != null)
 				if (Time.realtimeSinceStartup - DoorCheck[block.net.ID] < 6f)
 					return true;
 			if(block.blockDefinition.hierachyName.StartsWith("block"))
 				return true;
+			
+			switch(block.blockDefinition.hierachyName)
+			{
+				case "wall.doorway":
+					foreach( Collider collider in UnityEngine.Physics.OverlapSphere(block.transform.position, 2f) )
+					{
+						if(collider.GetComponentInParent<Door>() != false)
+						{
+							if (Time.realtimeSinceStartup - DoorCheck[collider.GetComponentInParent<BuildingBlock>().net.ID] < 6f)
+							{
+								return true;
+							}
+						}
+					}
+				break;
+				default:
+				break;
+			}
+			
 			return false;
 		}
 			
@@ -430,7 +451,8 @@ namespace Oxide.Plugins
             }
 			void OnTriggerEnter(Collider collision)
             {
-                if( collision.GetComponentInParent<BuildingBlock>() || collision.GetComponentInParent<Mesh>() )
+            	if(teleportedBack[player] == Time.realtimeSinceStartup) return;
+                if( collision.GetComponentInParent<BuildingBlock>() )
                 {
                 	BuildingBlock block = collision.GetComponentInParent<BuildingBlock>();
                 	if(block != null)
@@ -498,6 +520,7 @@ namespace Oxide.Plugins
 
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
+        	teleportedBack[player] = Time.realtimeSinceStartup;
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
