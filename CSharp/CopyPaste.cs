@@ -6,7 +6,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Copy Paste", "Reneb & VVoid", "2.2.5")]
+    [Info("Copy Paste", "Reneb & VVoid", "2.2.6")]
     class CopyPaste : RustPlugin
     {
         private MethodInfo inventoryClear = typeof(ItemContainer).GetMethod("Clear", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -252,7 +252,7 @@ namespace Oxide.Plugins
                                 {
                                     var signage = fdeployable.GetComponent<Signage>();
                                     var sign = new Dictionary<string, object>();
-                                    if (signage.textureID > 0)
+                                    if (signage.textureID > 0 && FileStorage.server.Exists(signage.textureID, FileStorage.Type.png))
                                         sign.Add("texture", Convert.ToBase64String(FileStorage.server.Get(signage.textureID, FileStorage.Type.png)));
                                     sign.Add("locked", signage.IsLocked());
                                     housedata.Add("sign", sign);
