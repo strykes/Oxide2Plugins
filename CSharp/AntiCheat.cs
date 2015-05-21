@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.3.4", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.3.5", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
     
