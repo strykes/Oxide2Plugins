@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("AirdropControl", "Reneb", 1.1)]
+    [Info("AirdropControl", "Reneb", "1.1.4")]
     class AirdropControl : RustPlugin
     {
         private FieldInfo CPstartPos;
@@ -17,6 +17,7 @@ namespace Oxide.Plugins
         private FieldInfo CPdropped;
         private FieldInfo CPsecondsToTake;
         private FieldInfo CPsecondsTaken;
+		private FieldInfo dropPosition;
         private MethodInfo CreateEntity;
         private Vector3 centerPos;
         private float secondsToTake;
@@ -44,6 +45,7 @@ namespace Oxide.Plugins
         private List<CargoPlane> RemoveListND;
         private Dictionary<CargoPlane, int> RemoveListNUM;
         private Dictionary<CargoPlane,double> AddDrop;
+		private Quaternion defaultRot = new Quaternion(1f,0f,0f,0f);
 
         void Loaded()
         {
@@ -56,6 +58,7 @@ namespace Oxide.Plugins
             dropPoint = new Dictionary<CargoPlane, Vector3>();
             dropNumber = new Dictionary<CargoPlane, int>();
             nextDrop = new Dictionary<CargoPlane, double>();
+			dropPosition = typeof(CargoPlane).GetField("dropPosition", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             CPstartPos = typeof(CargoPlane).GetField("startPos", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             CPendPos = typeof(CargoPlane).GetField("endPos", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             CPdropped = typeof(CargoPlane).GetField("dropped", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
@@ -95,7 +98,7 @@ namespace Oxide.Plugins
             maxDropCratesInterval = Convert.ToInt32(GetConfig("Drop", "MaxDropCratesInterval", 10));
             showDropLocation = Convert.ToBoolean(GetConfig("Drop", "ShowDropLocation", true));
             airdropSpeed = Convert.ToSingle(GetConfig("Airdrop", "Speed", 40f));
-
+			dropMessage = Convert.ToString(GetConfig("Messages","Inbound","Airdrop incoming! Dropping at {0} {1} {2}"));
             if (Changed)
             {
                 SaveConfig();
@@ -118,16 +121,7 @@ namespace Oxide.Plugins
         }
         Vector3 FindDropPoint(CargoPlane cargoplane)
         {
-            if (dropPoint.ContainsKey(cargoplane))
-                return (Vector3)dropPoint[cargoplane];
-            var RandomX = Convert.ToSingle(GetRandomNumber((int)dropMinX, (int)dropMaxX+1));
-            var RandomY = Convert.ToSingle(GetRandomNumber((int)dropMinY, (int)dropMaxY+1));
-            var RandomZ = Convert.ToSingle(GetRandomNumber((int)dropMinZ, (int)dropMaxZ+1));
-            if (RandomX == 0f)
-                RandomX = 1f;
-            if (RandomZ == 0f)
-                RandomZ = 1f;
-            return new UnityEngine.Vector3(RandomX, RandomY, RandomZ);
+            return (Vector3)dropPosition.GetValue(cargoplane);
         }
         int RandomCrateDrop(CargoPlane cargoplane)
         {
@@ -136,6 +130,17 @@ namespace Oxide.Plugins
         double RandomDropInterval()
         {
             return Convert.ToDouble(GetRandomNumber(minDropCratesInterval, maxDropCratesInterval + 1));
+        }
+		Vector3 RandomDropPoint()
+        {
+            var RandomX = Convert.ToSingle(GetRandomNumber((int)dropMinX, (int)dropMaxX+1));
+            var RandomY = Convert.ToSingle(GetRandomNumber((int)dropMinY, (int)dropMaxY+1));
+            var RandomZ = Convert.ToSingle(GetRandomNumber((int)dropMinZ, (int)dropMaxZ+1));
+            if (RandomX == 0f)
+                RandomX = 1f;
+            if (RandomZ == 0f)
+                RandomZ = 1f;
+            return new UnityEngine.Vector3(RandomX, RandomY, RandomZ);
         }
         void FindStartAndEndPos(Vector3 target, out Vector3 startpos, out Vector3 endpos, out float distance)
         {
@@ -230,7 +235,7 @@ namespace Oxide.Plugins
         {
             if(entity != null)
             {
-                if (entity as CargoPlane)
+                if (entity is CargoPlane)
                 {
                     var cargoplane = entity as CargoPlane;
                     Vector3 startPos;
@@ -243,17 +248,10 @@ namespace Oxide.Plugins
                         BroadcastToChat(string.Format("Airdrop incoming! Dropping at {0} {1} {2}", dropTarget.x.ToString(), dropTarget.y.ToString(), dropTarget.z.ToString()));
                     }
                     Puts("Airdrop setting to drop at : " + dropTarget.ToString());
-                    
-                    FindStartAndEndPos(dropTarget, out startPos, out endPos, out distance);
-                    float secondstotake = distance * 2 / airdropSpeed;
-                    cargoplane.transform.rotation = Quaternion.LookRotation(endPos - startPos);
 
-                    CPstartPos.SetValue(cargoplane, startPos);
-                    CPendPos.SetValue(cargoplane, endPos);
-                    CPsecondsToTake.SetValue(cargoplane, secondstotake);
                     dropNumber.Add(cargoplane, RandomCrateDrop(cargoplane));
                 }
-                else if(entity as SupplyDrop)
+                else if(entity is SupplyDrop)
                 {
                     CheckAirdropDrops();
                 }
@@ -287,14 +285,15 @@ namespace Oxide.Plugins
             else
             {
                 AllowNextDrop();
-                BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), new Quaternion());
+                BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), defaultRot);
                 if (entity != null)
                 {
                     var targetPos = target.transform.position;
                     targetPos.y = Convert.ToSingle(GetRandomNumber((int)dropMinY, (int)dropMaxY + 1));
-                    dropPoint.Add(entity as CargoPlane, targetPos);
+					CargoPlane plane = entity.GetComponent<CargoPlane>();
+                    plane.InitDropPosition(targetPos);
                     entity.Spawn(true);
-                    dropPoint.Remove(entity as CargoPlane);
+                    CPsecondsToTake.SetValue( plane, Vector3.Distance( (Vector3)CPstartPos.GetValue(plane), (Vector3)CPendPos.GetValue(plane)) / airdropSpeed);
                 }
             }
         }
@@ -315,16 +314,17 @@ namespace Oxide.Plugins
                 return;
             }
             AllowNextDrop();
-            BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), new Quaternion());
+            BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), defaultRot);
             if (entity != null)
             {
                 var targetPos = new Vector3();
                 targetPos.x = Convert.ToSingle(arg.Args[0]);
                 targetPos.y = Convert.ToSingle(arg.Args[1]);
                 targetPos.z = Convert.ToSingle(arg.Args[2]);
-                dropPoint.Add(entity as CargoPlane, targetPos);
+				CargoPlane plane = entity.GetComponent<CargoPlane>();
+                plane.InitDropPosition(targetPos);
                 entity.Spawn(true);
-                dropPoint.Remove(entity as CargoPlane);
+                CPsecondsToTake.SetValue( plane, Vector3.Distance( (Vector3)CPstartPos.GetValue(plane), (Vector3)CPendPos.GetValue(plane)) / airdropSpeed);
             }
         }
         [ConsoleCommand("airdrop.massdrop")]
@@ -346,10 +346,14 @@ namespace Oxide.Plugins
             for (int i = 0; i < Convert.ToInt32(arg.Args[0]); i++)
             {
                 AllowNextDrop();
-                BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), new Quaternion());
+				Vector3 dropposition = RandomDropPoint();
+                BaseEntity entity = GameManager.server.CreateEntity("events/cargo_plane", new Vector3(), defaultRot);
                 if (entity != null)
                 {
+                	CargoPlane plane = entity.GetComponent<CargoPlane>();
+					dropPosition.SetValue(plane, RandomDropPoint());
                     entity.Spawn(true);
+                    CPsecondsToTake.SetValue( plane, Vector3.Distance( (Vector3)CPstartPos.GetValue(plane), (Vector3)CPendPos.GetValue(plane)) / airdropSpeed);
                 }
             }
         }
