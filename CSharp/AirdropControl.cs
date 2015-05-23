@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("AirdropControl", "Reneb", "1.1.4")]
+    [Info("AirdropControl", "Reneb", "1.1.5")]
     class AirdropControl : RustPlugin
     {
         private FieldInfo CPstartPos;
