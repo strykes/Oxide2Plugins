@@ -113,6 +113,7 @@ namespace Oxide.Plugins
                     {
                         var realEntity = deployed.GetComponent<BaseNetworkable>().net;
                         if (realEntity == null) continue;
+                        if (deployed.GetComponent<BaseLock>()) continue;
 						total++;
 						if (shouldRemove(deployed, shouldForce, eraseRadius))
 						{
@@ -188,6 +189,7 @@ namespace Oxide.Plugins
                     {
                         var realEntity = deployed.GetComponent<BaseNetworkable>().net;
                         if (realEntity == null) continue;
+                        if (deployed.GetComponent<BaseLock>()) continue;
 						if (shouldRemove(deployed, shouldForce, eraseRadius))
 						{
 							cleared++;
