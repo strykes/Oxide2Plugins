@@ -7,11 +7,16 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("CleanUp", "Reneb", "2.0.0")]
+    [Info("CleanUp", "Reneb", "2.0.1")]
     public class CleanUp : RustPlugin
     {
         private int constructionColl;
-
+		
+		
+		 /////////////////////////////////////////
+        // Oxide Hooks
+        /////////////////////////////////////////
+		
         void Loaded()
         {
             if (!permission.PermissionExists("canclean")) permission.RegisterPermission("canclean", this);
@@ -21,7 +26,33 @@ namespace Oxide.Plugins
         {
             InitializeTable();
         }
+		
+		
+		 /////////////////////////////////////////
+        // Config Manager
+        /////////////////////////////////////////
+        private static int authLevel = 2;
+		
+		void LoadDefaultConfig() { }
+		
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
 
+        void Init()
+        {
+            CheckCfg<int>("Permissions: Auth Level", ref authLevel);
+            SaveConfig();
+        }
+		
+		/////////////////////////////////////////
+        // Deployable Items Table
+        /////////////////////////////////////////
+        
         Dictionary<string, string> displaynameToShortname = new Dictionary<string, string>();
 
         private void InitializeTable()
@@ -34,6 +65,8 @@ namespace Oxide.Plugins
                       displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
+        
+        
         bool shouldRemove(Deployable deployable, bool forceRemove, float eraseRadius = 3f )
         {
             if (forceRemove) return true;
@@ -43,22 +76,53 @@ namespace Oxide.Plugins
             }
             return true;
         }
-
+		
+		/////////////////////////////////////////
+        // Command Access
+        /////////////////////////////////////////
+		
         bool hasAccess(BasePlayer player)
         {
             if (player == null) return false;
-            if (player.net.connection.authLevel > 0) return true;
+            if (player.net.connection.authLevel >= authLevel) return true;
             return permission.UserHasPermission(player.userID.ToString(), "canclean");
         }
-
+		
+		
+		/////////////////////////////////////////
+        // Chat Commands
+        /////////////////////////////////////////
+        
         [ChatCommand("clean")]
         void cmdChatClean(BasePlayer player, string command, string[] args)
         {
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             if (args.Length < 2) { SendReply(player, "/clean \"Deployable Item Name\" all => all the deployable items"); SendReply(player, "/clean \"Deployable Item Name\" world optional:XX => all the items that are not connected to a construction in XX radius (default is 3 meters)"); return; }
             if (args[1] != "world" && args[1] != "all") { SendReply(player, "/clean \"Deployable Item Name\" all => all the deployable items"); SendReply(player, "/clean \"Deployable Item Name\" world optional:XX => all the items that are not connected to a construction in XX radius (default is 3 meters)"); return; }
+            bool shouldForce = (args[1] == "all") ? true : false;
+            float eraseRadius = 3f;
+            if (args.Length > 2) float.TryParse(args[2], out eraseRadius);
+            int cleared = 0;
+            int total = 0;
             switch (args[0].ToLower())
             {
+            	case "deployables":
+            	case "deployable":
+            		
+                    foreach (Deployable deployed in UnityEngine.Resources.FindObjectsOfTypeAll<Deployable>())
+                    {
+                        var realEntity = deployed.GetComponent<BaseNetworkable>().net;
+                        if (realEntity == null) continue;
+						total++;
+						if (shouldRemove(deployed, shouldForce, eraseRadius))
+						{
+							deployed.GetComponent<BaseEntity>().KillMessage();
+							cleared++;
+						}
+                    }
+                    SendReply(player, string.Format("Cleared {0} entities out of {1} found", cleared.ToString(), total.ToString()));
+            	break;
+            	
                 default:
                     string shortname = args[0].ToLower();
                     if (displaynameToShortname.ContainsKey(shortname))
@@ -86,11 +150,8 @@ namespace Oxide.Plugins
                         return;
                     }
                     string deployablename = deployable.gameObject.name;
-                    bool shouldForce = (args[1] == "all") ? true : false;
-                    float eraseRadius = 3f;
-                    if (args.Length > 2) float.TryParse(args[2], out eraseRadius);
-                    int cleared = 0;
-                    int total = 0;
+
+                    
                     foreach (Deployable deployed in UnityEngine.Resources.FindObjectsOfTypeAll<Deployable>())
                     {
                         var realEntity = deployed.GetComponent<BaseNetworkable>().net;
@@ -106,7 +167,7 @@ namespace Oxide.Plugins
                         }
                     }
                     SendReply(player, string.Format("Cleared {0} entities out of {1} found", cleared.ToString(), total.ToString()));
-                    break;
+                break;
             }
         }
         [ChatCommand("count")]
@@ -115,8 +176,26 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
             if (args.Length < 2) { SendReply(player, "/count \"Deployable Item Name\" all => all the deployable items"); SendReply(player, "/count \"Deployable Item Name\" world optional:XX => all the items that are not connected to a construction in XX radius (default is 3 meters)"); return; }
             if (args[1] != "world" && args[1] != "all") { SendReply(player, "/count \"Deployable Item Name\" all => all the deployable items"); SendReply(player, "/count \"Deployable Item Name\" world optional:XX => all the items that are not connected to a construction in XX radius (default is 3 meters)"); return; }
+            int cleared = 0;
+            float eraseRadius = 3f;
+            if (args.Length > 2) float.TryParse(args[2], out eraseRadius);
+            bool shouldForce = (args[1] == "all") ? true : false;
             switch (args[0].ToLower())
             {
+            	case "deployables":
+            	case "deployable":
+                    foreach (Deployable deployed in UnityEngine.Resources.FindObjectsOfTypeAll<Deployable>())
+                    {
+                        var realEntity = deployed.GetComponent<BaseNetworkable>().net;
+                        if (realEntity == null) continue;
+						if (shouldRemove(deployed, shouldForce, eraseRadius))
+						{
+							cleared++;
+						}
+                    }
+                    SendReply(player, string.Format("Deployables: Found {0} entities that matchs your search", cleared.ToString()));
+            	
+            	break;
                 default:
                     string shortname = args[0].ToLower();
                     if (displaynameToShortname.ContainsKey(shortname))
@@ -144,10 +223,7 @@ namespace Oxide.Plugins
                         return;
                     }
                     string deployablename = deployable.gameObject.name;
-                    bool shouldForce = (args[1] == "all") ? true : false;
-                    float eraseRadius = 3f;
-                    if (args.Length > 2) float.TryParse(args[2], out eraseRadius);
-                    int cleared = 0;
+                    
                     foreach (Deployable deployed in UnityEngine.Resources.FindObjectsOfTypeAll<Deployable>())
                     {
                         var realEntity = deployed.GetComponent<BaseNetworkable>().net;
@@ -161,7 +237,7 @@ namespace Oxide.Plugins
                         }
                     }
                     SendReply(player, string.Format("{1}: Found {0} entities that matchs your search", cleared.ToString(), shortname));
-                    break;
+                break;
             }
         }
     }
