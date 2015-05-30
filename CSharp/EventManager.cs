@@ -914,6 +914,21 @@ namespace Oxide.Plugins
             }
         }
 
+        [ChatCommand("reward")]
+        void cmdEventReward(BasePlayer player, string command, string[] args)
+        {
+            int currenttokens = GetTokens(player.userID.ToString());
+            if (args.Length == 0)
+            {
+                SendReply(player, string.Format("You have {0} tokens", currenttokens.ToString()));
+                foreach (KeyValuePair<string, Reward> pair in rewards)
+                {
+                    SendReply(player, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
+                }
+                return;
+            }
+        }
+
         //////////////////////////////////////////////////////////////////////////////////////
         // Console Commands //////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
