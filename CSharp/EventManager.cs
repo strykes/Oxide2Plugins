@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.0.8", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.1.0", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -255,7 +255,7 @@ namespace Oxide.Plugins
                 TryErasePlayer(player);
             }
         }
-           
+
         void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
         {
             if (!EventStarted) return;
@@ -340,10 +340,13 @@ namespace Oxide.Plugins
 
         static StoredData storedData;
         static Hash<string, EventZone> zonelogs = new Hash<string, EventZone>();
+        static Hash<string, Reward> rewards = new Hash<string, Reward>();
 
         class StoredData
         {
             public HashSet<EventZone> ZoneLogs = new HashSet<EventZone>();
+            public Hash<string, string> Tokens = new Hash<string, string>();
+            public HashSet<Reward> Rewards = new HashSet<Reward>();
 
             public StoredData()
             {
@@ -375,7 +378,72 @@ namespace Oxide.Plugins
             {
                 zonelogs[thelog.name] = thelog;
             }
+            foreach (var thelog in storedData.Rewards)
+            {
+                rewards[thelog.name] = thelog;
+            }
         }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Tokens Manager
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        Dictionary<string, string> displaynameToShortname = new Dictionary<string, string>();
+
+        private void InitializeTable()
+        {
+            displaynameToShortname.Clear();
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach (ItemDefinition itemdef in ItemsDefinition)
+            {
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
+            }
+        }
+
+
+        public class Reward
+        {
+            public string name;
+            public string cost;
+            public string kit;
+            public string item;
+            public string amount;
+
+            public Reward()
+            {
+
+            }
+            public Reward(string name, int cost, bool kit, string item, int amount)
+            {
+                this.name = name;
+                this.cost = cost.ToString();
+                this.kit = kit.ToString();
+                this.item = item;
+                this.amount = amount.ToString();
+            }
+        }
+        void AddTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = (GetTokens(userid) + amount).ToString();
+        }
+
+        int GetTokens(string userid)
+        {
+            if (storedData.Tokens[userid] == null)
+                return 0;
+            return int.Parse(storedData.Tokens[userid]);
+        }
+
+        void RemoveTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = (GetTokens(userid) - amount).ToString();
+        }
+
+        void SetTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = amount.ToString();
+        }
+
         //////////////////////////////////////////////////////////////////////////////////////
         // Configs Manager ///////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
@@ -655,7 +723,7 @@ namespace Oxide.Plugins
             EventStarted = false;
             EventEnded = true;
 
-			
+
             SendPlayersHome();
             RedeemPlayersInventory();
             TryEraseAllPlayers();
@@ -813,13 +881,13 @@ namespace Oxide.Plugins
                 timer.Once(0.5f, () => InitializeZone(name));
             return true;
         }
-        
+
         object canRedeemKit(BasePlayer player)
         {
-        	if (!EventStarted) return null;
-        	EventPlayer eplayer = player.GetComponent<EventPlayer>();
-        	if(eplayer == null) return null;
-        	return false;
+            if (!EventStarted) return null;
+            EventPlayer eplayer = player.GetComponent<EventPlayer>();
+            if (eplayer == null) return null;
+            return false;
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
@@ -952,6 +1020,111 @@ namespace Oxide.Plugins
                 return;
             }
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
+        }
+        [ConsoleCommand("event.reward")]
+        void ccmdEventReward(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.reward add/list/remove");
+                return;
+            }
+            switch(arg.Args[0])
+            {
+                case "add":
+                    if(arg.Args.Length < 5)
+                    {
+                        SendReply(arg, "event.reward add NAME COST ITEM/KIT AMOUNT");
+                        return;
+                    }
+                    string rewardname = arg.Args[1];
+                    int cost = 0;
+                    if(!int.TryParse(arg.Args[2], out cost))
+                    {
+                        SendReply(arg, "The cost needs to be a number");
+                        return;
+                    }
+                    if(cost < 1)
+                    {
+                        SendReply(arg, "The cost needs to be higher then 0");
+                        return;
+                    }
+
+                    int amount = 0;
+                    if (!int.TryParse(arg.Args[4], out amount))
+                    {
+                        SendReply(arg, "The amount needs to be a number");
+                        return;
+                    }
+                    if (amount < 1)
+                    {
+                        SendReply(arg, "The amount needs to be higher then 0");
+                        return;
+                    }
+
+                    bool kit = false;
+                    string itemname = arg.Args[3].ToLower();
+                    if (displaynameToShortname.ContainsKey(itemname))
+                        itemname = displaynameToShortname[itemname];
+                    var definition = ItemManager.FindItemDefinition(itemname);
+                    if (definition == null)
+                    {
+                        kit = true;
+                        if(Kits == null)
+                        {
+                            SendReply(arg, "This item doesn't exist and it seems like you don't have the kits plugin");
+                            return;
+                        }
+                        var iskit = Kits.Call("isKit", itemname);
+                        if(!(iskit is bool))
+                        {
+                            SendReply(arg, "Seems like you have an out dated Kits plugin");
+                            return;
+                        }
+                        if(!(bool)iskit)
+                        {
+                            SendReply(arg, "This item doesn't exist and no kits match this name neither.");
+                            return;
+                        }
+                    }
+                    Reward reward = new Reward(rewardname, cost, kit, itemname, amount);
+                    if(rewards[reward.name] != null) storedData.Rewards.Remove(rewards[reward.name]);
+                    rewards[reward.name] = reward;
+                    storedData.Rewards.Add(rewards[reward.name]);
+                    SaveData();
+                    SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", reward.name, reward.cost, (Convert.ToBoolean(reward.kit) ? "Kit " : string.Empty) + reward.item, reward.amount));
+                    break;
+
+                case "list":
+                    if(rewards.Count == 0)
+                    {
+                        SendReply(arg, "You dont have any rewards set yet.");
+                        return;
+                    }
+                    foreach (KeyValuePair<string, Reward> pair in rewards)
+                    {
+                        SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, ( Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
+                    }
+                break;
+
+                case "remove":
+                    if (arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "event.reward remove REWARDNAME");
+                        return;
+                    }
+                    if( rewards[arg.Args[1]] == null )
+                    {
+                        SendReply(arg, "This reward doesn't exist");
+                        return;
+                    }
+                    storedData.Rewards.Remove(rewards[arg.Args[1]]);
+                    rewards[arg.Args[1]] = null;
+                    SendReply(arg, "You've successfully removed this reward");
+                 break;
+
+            }
         }
     }
 }
