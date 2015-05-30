@@ -421,6 +421,11 @@ namespace Oxide.Plugins
                 this.item = item;
                 this.amount = amount.ToString();
             }
+            public int GetCost()
+            {
+            	return int.Parse( cost );
+            }
+            
         }
         void AddTokens(string userid, int amount)
         {
@@ -921,12 +926,36 @@ namespace Oxide.Plugins
             if (args.Length == 0)
             {
                 SendReply(player, string.Format("You have {0} tokens", currenttokens.ToString()));
+                SendReply(player, "/reward \"RewardName\" Amount");
                 foreach (KeyValuePair<string, Reward> pair in rewards)
                 {
-                    SendReply(player, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
+                	string color = "green";
+                	if( pair.Value.GetCost() > currenttokens )
+                		color = "red";
+                    SendReply(player, string.Format("Reward Name: {0} - Cost: <color={4}>{1}</color> - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount, color.ToString()));
                 }
                 return;
             }
+            if( rewards[args[0]] == null )
+            {
+            	SendReply(player, "This reward doesn't exist");
+            	return;
+            }
+            int amount = 1;
+            if( args.Length > 1 ) int.TryParse( args[1], out amount );
+            if( amount < 1 )
+            {
+            	SendReply(player, "The amount to buy can't be 0 or negative.");
+            	return;
+            }
+            if( rewards[args[0]].GetCost() * amount > currenttokens )
+            {
+            	SendReply(player, string.Format("You don't have enough tokens to buy {1} of {0}.", args[0], amount.ToString()));
+            	return;
+            }
+            GiveReward( player, args[0], amount );
+            RemoveTokens( player, rewards[args[0]].GetCost() * amount );
+            
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
