@@ -399,8 +399,35 @@ namespace Oxide.Plugins
                 displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
-
-
+		
+		bool GiveReward(BasePlayer player, string rewardname, int amount)
+		{
+			if(rewards[rewardname] == null) return "This reward doesn't exist";
+			if(rewards[rewardname].IsKit())
+			{ 
+				if( Kits == null) return "Kits plugin couldn't be found";
+				if( !(bool)Kits.Call("isKit", rewards[rewardname].item ) ) return "The kit doesn't exist anymore";
+				for(int i=1; i < amount; i++)
+				{
+					Kits.Call("GiveKit", rewards[rewardname].item);
+				}
+				return (bool)Kits.Call("GiveKit", rewards[rewardname].item);
+			}
+			var definition = ItemManager.FindItemDefinition(rewards[rewardname].item);
+            if (definition == null)
+                return string.Format("Item not found {0}",rewards[rewardname].item);
+            if(definition.stackable > 1)
+            	player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, amount, false), player.inventory.containerMain);
+        	else
+        	{
+        		for(int i=0; i<amount;i++)
+        		{
+        			player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, 1, false), player.inventory.containerMain);
+        		}
+        	}
+			return true;
+		}
+		
         public class Reward
         {
             public string name;
@@ -424,6 +451,10 @@ namespace Oxide.Plugins
             public int GetCost()
             {
             	return int.Parse( cost );
+            }
+            public bool IsKit()
+            {
+            	return Convert.ToBoolean( kit );
             }
             
         }
@@ -497,8 +528,13 @@ namespace Oxide.Plugins
         static string MessagesEventBegin = "Event: {0} is about to begin!";
         static string MessagesEventNotInEvent = "You are not currently in the Event.";
         static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
-        static string MessagesEventStatusClosed = "The Event is currently closed.";
         static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
+		
+		
+		static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
+		static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
+		static string MessagesEventStatusClosedEnd = "There is currently no event";
+		static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
         void LoadVariables()
         {
@@ -517,8 +553,11 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
             CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
 
-            CheckCfg<string>("Messages - Status - Closed", ref MessagesEventStatusClosed);
-
+            CheckCfg<string>("Messages - Status - Closed & End", ref MessagesEventStatusClosedEnd);
+			CheckCfg<string>("Messages - Status - Closed & Started", ref MessagesEventStatusClosedStarted);
+			CheckCfg<string>("Messages - Status - Open", ref MessagesEventStatusOpen);
+			CheckCfg<string>("Messages - Status - Open & Started", ref MessagesEventStatusOpenStarted);
+			
             CheckCfg<string>("Messages - Event - Opened", ref MessagesEventOpen);
             CheckCfg<string>("Messages - Event - Closed", ref MessagesEventClose);
             CheckCfg<string>("Messages - Event - Cancelled", ref MessagesEventCancel);
@@ -918,6 +957,17 @@ namespace Oxide.Plugins
                 return;
             }
         }
+        
+        [ChatCommand("event")]
+        void cmdEvent(BasePlayer player, string command, string[] args)
+        {
+        	string message = string.Empty;
+        	if(!EventOpen && !EventStarted) message = MessagesEventStatusClosedEnd;
+        	else if(EventOpen && !EventStarted) message = MessagesEventStatusOpen;
+        	else if(EventOpen && EventStarted) message = MessagesEventStatusOpenStarted;
+        	else message = MessagesEventStatusClosedStarted;
+        	SendReply( player, string.Format(message,EventGameName) );
+        }
 
         [ChatCommand("reward")]
         void cmdEventReward(BasePlayer player, string command, string[] args)
@@ -953,9 +1003,14 @@ namespace Oxide.Plugins
             	SendReply(player, string.Format("You don't have enough tokens to buy {1} of {0}.", args[0], amount.ToString()));
             	return;
             }
-            GiveReward( player, args[0], amount );
-            RemoveTokens( player, rewards[args[0]].GetCost() * amount );
-            
+            bool success = GiveReward( player, args[0], amount );
+            if(success is string)
+            {
+            	SendReply(player, success.ToString());
+            	return;
+            }
+            if(success is bool && (bool)success)
+            	RemoveTokens( player, rewards[args[0]].GetCost() * amount );
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
