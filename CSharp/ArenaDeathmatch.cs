@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.0.4", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.0.6", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -19,20 +19,19 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         [PluginReference]
         Plugin EventManager;
-         
+
 
         private bool launched;
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
 
-        private string EventName;
-        private string EventSpawnFile;
         
-        private string DefaultKit;
+
+        
         private string CurrentKit;
 
-        private int EventWinKills;
+        
 
 
         private List<DeathmatchPlayer> DeathmatchPlayers;
@@ -96,62 +95,79 @@ namespace Oxide.Plugins
                     foreach (var gameObj in objects)
                         GameObject.Destroy(gameObj);
             }
-        } 
+        }
 
 
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Configurations ////////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
-        
-        float EventStartHealth;
-        
-        bool EventZoneReject;
-		bool EventZoneUndestr;
-		bool EventZoneAutoLights;
-		bool EventZoneNoBuild;
-		bool EventZoneNoDeploy;
-		bool EventZoneNoKits;
-		bool EventZoneNoTP;
-		bool EventZoneKillSleepers;
-		bool EventZoneNoSuicide;
-		bool EventZoneEraseCorpses;
-        
-        string EventMessageWon;
-        string EventMessageNoMorePlayers;
-        string EventMessageKill;
-        string EventMessageOpenBroadcast;
-        
+
+        static string DefaultKit = "deathmatch";
+        static string EventName = "Deathmatch";
+        static string EventSpawnFile = "DeathmatchSpawnfile";
+        static int EventWinKills = 10;
+
+        static float EventStartHealth = 100;
+
+        static bool EventZoneReject = true;
+        static bool EventZoneUndestr = true;
+        static bool EventZoneAutoLights = true;
+        static bool EventZoneNoBuild = true;
+        static bool EventZoneNoDeploy = true;
+        static bool EventZoneNoKits = true;
+        static bool EventZoneNoTP = true;
+        static bool EventZoneKillSleepers = true;
+        static bool EventZoneNoSuicide = true;
+        static bool EventZoneEraseCorpses = true;
+        static bool EventZoneBlockWounded = true;
+
+        static string EventMessageWon = "Messages", "Won", "{0} WON THE DEATHMATCH";
+        static string EventMessageNoMorePlayers = "Arena has no more players, auto-closing.";
+        static string EventMessageKill = "{0} killed {3}. ({1}/{2} kills)";
+        static string EventMessageOpenBroadcast = "In Deathmatch, it's a free for all, the goal is to kill as many players as possible!";
+
+        static int TokensAddKill = 1;
+        static int TokensAddWon = 5;
+
         private void LoadVariables()
         {
-            DefaultKit = Convert.ToString(GetConfig("Default", "Kit", "deathmatch"));
-            EventName = Convert.ToString(GetConfig("Settings", "EventName", "Deathmatch"));
-            EventSpawnFile = Convert.ToString(GetConfig("Settings", "EventSpawnFile", "DeathmatchSpawnfile"));
-            EventWinKills = Convert.ToInt32(GetConfig("Settings", "Win Kills", "10"));
-            EventStartHealth = Convert.ToSingle(GetConfig("Settings", "Start Health", "100"));
-			
-			EventZoneReject = Convert.ToBoolean(GetConfig("Zone Settings", "Reject None Players", "true"));
-			EventZoneUndestr = Convert.ToBoolean(GetConfig("Zone Settings", "Undestructible", "true"));
-			EventZoneAutoLights = Convert.ToBoolean(GetConfig("Zone Settings", "Auto Lights", "true"));
-			EventZoneNoBuild = Convert.ToBoolean(GetConfig("Zone Settings", "Refuse Build", "true"));
-			EventZoneNoDeploy = Convert.ToBoolean(GetConfig("Zone Settings", "Refuse Deploy", "true"));
-			EventZoneNoKits = Convert.ToBoolean(GetConfig("Zone Settings", "Refuse Kit Redeem from /kit", "true"));
-			EventZoneNoTP = Convert.ToBoolean(GetConfig("Zone Settings", "Refuse Teleportations", "true"));
-			EventZoneKillSleepers = Convert.ToBoolean(GetConfig("Zone Settings", "Kill Sleepers", "true"));
-			EventZoneNoSuicide = Convert.ToBoolean(GetConfig("Zone Settings", "Refuse Suicide", "true"));
-			EventZoneEraseCorpses = Convert.ToBoolean(GetConfig("Zone Settings", "Erase Corpses", "true"));
-			
-			EventMessageWon = Convert.ToString(GetConfig("Messages", "Won", "{0} WON THE DEATHMATCH"));
-			EventMessageNoMorePlayers = Convert.ToString(GetConfig("Messages", "Empty", "Arena has no more players, auto-closing."));
-			EventMessageKill = Convert.ToString(GetConfig("Messages", "Kill", "{0} killed {3}. ({1}/{2} kills)"));
-			EventMessageOpenBroadcast = Convert.ToString(GetConfig("Messages", "OpenBroadcast","In Deathmatch, it's a free for all, the goal is to kill as many players as possible!"));
-            
+
+            CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
+            CheckCfg<string>("DeathMatch - Event - Name", ref EventName);
+            CheckCfg<string>("DeathMatch - Event - SpawnFile", ref EventSpawnFile);
+            CheckCfg<int>("DeathMatch - Win - Kills Needed", ref EventWinKills);
+            CheckCfg<int>("DeathMatch - Start - Health", ref EventStartHealth);
+            CheckCfg<bool>("Zone Settings - Reject None Players", ref EventZoneReject);
+            CheckCfg<bool>("Zone Settings - Undestructible", ref EventZoneUndestr);
+            CheckCfg<bool>("Zone Settings - Auto Lights", ref EventZoneAutoLights);
+            CheckCfg<bool>("Zone Settings - Refuse Build", ref EventZoneNoBuild);
+            CheckCfg<bool>("Zone Settings - Refuse Deploy", ref EventZoneNoDeploy);
+            CheckCfg<bool>("Zone Settings - Refuse Kit Redeem from /kit", ref EventZoneNoKits);
+            CheckCfg<bool>("Zone Settings - Refuse Teleportations", ref EventZoneNoTP);
+            CheckCfg<bool>("Zone Settings - Kill Sleepers", ref EventZoneKillSleepers);
+            CheckCfg<bool>("Zone Settings - Refuse Suicide", ref EventZoneNoSuicide);
+            CheckCfg<bool>("Zone Settings - Erase Corpses", ref EventZoneEraseCorpses);
+            CheckCfg<bool>("Zone Settings - Block Wounded", ref EventZoneBlockWounded);
+
+            CheckCfg<string>("Messages - Won", ref EventMessageWon);
+            CheckCfg<string>("Messages - Empty", ref EventMessageNoMorePlayers);
+            CheckCfg<string>("Messages - Kill", ref EventMessageKill);
+            CheckCfg<string>("Messages - Open Broadcast", ref EventMessageOpenBroadcast);
+
+            CheckCfg<int>("Tokens - Per Kill", ref TokensAddKill);
+            CheckCfg<int>("Tokens - On Win", ref TokensAddWon);
+
             CurrentKit = DefaultKit;
-            if (Changed)
-            {
-                SaveConfig();
-                Changed = false;
-            }
+
+            SaveConfig();
+        }
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
         }
         object GetConfig(string menu, string datavalue, object defaultValue)
         {
@@ -183,13 +199,13 @@ namespace Oxide.Plugins
                 if (EventSpawnFile != null && EventSpawnFile != "")
                     EventManager.Call("SelectSpawnfile", new object[] { EventSpawnFile });
             }
-            else 
+            else
                 useThisEvent = false;
-        } 
+        }
         void OnEventPlayerSpawn(BasePlayer player)
         {
-            if (useThisEvent && EventStarted) 
-            {  
+            if (useThisEvent && EventStarted)
+            {
                 player.inventory.Strip();
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
                 player.health = EventStartHealth;
@@ -210,19 +226,19 @@ namespace Oxide.Plugins
             {
                 return;
             }
-        } 
+        }
         void OnPostZoneCreate(string name)
         {
-            if(name == EventName)
+            if (name == EventName)
             {
-                EventManager.Call("UpdateZone", EventName, new string[] { "eject", EventZoneReject.ToString(), "undestr", EventZoneUndestr.ToString(), "autolights", EventZoneAutoLights.ToString(), "nobuild", EventZoneNoBuild.ToString(), "nodeploy", EventZoneNoDeploy.ToString(), "nokits", EventZoneNoKits.ToString(), "notp", EventZoneNoTP.ToString(), "killsleepers", EventZoneKillSleepers.ToString(), "nosuicide", EventZoneNoSuicide.ToString(), "nocorpse", EventZoneEraseCorpses.ToString() });
-            } 
-        }  
+                EventManager.Call("UpdateZone", EventName, new string[] { "eject", EventZoneReject.ToString(), "undestr", EventZoneUndestr.ToString(), "autolights", EventZoneAutoLights.ToString(), "nobuild", EventZoneNoBuild.ToString(), "nodeploy", EventZoneNoDeploy.ToString(), "nokits", EventZoneNoKits.ToString(), "notp", EventZoneNoTP.ToString(), "killsleepers", EventZoneKillSleepers.ToString(), "nosuicide", EventZoneNoSuicide.ToString(), "nocorpse", EventZoneEraseCorpses.ToString(), "nowounded", EventZoneBlockWounded.ToString() });
+            }
+        }
         object CanEventOpen()
         {
             if (useThisEvent)
             {
-                 
+
             }
             return null;
         }
@@ -252,7 +268,7 @@ namespace Oxide.Plugins
                 DeathmatchPlayers.Clear();
             }
             return null;
-        } 
+        }
         object OnEventStartPre()
         {
             if (useThisEvent)
@@ -295,14 +311,14 @@ namespace Oxide.Plugins
         void OnEventPlayerAttack(BasePlayer attacker, HitInfo hitinfo)
         {
             if (useThisEvent)
-            { 
+            {
                 if (!(hitinfo.HitEntity is BasePlayer))
                 {
                     hitinfo.damageTypes = new DamageTypeList();
                     hitinfo.DoHitEffects = false;
                 }
             }
-        } 
+        }
 
         void OnEventPlayerDeath(BasePlayer victim, HitInfo hitinfo)
         {
@@ -315,7 +331,7 @@ namespace Oxide.Plugins
                     {
                         if (attacker != victim)
                         {
-                            
+
                             AddKill(attacker, victim);
                         }
                     }
@@ -330,19 +346,20 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         // End Of Event Manager Hooks ////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
-         
+
         void AddKill(BasePlayer player, BasePlayer victim)
-        { 
+        {
             if (!player.GetComponent<DeathmatchPlayer>())
                 return;
 
             player.GetComponent<DeathmatchPlayer>().kills++;
+            EventManager.Call("AddTokens", player.userID.ToString(), TokensAddKill);
             EventManager.Call("BroadcastEvent", string.Format(EventMessageKill, player.displayName, player.GetComponent<DeathmatchPlayer>().kills.ToString(), EventWinKills.ToString(), victim.displayName));
             CheckScores();
-        } 
+        }
         void CheckScores()
-        {     
-            if(DeathmatchPlayers.Count == 0)
+        {
+            if (DeathmatchPlayers.Count == 0)
             {
                 var emptyobject = new object[] { };
                 EventManager.Call("BroadcastEvent", EventMessageNoMorePlayers);
@@ -362,6 +379,7 @@ namespace Oxide.Plugins
         void Winner(BasePlayer player)
         {
             var winnerobjectmsg = new object[] { string.Format(EventMessageWon, player.displayName) };
+            EventManager.Call("AddTokens", player.userID.ToString(), TokensAddWon);
             var emptyobject = new object[] { };
             for (var i = 1; i < 10; i++)
             {
