@@ -21,19 +21,11 @@ namespace Oxide.Plugins
         Plugin EventManager;
 
 
-        private bool launched;
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
-
-        
-
         
         private string CurrentKit;
-
-        
-
-
         private List<DeathmatchPlayer> DeathmatchPlayers;
 
         ////////////////////////////////////////////////////////////
@@ -58,7 +50,6 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         void Loaded()
         {
-            launched = false;
             useThisEvent = false;
             EventStarted = false;
             DeathmatchPlayers = new List<DeathmatchPlayer>();
@@ -71,13 +62,16 @@ namespace Oxide.Plugins
                 return;
             }
             LoadVariables();
+            RegisterGame();
+        }
+        void RegisterGame()
+        {
             var success = EventManager.Call("RegisterEventGame", new object[] { EventName });
             if (success == null)
             {
                 Puts("Event plugin doesn't exist");
                 return;
             }
-            launched = true;
         }
         void LoadDefaultConfig()
         {
@@ -217,7 +211,7 @@ namespace Oxide.Plugins
                 player.inventory.Strip();
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
                 player.health = EventStartHealth;
-            }
+            } 
         }
         object OnSelectSpawnFile(string name)
         {
@@ -339,7 +333,6 @@ namespace Oxide.Plugins
                     {
                         if (attacker != victim)
                         {
-
                             AddKill(attacker, victim);
                         }
                     }
@@ -383,7 +376,7 @@ namespace Oxide.Plugins
                     Winner(deathmatchplayer.player);
                 }
             }
-        }
+        } 
         void Winner(BasePlayer player)
         {
             var winnerobjectmsg = new object[] { string.Format(EventMessageWon, player.displayName) };
