@@ -19,8 +19,10 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         [PluginReference]
         Plugin Spawns;
+
         [PluginReference]
         Plugin Kits;
+
         [PluginReference]
         Plugin ZoneManager;
 
@@ -399,35 +401,34 @@ namespace Oxide.Plugins
                 displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
             }
         }
-		
-		bool GiveReward(BasePlayer player, string rewardname, int amount)
-		{
-			if(rewards[rewardname] == null) return "This reward doesn't exist";
-			if(rewards[rewardname].IsKit())
-			{ 
-				if( Kits == null) return "Kits plugin couldn't be found";
-				if( !(bool)Kits.Call("isKit", rewards[rewardname].item ) ) return "The kit doesn't exist anymore";
-				for(int i=1; i < amount; i++)
-				{
-					Kits.Call("GiveKit", rewards[rewardname].item);
-				}
-				return (bool)Kits.Call("GiveKit", rewards[rewardname].item);
-			}
-			var definition = ItemManager.FindItemDefinition(rewards[rewardname].item);
+        object GiveReward(BasePlayer player, string rewardname, int amount)
+        {
+            if (rewards[rewardname] == null) return "This reward doesn't exist";
+            if (rewards[rewardname].IsKit())
+            {
+                if (Kits == null) return "Kits plugin couldn't be found";
+                if (!(bool)Kits.Call("isKit", rewards[rewardname].item)) return "The kit doesn't exist anymore";
+                for (int i = 1; i < amount; i++)
+                {
+                    Kits.Call("GiveKit", rewards[rewardname].item);
+                }
+                return (bool)Kits.Call("GiveKit", rewards[rewardname].item);
+            }
+            var definition = ItemManager.FindItemDefinition(rewards[rewardname].item);
             if (definition == null)
-                return string.Format("Item not found {0}",rewards[rewardname].item);
-            if(definition.stackable > 1)
-            	player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, amount, false), player.inventory.containerMain);
-        	else
-        	{
-        		for(int i=0; i<amount;i++)
-        		{
-        			player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, 1, false), player.inventory.containerMain);
-        		}
-        	}
-			return true;
-		}
-		
+                return string.Format("Item not found {0}", rewards[rewardname].item);
+            if (definition.stackable > 1)
+                player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, amount, false), player.inventory.containerMain);
+            else
+            {
+                for (int i = 0; i < amount; i++)
+                {
+                    player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, 1, false), player.inventory.containerMain);
+                }
+            }
+            return true;
+        }
+
         public class Reward
         {
             public string name;
@@ -450,13 +451,12 @@ namespace Oxide.Plugins
             }
             public int GetCost()
             {
-            	return int.Parse( cost );
+                return int.Parse(cost);
             }
             public bool IsKit()
             {
-            	return Convert.ToBoolean( kit );
+                return Convert.ToBoolean(kit);
             }
-            
         }
         void AddTokens(string userid, int amount)
         {
@@ -529,12 +529,12 @@ namespace Oxide.Plugins
         static string MessagesEventNotInEvent = "You are not currently in the Event.";
         static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
         static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
-		
-		
-		static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
-		static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
-		static string MessagesEventStatusClosedEnd = "There is currently no event";
-		static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
+
+
+        static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
+        static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
+        static string MessagesEventStatusClosedEnd = "There is currently no event";
+        static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
         void LoadVariables()
         {
@@ -553,11 +553,12 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
             CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
 
+
             CheckCfg<string>("Messages - Status - Closed & End", ref MessagesEventStatusClosedEnd);
-			CheckCfg<string>("Messages - Status - Closed & Started", ref MessagesEventStatusClosedStarted);
-			CheckCfg<string>("Messages - Status - Open", ref MessagesEventStatusOpen);
-			CheckCfg<string>("Messages - Status - Open & Started", ref MessagesEventStatusOpenStarted);
-			
+            CheckCfg<string>("Messages - Status - Closed & Started", ref MessagesEventStatusClosedStarted);
+            CheckCfg<string>("Messages - Status - Open", ref MessagesEventStatusOpen);
+            CheckCfg<string>("Messages - Status - Open & Started", ref MessagesEventStatusOpenStarted);
+
             CheckCfg<string>("Messages - Event - Opened", ref MessagesEventOpen);
             CheckCfg<string>("Messages - Event - Closed", ref MessagesEventClose);
             CheckCfg<string>("Messages - Event - Cancelled", ref MessagesEventCancel);
@@ -687,16 +688,21 @@ namespace Oxide.Plugins
         {
             Kits.Call("GiveKit", player, GiveKit);
         }
+        void EjectPlayer(BasePlayer player)
+        {
+            if (player.IsAlive())
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
+                player.CancelInvoke("WoundingEnd");
+                player.health = 50f;
+            }
+            SendReply(player, string.Format("You currently have {0} for the /reward shop", GetTokens(player.userID.ToString()).ToString()));
+        }
         void EjectAllPlayers()
         {
             foreach (EventPlayer eventplayer in EventPlayers)
             {
-                if (eventplayer.player.IsAlive())
-                {
-                    eventplayer.player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
-                    eventplayer.player.CancelInvoke("WoundingEnd");
-                    eventplayer.player.health = 50f;
-                }
+                EjectPlayer(eventplayer.player);
                 ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, eventplayer.player);
                 eventplayer.inEvent = false;
             }
@@ -852,12 +858,7 @@ namespace Oxide.Plugins
                 RedeemInventory(player);
                 TeleportPlayerHome(player);
                 EventPlayers.Remove(player.GetComponent<EventPlayer>());
-                if (player.IsAlive())
-                {
-                    player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
-                    player.CancelInvoke("WoundingEnd");
-                    player.health = 50f;
-                }
+                EjectPlayer(player);
                 TryErasePlayer(player);
                 Interface.CallHook("OnEventLeavePost", new object[] { player });
             }
@@ -957,16 +958,16 @@ namespace Oxide.Plugins
                 return;
             }
         }
-        
+
         [ChatCommand("event")]
         void cmdEvent(BasePlayer player, string command, string[] args)
         {
-        	string message = string.Empty;
-        	if(!EventOpen && !EventStarted) message = MessagesEventStatusClosedEnd;
-        	else if(EventOpen && !EventStarted) message = MessagesEventStatusOpen;
-        	else if(EventOpen && EventStarted) message = MessagesEventStatusOpenStarted;
-        	else message = MessagesEventStatusClosedStarted;
-        	SendReply( player, string.Format(message,EventGameName) );
+            string message = string.Empty;
+            if (!EventOpen && !EventStarted) message = MessagesEventStatusClosedEnd;
+            else if (EventOpen && !EventStarted) message = MessagesEventStatusOpen;
+            else if (EventOpen && EventStarted) message = MessagesEventStatusOpenStarted;
+            else message = MessagesEventStatusClosedStarted;
+            SendReply(player, string.Format(message, EventGameName));
         }
 
         [ChatCommand("reward")]
@@ -979,38 +980,39 @@ namespace Oxide.Plugins
                 SendReply(player, "/reward \"RewardName\" Amount");
                 foreach (KeyValuePair<string, Reward> pair in rewards)
                 {
-                	string color = "green";
-                	if( pair.Value.GetCost() > currenttokens )
-                		color = "red";
+                    string color = "green";
+                    if (pair.Value.GetCost() > currenttokens)
+                        color = "red";
                     SendReply(player, string.Format("Reward Name: {0} - Cost: <color={4}>{1}</color> - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount, color.ToString()));
                 }
                 return;
             }
-            if( rewards[args[0]] == null )
+            if (rewards[args[0]] == null)
             {
-            	SendReply(player, "This reward doesn't exist");
-            	return;
+                SendReply(player, "This reward doesn't exist");
+                return;
             }
             int amount = 1;
-            if( args.Length > 1 ) int.TryParse( args[1], out amount );
-            if( amount < 1 )
+            if (args.Length > 1) int.TryParse(args[1], out amount);
+            if (amount < 1)
             {
-            	SendReply(player, "The amount to buy can't be 0 or negative.");
-            	return;
+                SendReply(player, "The amount to buy can't be 0 or negative.");
+                return;
             }
-            if( rewards[args[0]].GetCost() * amount > currenttokens )
+            if (rewards[args[0]].GetCost() * amount > currenttokens)
             {
-            	SendReply(player, string.Format("You don't have enough tokens to buy {1} of {0}.", args[0], amount.ToString()));
-            	return;
+                SendReply(player, string.Format("You don't have enough tokens to buy {1} of {0}.", args[0], amount.ToString()));
+                return;
             }
-            bool success = GiveReward( player, args[0], amount );
-            if(success is string)
+            var success = GiveReward(player, args[0], amount);
+            if (success is string)
             {
-            	SendReply(player, success.ToString());
-            	return;
+                SendReply(player, success.ToString());
+                return;
             }
-            if(success is bool && (bool)success)
-            	RemoveTokens( player, rewards[args[0]].GetCost() * amount );
+            if (success is bool && (bool)success)
+                RemoveTokens(player.userID.ToString(), rewards[args[0]].GetCost() * amount);
+
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
@@ -1129,22 +1131,22 @@ namespace Oxide.Plugins
                 SendReply(arg, "event.reward add/list/remove");
                 return;
             }
-            switch(arg.Args[0])
+            switch (arg.Args[0])
             {
                 case "add":
-                    if(arg.Args.Length < 5)
+                    if (arg.Args.Length < 5)
                     {
                         SendReply(arg, "event.reward add NAME COST ITEM/KIT AMOUNT");
                         return;
                     }
                     string rewardname = arg.Args[1];
                     int cost = 0;
-                    if(!int.TryParse(arg.Args[2], out cost))
+                    if (!int.TryParse(arg.Args[2], out cost))
                     {
                         SendReply(arg, "The cost needs to be a number");
                         return;
                     }
-                    if(cost < 1)
+                    if (cost < 1)
                     {
                         SendReply(arg, "The cost needs to be higher then 0");
                         return;
@@ -1170,25 +1172,25 @@ namespace Oxide.Plugins
                     if (definition == null)
                     {
                         kit = true;
-                        if(Kits == null)
+                        if (Kits == null)
                         {
                             SendReply(arg, "This item doesn't exist and it seems like you don't have the kits plugin");
                             return;
                         }
                         var iskit = Kits.Call("isKit", itemname);
-                        if(!(iskit is bool))
+                        if (!(iskit is bool))
                         {
                             SendReply(arg, "Seems like you have an out dated Kits plugin");
                             return;
                         }
-                        if(!(bool)iskit)
+                        if (!(bool)iskit)
                         {
                             SendReply(arg, "This item doesn't exist and no kits match this name neither.");
                             return;
                         }
                     }
                     Reward reward = new Reward(rewardname, cost, kit, itemname, amount);
-                    if(rewards[reward.name] != null) storedData.Rewards.Remove(rewards[reward.name]);
+                    if (rewards[reward.name] != null) storedData.Rewards.Remove(rewards[reward.name]);
                     rewards[reward.name] = reward;
                     storedData.Rewards.Add(rewards[reward.name]);
                     SaveData();
@@ -1196,16 +1198,16 @@ namespace Oxide.Plugins
                     break;
 
                 case "list":
-                    if(rewards.Count == 0)
+                    if (rewards.Count == 0)
                     {
                         SendReply(arg, "You dont have any rewards set yet.");
                         return;
                     }
                     foreach (KeyValuePair<string, Reward> pair in rewards)
                     {
-                        SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, ( Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
+                        SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
                     }
-                break;
+                    break;
 
                 case "remove":
                     if (arg.Args.Length < 2)
@@ -1213,7 +1215,7 @@ namespace Oxide.Plugins
                         SendReply(arg, "event.reward remove REWARDNAME");
                         return;
                     }
-                    if( rewards[arg.Args[1]] == null )
+                    if (rewards[arg.Args[1]] == null)
                     {
                         SendReply(arg, "This reward doesn't exist");
                         return;
@@ -1221,7 +1223,7 @@ namespace Oxide.Plugins
                     storedData.Rewards.Remove(rewards[arg.Args[1]]);
                     rewards[arg.Args[1]] = null;
                     SendReply(arg, "You've successfully removed this reward");
-                 break;
+                    break;
 
             }
         }
