@@ -122,7 +122,7 @@ namespace Oxide.Plugins
         static bool EventZoneEraseCorpses = true;
         static bool EventZoneBlockWounded = true;
 
-        static string EventMessageWon = "Messages", "Won", "{0} WON THE DEATHMATCH";
+        static string EventMessageWon = "{0} WON THE DEATHMATCH";
         static string EventMessageNoMorePlayers = "Arena has no more players, auto-closing.";
         static string EventMessageKill = "{0} killed {3}. ({1}/{2} kills)";
         static string EventMessageOpenBroadcast = "In Deathmatch, it's a free for all, the goal is to kill as many players as possible!";
@@ -137,7 +137,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("DeathMatch - Event - Name", ref EventName);
             CheckCfg<string>("DeathMatch - Event - SpawnFile", ref EventSpawnFile);
             CheckCfg<int>("DeathMatch - Win - Kills Needed", ref EventWinKills);
-            CheckCfg<int>("DeathMatch - Start - Health", ref EventStartHealth);
+            CheckCfgFloat("DeathMatch - Start - Health", ref EventStartHealth);
             CheckCfg<bool>("Zone Settings - Reject None Players", ref EventZoneReject);
             CheckCfg<bool>("Zone Settings - Undestructible", ref EventZoneUndestr);
             CheckCfg<bool>("Zone Settings - Auto Lights", ref EventZoneAutoLights);
@@ -166,6 +166,14 @@ namespace Oxide.Plugins
         {
             if (Config[Key] is T)
                 var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+        private void CheckCfgFloat(string Key, ref float var)
+        {
+
+            if (Config[Key] != null)
+                var = Convert.ToSingle(Config[Key]);
             else
                 Config[Key] = var;
         }
