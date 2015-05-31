@@ -1128,11 +1128,15 @@ namespace Oxide.Plugins
             if (!hasAccess(arg)) return;
             if (arg.Args == null || arg.Args.Length == 0)
             {
-                SendReply(arg, "event.reward add/list/remove");
+                SendReply(arg, "Reward Related: event.reward add/list/remove");
+                //SendReply(arg, "Players Related: event.reward set/clear/give/take/check");
                 return;
             }
             switch (arg.Args[0])
             {
+
+
+
                 case "add":
                     if (arg.Args.Length < 5)
                     {
@@ -1223,7 +1227,8 @@ namespace Oxide.Plugins
                     storedData.Rewards.Remove(rewards[arg.Args[1]]);
                     rewards[arg.Args[1]] = null;
                     SendReply(arg, "You've successfully removed this reward");
-                    break;
+                 break;
+                
 
             }
         }
