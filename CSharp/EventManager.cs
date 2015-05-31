@@ -29,8 +29,7 @@ namespace Oxide.Plugins
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
-        private string defaultGame;
-        private string defaultSpawnfile;
+        
 
         private bool EventOpen;
         private bool EventStarted;
@@ -45,7 +44,7 @@ namespace Oxide.Plugins
 
         private int stackable;
         private int giveamount;
-        private int eventAuth;
+        
 
 
         ////////////////////////////////////////////////////////////
@@ -216,7 +215,6 @@ namespace Oxide.Plugins
             Changed = false;
             EventGames = new List<string>();
             EventPlayers = new List<EventPlayer>();
-            EventGameName = defaultGame;
             LoadData();
         }
         void OnServerInitialized()
@@ -224,10 +222,18 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
+            EventGameName = defaultGame;
             timer.Once(0.1f, () => InitializeZones());
+            timer.Once(0.2f, () => InitializeGames());
         }
-        void Unload()
+        void InitializeGames()
         {
+            Interface.CallHook("RegisterGame");
+            SelectSpawnfile(defaultSpawnfile);
+            Debug.Log(defaultSpawnfile);
+        }  
+        void Unload()
+        { 
             EndEvent();
             var objects = GameObject.FindObjectsOfType(typeof(EventPlayer));
             if (objects != null)
@@ -235,12 +241,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-        void LoadDefaultConfig()
-        {
-            Puts("EventManager: Creating a new config file");
-            Config.Clear();
-            LoadVariables();
-        }
+        
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -248,7 +249,6 @@ namespace Oxide.Plugins
             {
                 if (!EventStarted) return;
                 Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
-
             }
             else
             {
@@ -404,6 +404,7 @@ namespace Oxide.Plugins
         object GiveReward(BasePlayer player, string rewardname, int amount)
         {
             if (rewards[rewardname] == null) return "This reward doesn't exist";
+            amount = amount * (rewards[rewardname]).GetAmount();
             if (rewards[rewardname].IsKit())
             {
                 if (Kits == null) return "Kits plugin couldn't be found";
@@ -453,6 +454,10 @@ namespace Oxide.Plugins
             {
                 return int.Parse(cost);
             }
+            public int GetAmount()
+            {
+                return int.Parse(amount);
+            }
             public bool IsKit()
             {
                 return Convert.ToBoolean(kit);
@@ -484,6 +489,8 @@ namespace Oxide.Plugins
         // Configs Manager ///////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
 
+        void LoadDefaultConfig() { }
+
         private void CheckCfg<T>(string Key, ref T var)
         {
             if (Config[Key] is T)
@@ -509,37 +516,44 @@ namespace Oxide.Plugins
             }
             return value;
         }
-        static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
-        static string MessagesEventNotSet = "An Event game must first be chosen.";
-        static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
-        static string MessagesEventAlreadyOpened = "The Event is already open.";
-        static string MessagesEventAlreadyClosed = "The Event is already closed.";
-        static string MessagesEventAlreadyStarted = "An Event game has already started.";
+        private static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
+        private static string MessagesEventNotSet = "An Event game must first be chosen.";
+        private static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
+        private static string MessagesEventAlreadyOpened = "The Event is already open.";
+        private static string MessagesEventAlreadyClosed = "The Event is already closed.";
+        private static string MessagesEventAlreadyStarted = "An Event game has already started.";
 
 
-        static string MessagesEventOpen = "The Event is now open for : {0} !  Type /event_join to join!";
-        static string MessagesEventClose = "The Event entrance is now closed!";
-        static string MessagesEventCancel = "The Event was cancelled!";
-        static string MessagesEventNoGamePlaying = "An Event game is not underway.";
-        static string MessagesEventEnd = "Event: {0} is now over!";
-        static string MessagesEventAlreadyJoined = "You are already in the Event.";
-        static string MessagesEventJoined = "{0} has joined the Event!  (Total Players: {1})";
-        static string MessagesEventLeft = "{0} has left the Event! (Total Players: {1})";
-        static string MessagesEventBegin = "Event: {0} is about to begin!";
-        static string MessagesEventNotInEvent = "You are not currently in the Event.";
-        static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
-        static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
+        private static string MessagesEventOpen = "The Event is now open for : {0} !  Type /event_join to join!";
+        private static string MessagesEventClose = "The Event entrance is now closed!";
+        private static string MessagesEventCancel = "The Event was cancelled!";
+        private static string MessagesEventNoGamePlaying = "An Event game is not underway.";
+        private static string MessagesEventEnd = "Event: {0} is now over!";
+        private static string MessagesEventAlreadyJoined = "You are already in the Event.";
+        private static string MessagesEventJoined = "{0} has joined the Event!  (Total Players: {1})";
+        private static string MessagesEventLeft = "{0} has left the Event! (Total Players: {1})";
+        private static string MessagesEventBegin = "Event: {0} is about to begin!";
+        private static string MessagesEventNotInEvent = "You are not currently in the Event.";
+        private static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
+        private static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
 
 
-        static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
-        static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
-        static string MessagesEventStatusClosedEnd = "There is currently no event";
-        static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
+        private static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
+        private static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
+        private static string MessagesEventStatusClosedEnd = "There is currently no event";
+        private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
+         
+         
+        private static string defaultGame = "Deathmatch";
+        private static string defaultSpawnfile = "deathmatchspawns";
+        private static int eventAuth = 1;
 
-        void LoadVariables()
+        void Init()
         {
-            eventAuth = Convert.ToInt32(GetConfig("Settings", "authLevel", 1));
-            defaultGame = Convert.ToString(GetConfig("Default", "Game", "Deathmatch"));
+            CheckCfg<int>("Settings - authLevel", ref eventAuth);
+
+            CheckCfg<string>("Default - Game", ref defaultGame);
+            CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
@@ -894,6 +908,7 @@ namespace Oxide.Plugins
                 EventSpawnFile = null;
                 return (string)success;
             }
+
             return true;
         }
         object SelectNewZone(MonoBehaviour monoplayer, string radius)
@@ -914,6 +929,7 @@ namespace Oxide.Plugins
                 EventGames.Add(name);
             Puts(string.Format("Registered event game: {0}", name));
             Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
+            
             if (EventGameName == name)
             {
                 object success = SelectEvent(EventGameName);
@@ -983,7 +999,7 @@ namespace Oxide.Plugins
                     string color = "green";
                     if (pair.Value.GetCost() > currenttokens)
                         color = "red";
-                    SendReply(player, string.Format("Reward Name: {0} - Cost: <color={4}>{1}</color> - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount, color.ToString()));
+                    SendReply(player, string.Format("Reward Name: {0} - Cost: <color={4}>{1}</color> - {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString() ));
                 }
                 return;
             }
@@ -1081,6 +1097,8 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            defaultGame = EventGameName;
+            SaveConfig();
             SendReply(arg, string.Format("{0} is now the next Event game.", arg.Args[0].ToString()));
         }
         [ConsoleCommand("event.spawnfile")]
@@ -1096,8 +1114,10 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return;
+                return; 
             }
+            defaultSpawnfile = arg.Args[0];
+            SaveConfig(); 
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.zone")]
@@ -1120,6 +1140,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
+            
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
         }
         [ConsoleCommand("event.reward")]
@@ -1134,9 +1155,6 @@ namespace Oxide.Plugins
             }
             switch (arg.Args[0])
             {
-
-
-
                 case "add":
                     if (arg.Args.Length < 5)
                     {
