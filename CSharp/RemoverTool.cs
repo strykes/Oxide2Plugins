@@ -6,10 +6,12 @@ using System.Reflection;
 using System.Data;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Libraries;
+using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb & Mughisi", "2.2.11")]
+    [Info("RemoverTool", "Reneb & Mughisi", "2.2.12")]
     class RemoverTool : RustPlugin
     {
     	private static DateTime epoch;
@@ -25,9 +27,11 @@ namespace Oxide.Plugins
         private bool refundAllGrades;
         private decimal refundRate;
         private bool useToolCupboard;
+        private bool useRustIO;
         private string noAccess;
         private string cantRemove;
         private string tooFar;
+        private string noFriend;
         private string noBuildingfound;
         private string noToolCupboard;
         private string noToolCupboardAccess;
@@ -36,6 +40,8 @@ namespace Oxide.Plugins
         private string helpAdmin;
         private string helpAll;
         private string helpRay;
+		private MethodInfo isInstalled;
+        private MethodInfo hasFriend;
 
         private Dictionary<BasePlayer, double> deactivationTimer;
         private Dictionary<BasePlayer, string> removing;
@@ -43,6 +49,7 @@ namespace Oxide.Plugins
         private List<BasePlayer> todelete;
         private FieldInfo buildingPrivlidges;
         private FieldInfo serverinput;
+		private Library RustIO;
 
         void Loaded() 
         {
@@ -55,7 +62,27 @@ namespace Oxide.Plugins
             buildingPrivlidges = typeof(BasePlayer).GetField("buildingPrivlidges", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadVariables();
+			InitializeRustIO();
+			
         }
+		
+		private void InitializeRustIO() {
+            RustIO = Interface.GetMod().GetLibrary<Library>("RustIO");
+            if (RustIO == null || (isInstalled = RustIO.GetFunction("IsInstalled")) == null || (hasFriend = RustIO.GetFunction("HasFriend")) == null) {
+                RustIO = null;
+                Puts("{0}: {1}", Title, "Rust:IO is not present. You need to install Rust:IO first in order to use this plugin!");
+            }
+        }
+		
+		private bool HasFriend(string playerId, string friendId) {
+            if (RustIO == null) return false;
+            return (bool)hasFriend.Invoke(RustIO, new object[] { playerId, friendId });
+        }
+		private bool RustIOIsInstalled() {
+            if (RustIO == null) return false;
+            return (bool)isInstalled.Invoke(RustIO, new object[] {});
+        }
+		
         void OnServerInitialized()
         {
             
@@ -94,10 +121,12 @@ namespace Oxide.Plugins
             refundAllGrades = Convert.ToBoolean (GetConfig ("Refund", "all-grades", false));
             refundRate = Convert.ToDecimal(GetConfig("Refund", "rate", 0.5));
             useToolCupboard = Convert.ToBoolean(GetConfig("ToolCupboard", "activated", true));
+            useRustIO = Convert.ToBoolean(GetConfig("RustIO", "activated", false));
 
             noAccess = Convert.ToString(GetConfig("Messages", "NoAccess", "You don't have the permissions to use this command"));
             cantRemove = Convert.ToString(GetConfig("Messages", "cantRemove", "You are not allowed to remove this"));
             tooFar = Convert.ToString(GetConfig("Messages", "tooFar", "You must get closer to remove this"));
+            noFriend = Convert.ToString(GetConfig("Messages", "noFriend", "You must be friend with the building owner"));
             noBuildingfound = Convert.ToString(GetConfig("Messages", "noBuildingFound", "Couldn't find any structure to remove"));
             noToolCupboard = Convert.ToString(GetConfig("Messages", "noToolCupboard", "You need a Tool Cupboard to remove this"));
             noToolCupboardAccess = Convert.ToString(GetConfig("Messages", "noToolCupboardAccess", "You need access to all Tool Cupboards around you to do this"));
@@ -220,6 +249,10 @@ namespace Oxide.Plugins
                 SendReply(player, cantRemove);
                 return;
             }
+
+            if (hitinfo.HitEntity as DroppedItem && ttype != "admin")
+                return;
+
             if (refundAllowed)
                 Refund(player,target);
 
@@ -267,7 +300,30 @@ namespace Oxide.Plugins
                     }
                 }
             }
-            if (useToolCupboard)
+			if (useToolCupboard && useRustIO && RustIOIsInstalled())
+			{
+				object returnhook = Interface.GetMod().CallHook("FindBlockData", new object[] { entity as BuildingBlock });
+                if (returnhook != null)
+                {
+					string ownerid = returnhook.ToString();
+					if(HasFriend(ownerid, player.userID.ToString()))
+					{
+						if (hasTotalAccess(player))
+						{
+							if (Vector3.Distance(player.transform.position, entity.transform.position) < 3f)
+								return true;
+							else
+								SendReply(player, tooFar);
+						}
+					}else
+					{
+						SendReply(player, noFriend);
+						
+					}
+				}
+				return false;
+			}
+			if (useToolCupboard)
             {
                 if (hasTotalAccess(player))
                 {
@@ -422,11 +478,16 @@ namespace Oxide.Plugins
             }
             else
             {
-                int n;
-                if (int.TryParse(args[0], out n))
+                try {
+                    int n;
+                    if (int.TryParse(args[0], out n))
+                        TriggerRemove(player, args, "normal");
+                    else
+                        TargetRemove(player, args);
+                } catch
+                {
                     TriggerRemove(player, args, "normal");
-                else
-                    TargetRemove(player, args);
+                }
             }
 
         }
@@ -451,11 +512,11 @@ namespace Oxide.Plugins
         [ChatCommand("rayremove")]
         void cmdChatRayRemove(BasePlayer player, string command, string[] args)
         {
-            /*if (player.net.connection.authLevel < removeAll)
+            if (player.net.connection.authLevel < removeAll)
             {
                 SendReply(player, "You are not allowed to use this command");
                 return;
-            }*/
+            }
             var input = serverinput.GetValue(player) as InputState;
             var currentRot = Quaternion.Euler(input.current.aimAngles);
             var target = FindBlockFromRay(player.transform.position, currentRot * Vector3.forward);
