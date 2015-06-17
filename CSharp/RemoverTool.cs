@@ -11,7 +11,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb & Mughisi", "2.2.12")]
+    [Info("RemoverTool", "Reneb & Mughisi & Cryptoc", "2.2.13")]
     class RemoverTool : RustPlugin
     {
     	private static DateTime epoch;
@@ -67,6 +67,10 @@ namespace Oxide.Plugins
         }
 		
 		private void InitializeRustIO() {
+			if(!useRustIO) {
+				RustIO = null;
+				return;
+			}
             RustIO = Interface.GetMod().GetLibrary<Library>("RustIO");
             if (RustIO == null || (isInstalled = RustIO.GetFunction("IsInstalled")) == null || (hasFriend = RustIO.GetFunction("HasFriend")) == null) {
                 RustIO = null;
@@ -297,32 +301,19 @@ namespace Oxide.Plugins
                         string ownerid = returnhook.ToString();
                         if (ownerid == player.userID.ToString())
                             return true;
+                        if (useRustIO && RustIOIsInstalled())
+                        {
+                        	if(HasFriend(ownerid, player.userID.ToString()))
+							{
+								if (Vector3.Distance(player.transform.position, entity.transform.position) < 3f)
+									return true;
+								else
+									SendReply(player, tooFar);
+							}
+                        }                    
                     }
                 }
             }
-			if (useToolCupboard && useRustIO && RustIOIsInstalled())
-			{
-				object returnhook = Interface.GetMod().CallHook("FindBlockData", new object[] { entity as BuildingBlock });
-                if (returnhook != null)
-                {
-					string ownerid = returnhook.ToString();
-					if(HasFriend(ownerid, player.userID.ToString()))
-					{
-						if (hasTotalAccess(player))
-						{
-							if (Vector3.Distance(player.transform.position, entity.transform.position) < 3f)
-								return true;
-							else
-								SendReply(player, tooFar);
-						}
-					}else
-					{
-						SendReply(player, noFriend);
-						
-					}
-				}
-				return false;
-			}
 			if (useToolCupboard)
             {
                 if (hasTotalAccess(player))
