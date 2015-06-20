@@ -36,6 +36,10 @@ namespace Oxide.Plugins
         private string noToolCupboard;
         private string noToolCupboardAccess;
         private string noTargetFound;
+		private string canRemove;
+		private string canRemoveAdmin;
+		private string canRemoveAll;
+		private string canRemoveGive;
         private string helpBasic;
         private string helpAdmin;
         private string helpAll;
@@ -60,6 +64,10 @@ namespace Oxide.Plugins
             todelete = new List<BasePlayer>();
             nextCheck = CurrentTime() + 1.0;
             buildingPrivlidges = typeof(BasePlayer).GetField("buildingPrivlidges", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            if (!permission.PermissionExists("canRemove")) permission.RegisterPermission("canRemove", this);
+			if (!permission.PermissionExists("canRemoveAdmin")) permission.RegisterPermission("canRemoveAdmin", this);
+			if (!permission.PermissionExists("canRemoveAll")) permission.RegisterPermission("canRemoveAll", this);
+			if (!permission.PermissionExists("canRemoveGive")) permission.RegisterPermission("canRemoveGive", this);
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadVariables();
 			InitializeRustIO();
@@ -135,6 +143,11 @@ namespace Oxide.Plugins
             noToolCupboard = Convert.ToString(GetConfig("Messages", "noToolCupboard", "You need a Tool Cupboard to remove this"));
             noToolCupboardAccess = Convert.ToString(GetConfig("Messages", "noToolCupboardAccess", "You need access to all Tool Cupboards around you to do this"));
             noTargetFound = Convert.ToString(GetConfig("Messages", "noTargetFound", "Target player not found"));
+
+			canRemove = Convert.ToString(GetConfig("permissions", "remove", "canRemove"));
+			canRemoveAdmin = Convert.ToString(GetConfig("permissions", "removeAdmin", "canRemoveAdmin"));
+			canRemoveAll = Convert.ToString(GetConfig("permissions", "removeAll", "canRemoveAll"));
+			canRemoveGive = Convert.ToString(GetConfig("permissions", "removeGive", "canRemoveGive"));
 
             helpBasic = Convert.ToString(GetConfig("Messages", "helpBasic", "/remove Optional:Time - To remove start removing"));
             helpAdmin = Convert.ToString(GetConfig("Messages", "helpAdmin", "/remove admin Optional:Time - To remove start removing anything"));
@@ -406,6 +419,16 @@ namespace Oxide.Plugins
         }
         bool hasAccess(BasePlayer player, string ttype)
         {
+			string uid = Convert.ToString(player.userID);
+            if (ttype == "normal" && permission.UserHasPermission(uid, canRemove))
+				return true;
+            if (ttype == "admin" && permission.UserHasPermission(uid, canRemoveAdmin))
+				return true;
+            if (ttype == "all" && permission.UserHasPermission(uid, canRemoveAll))
+				return true;
+            if (ttype == "target" && permission.UserHasPermission(uid, canRemoveGive))
+				return true;
+
             if (ttype == "normal" && player.net.connection.authLevel >= removeAuth)
                 return true;
             if (ttype == "admin" && player.net.connection.authLevel >= removeAdmin)
