@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -10,11 +8,9 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.19", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.0.24", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
-
-
         ////////////////////////////////////////////
         /// Configs
         ////////////////////////////////////////////
@@ -161,6 +157,11 @@ namespace Oxide.Plugins
         // used to detect the colliders with players
         // and created everything on it's own (radiations, locations, etc)
         /////////////////////////////////////////
+		
+		static float GetSkyHour()
+		{
+			return TOD_Sky.Instance.Cycle.Hour;
+		}
         public class Zone : MonoBehaviour
         {
             public ZoneDefinition info;
@@ -191,25 +192,26 @@ namespace Oxide.Plugins
                 GetComponent<UnityEngine.SphereCollider>().radius = info.Location.GetRadius();
                 radiationamount = 0f;
                 zoneMask = 0;
-                if(info.undestr != null)
+                if(info.undestr != null || info.nodecay != null)
                 {
-                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Construction");
-                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Deployed");
+                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Construction");
+                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Deployed");
                 }
                 if(info.nogather != null)
                 {
-                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Resource");
-                    zoneMask |= ((int)1) << LayerMask.NameToLayer("Tree");
+                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Resource");
+                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Tree");
                 }
                 if (info.nopve != null)
                 {
-                    zoneMask |= ((int)1) << LayerMask.NameToLayer("AI");
+                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("AI");
                 }
                 if (zoneMask != 0) InvokeRepeating("CheckCollisions", 0f, 10f);
 
                 if (info.autolights != null)
-                {
-                    float currentTime = TOD_Sky.Instance.Cycle.Hour;
+                { 
+                    float currentTime = GetSkyHour();
+					
                     if (currentTime > AutolightOffTime && currentTime < AutolightOnTime)
                     {
                         lightsOn = true;
@@ -231,7 +233,7 @@ namespace Oxide.Plugins
             }
             void CheckLights()
             {
-                float currentTime = TOD_Sky.Instance.Cycle.Hour;
+                float currentTime = GetSkyHour();
                 if (currentTime > AutolightOffTime && currentTime < AutolightOnTime)
                 {
                     if(lightsOn)
@@ -266,10 +268,11 @@ namespace Oxide.Plugins
             {
                 foreach(Collider col in Physics.OverlapSphere(info.Location.GetPosition(), info.Location.GetRadius(), zoneMask))
                 {
-                    if(!buildingblocks.Contains(col))
+                    if (!buildingblocks.Contains(col))
                     {
                         buildingblocks.Add(col);
                         BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
+                        
                         ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
                         if (baseresource != null)
                         {
@@ -281,14 +284,21 @@ namespace Oxide.Plugins
                         }
                         else if (basecombat != null)
                         {
-                            
+
                             if (buildingZones[basecombat] == null)
                                 buildingZones[basecombat] = new List<Zone>();
                             if (!buildingZones[basecombat].Contains(this))
                                 buildingZones[basecombat].Add(this);
                         }
-                        
-                    } 
+                        if (info.nodecay != null)
+                        {
+                            Decay decay = col.GetComponentInParent<Decay>();
+                            if (decay != null)
+                            {
+                                GameObject.Destroy(col.GetComponentInParent<Decay>());
+                            }
+                        }
+                    }
                 } 
             }
             void OnTriggerEnter(Collider col)
@@ -331,8 +341,12 @@ namespace Oxide.Plugins
             public string nochat;
             public string nogather;
             public string nopve;
+			public string nowounded;
+            public string nodecay;
             public string nodeploy;
             public string nokits;
+            public string noboxloot;
+            public string noplayerloot;
             public string nocorpse;
             public string nosuicide;
             public string killsleepers;
@@ -394,12 +408,12 @@ namespace Oxide.Plugins
             permission.RegisterPermission("candeploy", this);
             permission.RegisterPermission("canbuild", this);
             triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
-            playersMask = LayerMask.GetMask(new string[] { "Player (Server)" });
-            buildingMask = LayerMask.GetMask(new string[] { "Deployed" });
-            AIMask = LayerMask.GetMask(new string[] { "AI" });
+            playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
+            buildingMask = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
+            AIMask = UnityEngine.LayerMask.GetMask(new string[] { "AI" });
             /* for(int i = 0; i < 25; i ++)
              {
-                 Debug.Log(LayerMask.LayerToName(i));
+                 Debug.Log(UnityEngine.LayerMask.LayerToName(i));
              }*/
             LoadData();
             LoadVariables();
@@ -460,7 +474,7 @@ namespace Oxide.Plugins
             if (hasTag(deployer.ownerPlayer, "nodeploy"))
             {
                 if (!hasPermission(deployer.ownerPlayer, "candeploy"))
-                {
+                { 
                     deployedEntity.Kill(BaseNetworkable.DestroyMode.Gib);
                     SendMessage(deployer.ownerPlayer, "You are not allowed to deploy here");
                 }
@@ -601,7 +615,7 @@ namespace Oxide.Plugins
             {
                 position = cachedRaycasthit.point;
             }
-            foreach (Collider collider in Physics.OverlapSphere(position, 2f, AIMask))
+            foreach (Collider collider in Physics.OverlapSphere(position, 2f))
             {
                 BaseCorpse corpse = collider.GetComponentInParent<BaseCorpse>();
                 if (corpse == null)
@@ -609,8 +623,46 @@ namespace Oxide.Plugins
                 corpse.Kill(BaseNetworkable.DestroyMode.None);
             }
         }
+        
         /////////////////////////////////////////
-        // Outside Plugin Hooks
+        // OnPlayerLoot(PlayerLoot lootInventory,  BasePlayer targetPlayer)
+        // Called when a player tries to loot another player
+        /////////////////////////////////////////
+        void OnPlayerLoot(PlayerLoot lootInventory, object target)
+        {
+        	BasePlayer targetPlayer = target as BasePlayer;
+			if (targetPlayer != null) { OnLootPlayer( lootInventory, targetPlayer); return; }
+			OnLootBox( lootInventory.GetComponent("BasePlayer") as BasePlayer, target);
+			
+        }
+        void OnLootPlayer(PlayerLoot lootInventory, BasePlayer targetPlayer)
+        {
+        	if(hasTag(targetPlayer,"noplayerloot"))
+			{
+				BasePlayer looter = lootInventory.GetComponent("BasePlayer") as BasePlayer;
+				timer.Once(0.01f, () => looter.EndLooting());
+			}
+        }
+        void OnLootBox(BasePlayer looter, object target)
+        {
+        	if(hasTag(looter,"noboxloot"))
+			{
+				timer.Once(0.01f, () => looter.EndLooting());
+			}
+        }
+        
+		/////////////////////////////////////////
+        // CanBeWounded(BasePlayer player)
+        // Called from the Kits plugin (Reneb) when trying to redeem a kit
+        /////////////////////////////////////////
+        object CanBeWounded(BasePlayer player, HitInfo hitinfo)
+        {
+            if (hasTag(player, "nowounded")) { return false; }
+            return null;
+        }
+		
+        /////////////////////////////////////////
+        // Outside Plugin Hooks 
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -756,6 +808,14 @@ namespace Oxide.Plugins
             RemoveFromKeepinlist(targetZone, player);
             return true; 
         }
+
+        void ShowZone(BasePlayer player, string ZoneID)
+        {
+            Zone targetZone = GetZoneByID(ZoneID);
+            if (targetZone == null) return;
+            player.SendConsoleCommand("ddraw.sphere", 5f, UnityEngine.Color.blue, targetZone.info.Location.GetPosition(), targetZone.info.Location.GetRadius());
+        }
+
         /////////////////////////////////////////
         // Random Commands
         /////////////////////////////////////////
@@ -921,6 +981,7 @@ namespace Oxide.Plugins
             LastZone[player] = newzoneinfo.ID;
             storedData.ZoneDefinitions.Add(zonedefinitions[newzoneinfo.ID]);
             SaveData();
+            ShowZone(player, LastZone[player]);
             SendMessage(player, "New Zone created, you may now edit it: " + newzoneinfo.Location.String());
         }
         [ChatCommand("zone_reset")]
@@ -953,6 +1014,7 @@ namespace Oxide.Plugins
             if (zonedefinitions[args[0]] == null) { SendMessage(player, "This zone doesn't exist"); return; }
             LastZone[player] = args[0];
             SendMessage(player, "Editing zone ID: " + args[0]);
+            ShowZone(player, LastZone[player]);
         }
         [ChatCommand("zone_list")]
         void cmdChatZoneList(BasePlayer player, string command, string[] args)
@@ -1020,6 +1082,7 @@ namespace Oxide.Plugins
             }
             RefreshZone(LastZone[player]);
             SaveData();
+            ShowZone(player, LastZone[player]);
         }
         static void SendMessage(BasePlayer player, string message) { player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", "ZoneManager", message), 1.0 }); }
     }
