@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("AntiCheat", "Reneb & 4Seti", "2.3.5", ResourceId = 730)]
+    [Info("AntiCheat", "Reneb & 4Seti", "2.3.7", ResourceId = 730)]
     class AntiCheat : RustPlugin
     {
     
@@ -262,8 +262,8 @@ namespace Oxide.Plugins
 		
         void Loaded()
         {
-            constructionColl = LayerMask.GetMask(new string[] { "Construction" });
-            flyColl = LayerMask.GetMask(new string[] { "Construction", "Deployed", "Tree", "Terrain", "Resource", "World", "Water" });
+            constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction" });
+            flyColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Deployed", "Tree", "Terrain", "Resource", "World", "Water" });
  
             if (!permission.PermissionExists("cananticheat")) permission.RegisterPermission("cananticheat", this);
         }
@@ -319,8 +319,11 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         void OnPlayerInit(BasePlayer player)
         {
-        	RefreshPlayer( player );
-            if (isAdmin(player)) { if (!adminList.Contains(player)) adminList.Add(player); }
+        	if(player.net != null && player.net.connection != null)
+        	{
+        		RefreshPlayer( player );
+            	if (isAdmin(player)) { if (!adminList.Contains(player)) adminList.Add(player); }
+            }
         }
         
         ////////////////////////////////////////////////////////////
