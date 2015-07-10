@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -9,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.10")]
+    [Info("Build", "Reneb", "1.0.13")]
     class Build : RustPlugin
     { 
         class BuildPlayer : MonoBehaviour
@@ -45,7 +43,7 @@ namespace Oxide.Plugins
                 }
                 else if (input.IsDown(BUTTON.FIRE_SECONDARY))
                 {
-                    if((Time.realtimeSinceStartup - lastTickPress) > 1)
+                    if((Time.realtimeSinceStartup - lastTickPress) > timeForMultiple)
                     {
                         DoAction(this);
                     }
@@ -104,6 +102,45 @@ namespace Oxide.Plugins
         private static Item newItem;
 
         private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
+
+        private static int timeForMultiple;
+        private static bool Changed = false;
+
+        private object GetConfig(string menu, string datavalue, object defaultValue)
+        {
+            var data = Config[menu] as Dictionary<string, object>;
+            if (data == null)
+            {
+                data = new Dictionary<string, object>();
+                Config[menu] = data;
+                Changed = true;
+            }
+            object value;
+            if (!data.TryGetValue(datavalue, out value))
+            {
+                value = defaultValue;
+                data[datavalue] = value;
+                Changed = true;
+            }
+            return value;
+        }
+        private void LoadVariables()
+        {
+            timeForMultiple = Convert.ToInt32(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1));
+            if (Changed)
+            {
+                SaveConfig();
+                Changed = false;
+            }
+        }
+        protected override void LoadDefaultConfig()
+        {
+            Puts("Build: Creating a new config file");
+            Config.Clear();
+            LoadVariables();
+        }
+
+
         /////////////////////////////////////////////////////
         ///  OXIDE HOOKS
         /////////////////////////////////////////////////////
@@ -158,7 +195,7 @@ namespace Oxide.Plugins
             {
                 if (resourcefile.Contains("autospawn/animals"))
                 {
-                    animalList.Add(resourcefile.Substring(26),resourcefile.Substring(8));
+                    animalList.Add(resourcefile.Substring(18),resourcefile);
                 } 
             }
         }
@@ -174,7 +211,7 @@ namespace Oxide.Plugins
             {
                 if (resourcefile.Contains("autospawn/resource"))
                 {
-                    resourcesList.Add(resourcefile.Substring(8));
+                    resourcesList.Add(resourcefile);
                 }
             }
         }
@@ -492,6 +529,24 @@ namespace Oxide.Plugins
             entity.Spawn(true);
         }
 
+        private static void SpawnAnimal(string prefab, Vector3 pos, Quaternion angles)
+        {
+            UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
+            if (newPrefab == null)
+            {
+                return;
+            }
+            UnityEngine.GameObject createdPrefab = GameManager.server.CreatePrefab(newPrefab, pos, angles, true);
+            if (createdPrefab == null) return;
+            BaseEntity entity = createdPrefab.GetComponent<BaseEntity>();
+            if(entity == null)
+            {
+                UnityEngine.Object.Destroy(newPrefab);
+                return;
+            }
+            entity.Spawn(true);
+        }
+
         /////////////////////////////////////////////////////
         ///  isColliding()
         ///  Check if you already placed the structure
@@ -606,7 +661,7 @@ namespace Oxide.Plugins
             newRot = currentRot;
             newRot.x = 0f;
             newRot.z = 0f;
-            SpawnResource(buildplayer.currentPrefab, newPos, newRot);
+            SpawnAnimal(buildplayer.currentPrefab, newPos, newRot);
         }
         /////////////////////////////////////////////////////
         ///  DoDeploy(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
@@ -1254,10 +1309,11 @@ namespace Oxide.Plugins
                 int i = 0;
                 SendReply(player, "======== Commands ========");
                 SendReply(player, "/plant \"Resource ID\"");
-                SendReply(player, "======== List ========");
+                SendReply(player, "Please check in your console to see the full list");
+                SendEchoConsole(player.net.connection, "======== Plant List ========");
                 foreach (string resource in resourcesList)
                 {
-                    SendReply(player, string.Format("{0} - {1}", i.ToString(), resource.Substring(19)));
+                    SendEchoConsole(player.net.connection, string.Format("{0} - {1}", i.ToString(), resource.Substring(19)));
                     i++;
                 }
             }
@@ -1275,6 +1331,17 @@ namespace Oxide.Plugins
             {
                 SendReply(player, "======== Commands ========");
                 SendReply(player, "/erase => Erase where you are looking at, there is NO all option here to prevent fails :p");
+            }
+        }
+
+        void SendEchoConsole(Network.Connection cn, string msg)
+        {
+            if(Network.Net.sv.IsConnected())
+            {
+                Network.Net.sv.write.Start();
+                Network.Net.sv.write.PacketID(Network.Message.Type.ConsoleMessage);
+                Network.Net.sv.write.String(msg);
+                Network.Net.sv.write.Send(new Network.SendInfo(cn));
             }
         }
     }
