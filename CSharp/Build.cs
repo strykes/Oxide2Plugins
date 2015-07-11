@@ -7,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.13")]
+    [Info("Build", "Reneb", "1.0.17")]
     class Build : RustPlugin
     { 
         class BuildPlayer : MonoBehaviour
@@ -60,7 +60,8 @@ namespace Oxide.Plugins
             Floor,
             Block,
             FloorTriangle,
-            Support
+            Support,
+            Door
         }
 
 
@@ -103,7 +104,8 @@ namespace Oxide.Plugins
 
         private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
 
-        private static int timeForMultiple;
+        public static float timeForMultiple;
+        private static int levelRequired;
         private static bool Changed = false;
 
         private object GetConfig(string menu, string datavalue, object defaultValue)
@@ -126,7 +128,8 @@ namespace Oxide.Plugins
         }
         private void LoadVariables()
         {
-            timeForMultiple = Convert.ToInt32(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1));
+            timeForMultiple = Convert.ToSingle(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1f));
+            levelRequired = Convert.ToInt32(GetConfig("Config", "authLevel Required (1 moderator, 2 admin)", 2));
             if (Changed)
             {
                 SaveConfig();
@@ -154,9 +157,10 @@ namespace Oxide.Plugins
         {
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             deployedToItem = new Dictionary<string, string>();
-            
+            LoadVariables();
             nameToBlockPrefab = new Dictionary<string, string>();
             VectorUP = new Vector3(0f, 1f, 0f);
+            if (!permission.PermissionExists("builder")) permission.RegisterPermission("builder", this);
         }
 
         /////////////////////////////////////////////////////
@@ -236,6 +240,8 @@ namespace Oxide.Plugins
         /// Create New sockets that wont match Rusts, this is exaustive
         /// But at least we can add new sockets later on
         /////////////////////////////////////////////////////
+
+
         void InitializeSockets()
         {
             // PrefabName to SocketType 
@@ -302,11 +308,17 @@ namespace Oxide.Plugins
             var WallToFloor = new Dictionary<Vector3, Quaternion>();
             WallToFloor.Add(new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
             WallToFloor.Add(new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-             
+
+            // Wall to Door sockets
+            var WallToDoor = new Dictionary<Vector3, Quaternion>();
+            WallToDoor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
+
+
             // Adding all informations from the Wall type into the main table
             // Note that you can't add blocks or supports on a wall
             WallType.Add(SocketType.Floor, WallToFloor);
             WallType.Add(SocketType.Wall, WallToWall);
+            WallType.Add(SocketType.Door, WallToDoor);
             TypeToType.Add(SocketType.Wall, WallType);
 
             // Sockets that can connect on a Block type
@@ -323,6 +335,16 @@ namespace Oxide.Plugins
 
             // Sockets that can connect on a Floor/Foundation Triangles  type
             var FloorTriangleType = new Dictionary<SocketType, object>();
+
+
+            var FTtoFloor = new Dictionary<Vector3, Quaternion>();
+            //THIS ONE WORKS WELL
+            //FTtoFloor.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, -0.0000001629207f));
+
+            // THOSE TWO HAVE A POSITION PROBLEM BUT THE ROTATIONS ARE GOOD
+            FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
+            //FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
+            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
 
             // Floor Triangles to Floor Triangles type
             var FTtoFT = new Dictionary<Vector3, Quaternion>();
@@ -363,6 +385,7 @@ namespace Oxide.Plugins
             nameToSockets.Add("build/block.halfheight.slanted", SocketType.Block);
             nameToSockets.Add("build/block.stair.lshape", SocketType.Block);
             nameToSockets.Add("build/block.stair.ushape", SocketType.Block);
+            nameToSockets.Add("build/door.hinged", SocketType.Door);
             // Foundation steps are fucked up, i need to look how this works more
             //nameToSockets.Add("build/foundation.steps", SocketType.Floor);
 
@@ -370,18 +393,20 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         /// Get all blocknames from shortname to full prefabname
         /////////////////////////////////////////////////////
+        private FieldInfo socks = typeof(Construction).GetField("allSockets", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         void InitializeBlocks()
         {
             foreach (Construction construction in PrefabAttribute.server.GetAll<Construction>())
             {
-                    /*if (construction.name == "foundation.triangle")
+                //Debug.Log(construction.info.name.english.ToString());
+               /* if (construction.info.name.english.ToString().Contains("Triangle"))
                     {
-                        Construction.Socket[] socketArray = item.sockets;
-
-                        foreach (Construction.Socket socket in socketArray) 
+                        Socket_Base[] socketArray = (Socket_Base[])socks.GetValue(construction);
+                    Debug.Log(socketArray.ToString());
+                        foreach (Socket_Base socket in socketArray)
                         {
                             //Puts(string.Format("{0} {1} {2} {3}", socket.name, socket.type.ToString(), socket.position.ToString(), socket.rotation.w.ToString()));
-                            Puts(string.Format("{0} {1} {2} {3} {4}", socket.name, socket.type.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
+                            Puts(string.Format("{0} - {1} {2} {3} {4} - {5} {6} {7}", socket.socketName, socket.rotation.x.ToString(), socket.rotation.y.ToString(), socket.rotation.z.ToString(), socket.rotation.w.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
                         }
                         Puts("================");
                     }*/
@@ -398,12 +423,11 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         bool hasAccess(BasePlayer player)
         {
-            if (player.net.connection.authLevel < 1)
-            {
-                SendReply(player, "You are not allowed to use this command");
-                return false;
-            }
-            return true;
+            if (player.net.connection.authLevel >= levelRequired) return true;
+            if (permission.UserHasPermission(player.userID.ToString(), "builder")) return true;
+
+            SendReply(player, "You are not allowed to use this command");
+            return false;
         }
 
         /////////////////////////////////////////////////////
@@ -1345,4 +1369,4 @@ namespace Oxide.Plugins
             }
         }
     }
-}
+} 
