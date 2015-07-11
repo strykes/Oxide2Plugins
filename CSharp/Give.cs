@@ -10,7 +10,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Give", "Reneb", 2.0)]
+    [Info("Give", "Reneb", 2.0, ResourceId = 666)]
     class Give : RustPlugin
     {
         private bool Changed;
@@ -29,10 +29,10 @@ namespace Oxide.Plugins
         private object kitsplugin;
         private Oxide.Core.Libraries.Plugins pluginsfullib;
         private FieldInfo pluginslib;
-        
-        void Loaded() 
+
+        void Loaded()
         {
-            
+
             LoadVariables();
             displaynameToShortname = new Dictionary<string, string>();
             pluginslib = typeof(OxideMod).GetField("libplugins", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
@@ -48,7 +48,7 @@ namespace Oxide.Plugins
             kitsplugin = (Oxide.Core.Plugins.Plugin)findplugin;
             */
         }
-        
+
         private void InitializeTable()
         {
             displaynameToShortname.Clear();
@@ -223,7 +223,7 @@ namespace Oxide.Plugins
                 return true;
             return false;
         }
-       
+
         void GiveKit(object source, string[] Args, string ttype)
         {
             if (source is BasePlayer)
@@ -311,7 +311,7 @@ namespace Oxide.Plugins
             int amount = 1;
             if (Args.Length > 2)
                 int.TryParse(Args[2].ToString(), out amount);
-            
+
             var target = FindPlayer(Args[0].ToString());
             if (target is string)
             {

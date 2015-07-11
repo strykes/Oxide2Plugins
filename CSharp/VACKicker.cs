@@ -13,7 +13,7 @@ using Newtonsoft.Json;
 
 namespace Oxide.Plugins
 {
-    [Info("VACKicker", "Reneb", "1.0.0")]
+    [Info("VACKicker", "Reneb", "1.0.0", ResourceId = 985)]
     class VACKicker : RustPlugin
     {
 
@@ -32,16 +32,16 @@ namespace Oxide.Plugins
         }
 
         void Init()
-        { 
+        {
             CheckCfg<string>("STEAM API Key: http://steamcommunity.com/dev/apikey", ref apikey);
             CheckCfg<string>("Messages: Too many VAC Bans", ref reason);
             CheckCfg<int>("Settings: Max VAC allowed", ref maxAllowed);
-            SaveConfig(); 
+            SaveConfig();
         }
         void Loaded()
         {
             jsonsettings = new JsonSerializerSettings();
-            jsonsettings.Converters.Add(new KeyValuesConverter()); 
+            jsonsettings.Converters.Add(new KeyValuesConverter());
         }
         void OnUserApprove(Network.Connection connection)
         {

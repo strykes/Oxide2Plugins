@@ -24,7 +24,7 @@ namespace Oxide.Plugins
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
-        
+
         private string CurrentKit;
         private List<DeathmatchPlayer> DeathmatchPlayers;
 
@@ -211,7 +211,7 @@ namespace Oxide.Plugins
                 player.inventory.Strip();
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
                 player.health = EventStartHealth;
-            } 
+            }
         }
         object OnSelectSpawnFile(string name)
         {
@@ -376,7 +376,7 @@ namespace Oxide.Plugins
                     Winner(deathmatchplayer.player);
                 }
             }
-        } 
+        }
         void Winner(BasePlayer player)
         {
             var winnerobjectmsg = new object[] { string.Format(EventMessageWon, player.displayName) };

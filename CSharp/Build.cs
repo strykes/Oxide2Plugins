@@ -9,10 +9,9 @@ namespace Oxide.Plugins
 {
     [Info("Build", "Reneb", "1.0.18", ResourceId = 715)]
     class Build : RustPlugin
-    { 
+    {
         class BuildPlayer : MonoBehaviour
         {
-            
             public BasePlayer player;
             public InputState input;
             public string currentPrefab;
@@ -36,7 +35,7 @@ namespace Oxide.Plugins
             {
                 if (input.WasJustPressed(BUTTON.FIRE_SECONDARY) && !ispressed)
                 {
-                    
+
                     lastTickPress = Time.realtimeSinceStartup;
                     ispressed = true;
                     DoAction(this);
@@ -75,7 +74,7 @@ namespace Oxide.Plugins
         private static List<string> resourcesList;
         private static Dictionary<string, string> animalList;
         /// CACHED VARIABLES
-        /// 
+        ///
 
         private static Quaternion currentRot;
         private static Vector3 closestHitpoint;
@@ -200,7 +199,7 @@ namespace Oxide.Plugins
                 if (resourcefile.Contains("autospawn/animals"))
                 {
                     animalList.Add(resourcefile.Substring(18),resourcefile);
-                } 
+                }
             }
         }
 
@@ -244,7 +243,7 @@ namespace Oxide.Plugins
 
         void InitializeSockets()
         {
-            // PrefabName to SocketType 
+            // PrefabName to SocketType
             nameToSockets = new Dictionary<string, SocketType>();
 
             // Get all possible sockets from the SocketType
@@ -355,14 +354,14 @@ namespace Oxide.Plugins
 
             // Floor Triangles to Wall type
             var FTtoWall = new Dictionary<Vector3, Quaternion>();
-            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f)); 
+            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
             FTtoWall.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
             FTtoWall.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
             FloorTriangleType.Add(SocketType.Wall, FTtoWall);
 
             // Floor Triangles to Floor type is a big fail, need to work on that still
            /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f)); 
+            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
             FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
             FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
             FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
@@ -411,7 +410,7 @@ namespace Oxide.Plugins
                         Puts("================");
                     }*/
                 nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
-            } 
+            }
         }
 
         /////////////////////////////////////////////////////
@@ -534,14 +533,14 @@ namespace Oxide.Plugins
             else
                 block.health = health;
             block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-            
+
         }
 
         /////////////////////////////////////////////////////
         ///  SpawnDeployable()
         ///  Function to spawn a resource (tree, barrel, ores)
         /////////////////////////////////////////////////////
-        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles) 
+        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles)
         {
             UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
             if (newPrefab == null)
@@ -1006,7 +1005,7 @@ namespace Oxide.Plugins
                 return true;
             }
             return false;
-        } 
+        }
 
         /////////////////////////////////////////////////////
         ///  GetBuildPlayer(BasePlayer player)
@@ -1027,7 +1026,7 @@ namespace Oxide.Plugins
         {
             if (!hasAccess(player)) return;
             if (hasNoArguments(player, args)) return;
-            
+
             if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
             {
                 SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
@@ -1039,7 +1038,7 @@ namespace Oxide.Plugins
                 return;
             }
             BuildPlayer buildplayer = GetBuildPlayer(player);
-            
+
             defaultGrade = 0;
             defaultHealth = -1f;
             heightAdjustment = 0f;
@@ -1244,7 +1243,7 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) return;
             if (hasNoArguments(player, args)) return;
             BuildPlayer buildplayer = GetBuildPlayer(player);
-            
+
             buildplayer.currentType = "heal";
             buildplayer.selection = "select";
             if (args.Length > 0)
@@ -1262,7 +1261,7 @@ namespace Oxide.Plugins
             buildplayer.currentType = "rotate";
             buildplayer.selection = "select";
             float rotate = 0f;
-            
+
             if (args.Length > 0) float.TryParse(args[0], out rotate);
             if (args.Length > 1)
                 if (args[1] == "all")
@@ -1369,4 +1368,4 @@ namespace Oxide.Plugins
             }
         }
     }
-} 
+}

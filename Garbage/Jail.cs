@@ -232,7 +232,7 @@ namespace Oxide.Plugins
         {
             if(OwnerOf == null)
                 OwnerOf = loot.GetType().GetField("Owner", (BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance));
-           
+
             if (OwnerOf.GetValue(loot) as BasePlayer)
             {
                 var player = OwnerOf.GetValue(loot) as BasePlayer;

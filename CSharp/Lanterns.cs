@@ -13,7 +13,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Lanterns", "Reneb", 2.0)]
+    [Info("Lanterns", "Reneb", 2.0, ResourceId = 738)]
     class Lanterns : RustPlugin
     {
         private bool autoLanterns;
@@ -34,7 +34,7 @@ namespace Oxide.Plugins
             isNight = false;
             oldDay = null;
         }
-            
+
         void OnServerInitialized()
         {
             lastCheck = Time.realtimeSinceStartup + 2;
@@ -61,7 +61,7 @@ namespace Oxide.Plugins
             var allWorldItems = UnityEngine.Resources.FindObjectsOfTypeAll(typeof(WorldItem));
             foreach (WorldItem wolditem in allWorldItems)
             {
-                if (wolditem.item != null && wolditem.item.info.shortname.ToString() == "lantern") 
+                if (wolditem.item != null && wolditem.item.info.shortname.ToString() == "lantern")
                 {
                     wolditem.item.SwitchOnOff(Light, null);
                 }

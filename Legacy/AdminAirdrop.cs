@@ -64,7 +64,7 @@ namespace Oxide.Plugins
         void cmdChatBan(NetUser netuser, string command, string[] args)
         {
             if (!hasAccess(netuser, "canairdrop")) { SendReply(netuser, notAllowed); return; }
-            
+
             // CALL 1 AIRDROP
             if(args.Length == 0) { SendReply(netuser, calledAirdrop); SupplyDropZone.CallAirDrop(); return; }
 
@@ -116,7 +116,7 @@ namespace Oxide.Plugins
             {
                 if(args.Length == 2) float.TryParse(args[1], out z);
                 else float.TryParse(args[2], out z);
-                
+
                 if(z != default(float))
                 {
                     cachedPos = new Vector3(x, 0f, z);

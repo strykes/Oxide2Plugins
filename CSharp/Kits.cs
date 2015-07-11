@@ -11,7 +11,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.0.10")]
+    [Info("Kits", "Reneb", "2.0.10", ResourceId = 668)]
     class Kits : RustPlugin
     {
         static string noAccess = "You are not allowed to use this command";
@@ -30,7 +30,7 @@ namespace Oxide.Plugins
         private bool Changed;
         private Dictionary<string, string> displaynameToShortname;
         private List<string> permNames = new List<string>();
-         
+
         void Loaded()
         {
             epoch = new System.DateTime(1970, 1, 1);
@@ -191,7 +191,7 @@ namespace Oxide.Plugins
                         if (!hasVip(source, name)) kitlvl = authLevel;
                     }
                 }
-                
+
                 if (kitdata.ContainsKey("max"))
                 {
                     options = string.Format("{0} - {1} max", options, kitdata["max"].ToString());
@@ -356,7 +356,7 @@ namespace Oxide.Plugins
                         }
                     }
                     if(error)
-                        return string.Format("Wrong Options: {0}", args[i].ToString()); 
+                        return string.Format("Wrong Options: {0}", args[i].ToString());
                 }
             }
             return true;
@@ -375,7 +375,7 @@ namespace Oxide.Plugins
             {
                 player.inventory.Strip();
                 GiveKit(player, "autokit");
-            } 
+            }
         }
         void cmdRemoveKit(BasePlayer player, string[] args)
         {
@@ -485,7 +485,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
-                
+
             if (kitdata.ContainsKey("cooldown"))
                 cooldown = GetKitTimeleft(player, kitname, (double)(kitdata["cooldown"]));
             if (cooldown > 0.0)

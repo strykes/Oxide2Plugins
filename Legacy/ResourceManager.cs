@@ -55,7 +55,7 @@ namespace Oxide.Plugins
                     newspawnlistdata.forceStaticInstantiate = false;
                     newspawnlistdata.numToSpawnPerTick = Convert.ToInt32(currentspawninstance["numToSpawnPerTick"]);
                     newspawnlistdata.prefabName = currentspawninstance["prefabName"].ToString();
-                    
+
                     newspawnlistdata.targetPopulation = Convert.ToInt32(currentspawninstance["targetPopulation"]);
                     newspawnlistdata.useNavmeshSample = true;
                     newspawnlistdata.spawned = new List<UnityEngine.GameObject>();
@@ -73,7 +73,7 @@ namespace Oxide.Plugins
             }
             Puts(string.Format("{0} custom resource spawns where loaded!",count.ToString()));
         }
-         
+
         static Dictionary<string, object> NewSpawnList()
         {
             var tblspawnlists = new Dictionary<string, object>();
@@ -123,7 +123,7 @@ namespace Oxide.Plugins
             var newlist = new List<GenericSpawnerSpawnList.GenericSpawnInstance>();
             newlist.Add(newspawnlistdata);
             //newspawn._spawnList = newlist;
-            
+
             var gameobject = new UnityEngine.GameObject();
             var generic = gameobject.AddComponent<GenericSpawner>();
             Debug.Log(generic.ToString());
@@ -131,7 +131,7 @@ namespace Oxide.Plugins
             generic.initialSpawn = true;
             generic._spawnList = newlist;
             Debug.Log(generic._spawnList.ToString());
-            
+
             Debug.Log(genericspawn_spawnstagger.GetValue(generic).ToString());
             genericspawn_serverload.Invoke(generic, new object[] { });
             generic.SpawnThink();

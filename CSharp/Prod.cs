@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Prod", "Reneb", 2.1)]
+    [Info("Prod", "Reneb", 2.1, ResourceId = 928)]
     class Prod : RustPlugin
     {
 
@@ -33,7 +33,7 @@ namespace Oxide.Plugins
         private bool Changed;
         Core.Configuration.DynamicConfigFile deadPlayersData;
 
-        void Loaded() 
+        void Loaded()
         {
             LoadVariables();
             eyesAdjust = new Vector3(0f, 1.5f, 0f);
@@ -191,7 +191,7 @@ namespace Oxide.Plugins
             if (deadplayers is Oxide.Core.Plugins.Plugin)
             {
                 /*object deadplayer = ((Oxide.Core.Plugins.Plugin)deadplayers).CallHook("FindDeadPlayerByID", new object[1] { ownerid.ToString() });
-                
+
                 if (!(deadplayer is bool))
                 {
                     if (deadplayer != null)
@@ -284,7 +284,7 @@ namespace Oxide.Plugins
             }
             return target;
         }
-        
+
         void SendHelpText(BasePlayer player)
         {
             if(hasAccess(player))

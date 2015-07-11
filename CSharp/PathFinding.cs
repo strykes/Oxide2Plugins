@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PathFinding", "Reneb", "0.0.7")]
+    [Info("PathFinding", "Reneb", "0.0.7", ResourceId = 868)]
     class PathFinding : RustPlugin
     {
         [PluginReference]
@@ -33,7 +33,7 @@ namespace Oxide.Plugins
             public int Loops;
 
             public bool shouldBreak;
-             
+
             public Pathfinder()
             {
                 SortNode = new SortedList<float, List<PathfindNode>>();
@@ -47,8 +47,8 @@ namespace Oxide.Plugins
                 this.targetNode = new PathfindNode(this);
                 PathfindGoal(this, this.targetNode, targetPos);
                 PathfindFirst(this, new PathfindNode(this), sourcePos);
-                 
-                while (true) 
+
+                while (true)
                 {
                     currentPriority = SortNode.Keys[0];
                     foreach (PathfindNode pathnode in (SortNode[currentPriority]))
@@ -64,7 +64,7 @@ namespace Oxide.Plugins
                     if (Loops > MaxLoops) { Reset(); return null; }
                     if (shouldBreak) break;
                 }
-                
+
                 PathfindNode parentnode = targetNode.parentNode;
                 List<Vector3> PlayerPath = new List<Vector3>();
                 while (true)
@@ -72,7 +72,7 @@ namespace Oxide.Plugins
                     PlayerPath.Add(parentnode.position);
                     parentnode = parentnode.parentNode;
                     if (parentnode == null) break;
-                } 
+                }
                 PlayerPath.Reverse();
                 PlayerPath.RemoveAt(0);
                 Reset();
@@ -115,7 +115,7 @@ namespace Oxide.Plugins
             public bool isGoal = false;
             public Pathfinder pathfinder;
 
-            /// 
+            ///
             /// PathfindNode()
             /// Raw pathfind creation
             public PathfindNode(Pathfinder pathfinder)
@@ -123,7 +123,7 @@ namespace Oxide.Plugins
                 this.pathfinder = pathfinder;
             }
 
-            /// 
+            ///
             /// PathfindNode(PathfindNode parentnode, Vector3 position, bool diagonal)
             /// This is called by all new pathnodes
             public PathfindNode(Pathfinder pathfinder, PathfindNode parentnode, Vector3 position, bool diagonal)
@@ -140,7 +140,7 @@ namespace Oxide.Plugins
                     this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.green, position, 0.5f);
             }
 
-            // METHODS 
+            // METHODS
 
             // DetectAdjacentNodes()
             // This automatically creates the surrounding pathnodes
@@ -158,11 +158,11 @@ namespace Oxide.Plugins
                     }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorRight])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorRight, blockLayer))
-                    { 
+                    {
                         east = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorRight, false);
                     }
                     else
-                    { 
+                    {
                         if (this.pathfinder.player != null)
                             this.pathfinder.player.SendConsoleCommand("ddraw.box", 5f, UnityEngine.Color.red, this.positionEyes + VectorRight, 0.5f);
                     }
@@ -178,7 +178,7 @@ namespace Oxide.Plugins
                     }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorLeft, blockLayer))
-                    { 
+                    {
                         west = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorLeft, false);
                     }
                     else
@@ -199,7 +199,7 @@ namespace Oxide.Plugins
                     }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorForwardLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorForwardLeft, blockLayer))
-                    { 
+                    {
                         northwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorForwardLeft, true);
                     }
                     else
@@ -209,7 +209,7 @@ namespace Oxide.Plugins
                     }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorBackLeft])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackLeft, blockLayer))
-                    { 
+                    {
                     southeast = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackLeft, true);
                     }
                     else
@@ -219,7 +219,7 @@ namespace Oxide.Plugins
                     }
                 if (!pathfinder.ClosedList[this.positionEyes + VectorBackRight])
                     if (!Physics.Linecast(this.positionEyes, this.positionEyes + VectorBackRight, blockLayer))
-                    { 
+                    {
                      southwest = FindPathNodeOrCreate(this.pathfinder, this, this.positionEyes + VectorBackRight, true);
                     }
                     else
@@ -295,7 +295,7 @@ namespace Oxide.Plugins
             pathfinder.AddToPriorityList(pathfindnode);
         }
 
-        /// 
+        ///
         /// PathfindNode(Vector3 position)
         /// This is called by the Goal
         public static void PathfindGoal(Pathfinder pathfinder, PathfindNode pathfindnode, Vector3 position)
@@ -336,20 +336,20 @@ namespace Oxide.Plugins
                     secondsTaken += Time.deltaTime;
                     waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                     nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
-                    entity.transform.position = nextPos; 
+                    entity.transform.position = nextPos;
                     if (player != null) player.ClientRPCPlayer(null, player, "ForcePositionTo", nextPos);
                     entity.TransformChanged();
-                } 
-            } 
+                }
+            }
             void FindNextWaypoint()
             {
                 if (Paths.Count == 0) { StartPos = EndPos = Vector3.zero; enabled = false; return; }
-                SetMovementPoint(Paths[0], speed); 
+                SetMovementPoint(Paths[0], speed);
             }
 
             public void SetMovementPoint(Vector3 endpos, float s)
             {
-                
+
                 StartPos = entity.transform.position;
                 if (endpos != StartPos) {
                     EndPos = endpos;
@@ -358,7 +358,7 @@ namespace Oxide.Plugins
                     if (player != null) SetViewAngle(player, entity.transform.rotation);
                     secondsTaken = 0f;
                     waypointDone = 0f;
-                } 
+                }
                 Paths.RemoveAt(0);
             }
             void FixedUpdate() { Move(); }
@@ -400,7 +400,7 @@ namespace Oxide.Plugins
 
         private Oxide.Plugins.Timer PathfindingTimer;
 
-         
+
 
         private static int MaxLoops = 500;
 
@@ -421,9 +421,9 @@ namespace Oxide.Plugins
         }
 
 
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         /// OXIDE HOOKS
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
 
         void OnServerInitialized()
         {
@@ -443,9 +443,9 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
         }
 
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         /// Outside Plugin Calls
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         bool FindAndShowPath(BasePlayer player, Vector3 sourcePosition, Vector3 targetPosition)
         {
             var curtime = Time.realtimeSinceStartup;
@@ -455,7 +455,7 @@ namespace Oxide.Plugins
             foreach(Vector3 pos in (List<Vector3>)bestPath)
             {
                 player.SendConsoleCommand("ddraw.sphere", 20f, UnityEngine.Color.blue, pos+EyesPosition, 1f);
-            } 
+            }
             return true;
         }
         bool FindAndFollowPath(BaseEntity entity, Vector3 sourcePosition, Vector3 targetPosition)
@@ -506,7 +506,7 @@ namespace Oxide.Plugins
             StraightPath[0f] = sourcePosition;
             Vector3 currentPos;
             for(float i = 1f; i < distance; i++)
-            { 
+            {
                 currentPos = Vector3.Lerp(sourcePosition, targetPosition, i/ distance);
                 if (!FindRawGroundPosition(currentPos, out GroundPosition))
                     if (!FindRawGroundPositionUP(currentPos, out GroundPosition))
@@ -522,16 +522,16 @@ namespace Oxide.Plugins
             if (Physics.Linecast(StraightPath[distance - 1f] + jumpPosition, targetPosition + jumpPosition, blockLayer)) return null;
             StraightPath[distance] = targetPosition;
             StraightPath.Remove(0f);
-            
+
             List<Vector3> straightPath = new List<Vector3>();
             foreach (KeyValuePair<float, Vector3> pair in StraightPath) { straightPath.Add(pair.Value); }
-            StraightPath.Clear(); 
+            StraightPath.Clear();
             return straightPath;
         }
 
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         /// Reset part of the plugin
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         void ResetPathFollowers()
         {
             var objects = GameObject.FindObjectsOfType(typeof(PathFollower));
@@ -541,9 +541,9 @@ namespace Oxide.Plugins
                         GameObject.Destroy(gameObj);
         }
 
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         /// Debug Command
-        ///////////////////////////////////////////// 
+        /////////////////////////////////////////////
         [ChatCommand("path")]
         void cmdChatPath(BasePlayer player, string command, string[] args)
         {

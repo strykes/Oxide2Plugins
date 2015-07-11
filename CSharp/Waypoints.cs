@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Waypoints", "Reneb", "1.0.1")]
+    [Info("Waypoints", "Reneb", "1.0.1", ResourceId = 982)]
     class Waypoints : RustPlugin
     {
 
@@ -49,7 +49,7 @@ namespace Oxide.Plugins
                 waypoints[thewaypoint.Name] = thewaypoint;
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class WaypointInfo
         ///  Waypoint information, position & speed
         ///  public => will be saved in the data file
@@ -86,7 +86,7 @@ namespace Oxide.Plugins
                 return speed;
             }
         }
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class Waypoint
         ///  Waypoint List information
         //////////////////////////////////////////////////////
@@ -113,13 +113,13 @@ namespace Oxide.Plugins
             void Awake()
             {
             }
-        } 
+        }
         [HookMethod("GetWaypointsList")]
         object GetWaypointsList(string name)
         {
             if (waypoints[name] == null) return null;
             var returndic = new List<object>();
-            
+
             foreach(WaypointInfo wp in waypoints[name].Waypoints)
             {
                 var newdic = new Dictionary<Vector3, float>();
@@ -147,9 +147,9 @@ namespace Oxide.Plugins
                 return false;
             }
         }
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         // Waypoints manager
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
 
         [ChatCommand("waypoints_new")]
         void cmdWaypointsNew(BasePlayer player, string command, string[] args)

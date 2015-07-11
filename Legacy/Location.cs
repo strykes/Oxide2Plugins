@@ -58,7 +58,7 @@ namespace Oxide.Plugins
             CheckCfg<List<object[]>>("Locations: List", ref locationsList);
             SaveConfig();
         }
-        
+
         bool canTarget(NetUser netuser, NetUser targetuser)
         {
             if (netuser.CanAdmin())
@@ -95,7 +95,7 @@ namespace Oxide.Plugins
             cachedVector3 = cachedUser.playerClient.lastKnownPosition;
             SendReply(netuser, string.Format(locationMessage, cachedUser.playerClient.userName.ToString(), Mathf.Ceil(cachedVector3.x).ToString(), Mathf.Ceil(cachedVector3.y).ToString(), Mathf.Ceil(cachedVector3.z).ToString(), FindLocationName(cachedVector3)));
         }
-        
+
         string FindLocationName(Vector3 position)
         {
             nearest = 999999999f;

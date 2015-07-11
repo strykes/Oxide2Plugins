@@ -113,7 +113,7 @@ namespace Oxide.Plugins
             if (netuser.CanAdmin()) return true;
             return permission.UserHasPermission(netuser.playerClient.userID.ToString(), permissionname);
         }
-        
+
         [ChatCommand("tpsave")]
         void cmdChatTeleportSave(NetUser netuser, string command, string[] args)
         {
@@ -138,7 +138,7 @@ namespace Oxide.Plugins
                         SendReply(netuser, "This teleportation location name doesn't exists");
                         return;
                     }
-                    
+
                     Data[args[1]] = null;
                     SendReply(netuser, string.Format("Teleport location {0} was deleted", args[0]));
                     SaveData();
@@ -311,7 +311,7 @@ namespace Oxide.Plugins
             if (!hasAccess(netuser, "canteleport")) { SendReply(netuser, notAllowed); return; }
             float heightAdjustment = 0f;
             if (args.Length > 0) float.TryParse(args[0], out heightAdjustment);
-            
+
             if (Physics.Raycast(netuser.playerClient.controllable.GetComponent<Character>().eyesRay, out cachedRaycast))
             {
                 cachedPos = cachedRaycast.point;

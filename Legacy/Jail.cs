@@ -252,7 +252,7 @@ namespace Oxide.Plugins
             if ((int)count == 0) { Puts(EmptySpawnFile); return null; }
             return Spawns.Call("GetRandomSpawn", spawnfile);
         }
-         
+
         void LoadSpawnfile()
         {
             if (spawnfile == null) { Puts(NoSpawnFile); return; }
@@ -278,7 +278,7 @@ namespace Oxide.Plugins
 
         int CurrentTime() { return System.Convert.ToInt32(System.DateTime.UtcNow.Subtract(epoch).TotalSeconds); }
 
-        
+
         private object FindPlayer(string tofind)
         {
             var findplayer = rust.FindPlayer(tofind);
@@ -301,7 +301,7 @@ namespace Oxide.Plugins
         {
             string userid = player.playerClient.userID.ToString();
             var tempPoint = FindCell(userid);
-            
+
             if (tempPoint == null) { return; }
             JailInmate newjailmate;
             if (jailinmates[userid] != null) { newjailmate = jailinmates[userid]; newjailmate.UpdateJail((Vector3)tempPoint, expiretime); }

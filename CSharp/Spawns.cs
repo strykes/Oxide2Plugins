@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Spawns Database", "Reneb", "1.1.0")]
+    [Info("Spawns Database", "Reneb", "1.1.0", ResourceId = 720)]
     class Spawns : RustPlugin
     {
         Dictionary<BasePlayer, object> SpawnsData;

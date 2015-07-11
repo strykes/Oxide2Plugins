@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("BuildingPrivileges", "Reneb", 1.0)]
+    [Info("BuildingPrivileges", "Reneb", 1.0, ResourceId = 809)]
     class BuildingPrivileges : RustPlugin
     {
         private FieldInfo localbuildingPrivileges;

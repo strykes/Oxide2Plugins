@@ -333,8 +333,8 @@ namespace Oxide.Plugins
                     return;
                 }
             }
-           
-            
+
+
             NetUser targetPlayer = rust.FindPlayer(args[0]);
             if(targetPlayer == null) { SendReply(netuser, "Target player doesn't exist"); return; }
             if(TPIncoming.ContainsKey(targetPlayer)) { SendReply(netuser, "Target player already has a pending request."); return; }

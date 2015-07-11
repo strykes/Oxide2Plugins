@@ -29,7 +29,7 @@ namespace Oxide.Plugins
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
-        
+
 
         private bool EventOpen;
         private bool EventStarted;
@@ -44,7 +44,7 @@ namespace Oxide.Plugins
 
         private int stackable;
         private int giveamount;
-        
+
 
 
         ////////////////////////////////////////////////////////////
@@ -231,9 +231,9 @@ namespace Oxide.Plugins
             Interface.CallHook("RegisterGame");
             SelectSpawnfile(defaultSpawnfile);
             Debug.Log(defaultSpawnfile);
-        }  
+        }
         void Unload()
-        { 
+        {
             EndEvent();
             var objects = GameObject.FindObjectsOfType(typeof(EventPlayer));
             if (objects != null)
@@ -241,7 +241,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-        
+
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -542,8 +542,8 @@ namespace Oxide.Plugins
         private static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
         private static string MessagesEventStatusClosedEnd = "There is currently no event";
         private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
-         
-         
+
+
         private static string defaultGame = "Deathmatch";
         private static string defaultSpawnfile = "deathmatchspawns";
         private static int eventAuth = 1;
@@ -929,7 +929,7 @@ namespace Oxide.Plugins
                 EventGames.Add(name);
             Puts(string.Format("Registered event game: {0}", name));
             Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
-            
+
             if (EventGameName == name)
             {
                 object success = SelectEvent(EventGameName);
@@ -1114,10 +1114,10 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return; 
+                return;
             }
             defaultSpawnfile = arg.Args[0];
-            SaveConfig(); 
+            SaveConfig();
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.zone")]
@@ -1140,7 +1140,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
-            
+
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
         }
         [ConsoleCommand("event.reward")]
@@ -1246,7 +1246,7 @@ namespace Oxide.Plugins
                     rewards[arg.Args[1]] = null;
                     SendReply(arg, "You've successfully removed this reward");
                  break;
-                
+
 
             }
         }

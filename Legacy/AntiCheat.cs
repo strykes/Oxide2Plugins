@@ -23,9 +23,9 @@ namespace Oxide.Plugins
         /////////////////////////
         // FIELDS
         /////////////////////////
-         
+
         static Hash<PlayerClient, float> autoLoot = new Hash<PlayerClient, float>();
-        
+
         static Hash<PlayerClient, float> wallhackLogs = new Hash<PlayerClient, float>();
 
         public static Core.Configuration.DynamicConfigFile ACData;
@@ -37,7 +37,7 @@ namespace Oxide.Plugins
         public static float distanceDown = 10f;
         public static int groundsLayer = LayerMask.GetMask(new string[] { LayerMask.LayerToName(10), "Terrain" });
         public static ItemDataBlock wooddata;
-         
+
         public static Vector3 Vector3ABitLeft = new Vector3(-0.03f, 0f, -0.03f);
         public static Vector3 Vector3ABitRight = new Vector3(0.03f, 0f, 0.03f);
         public static Vector3 Vector3NoChange = new Vector3(0f, 0f, 0f);
@@ -82,7 +82,7 @@ namespace Oxide.Plugins
         public static float walkspeedDropIgnore = 8f;
         public static float walkspeedDetectionForPunish = 3;
         public static bool walkspeedPunish = true;
-         
+
         public static bool antiSuperJump = true;
         public static float jumpMinHeight = 4f;
         public static float jumpMaxDistance = 25f;
@@ -468,9 +468,9 @@ namespace Oxide.Plugins
         void OnItemRemoved(Inventory inventory, int slot, IInventoryItem item)
         {
             if (antiAutoloot && inventory.name == "SupplyCrate(Clone)") { CheckSupplyCrateLoot(inventory); return; }
-            
+
         }
-        
+
         /////////////////////////
         // OnItemCraft(CraftingInventory inventory, BlueprintDataBlock bp, int amount, ulong starttime)
         // Called when a player starts crafting an object
@@ -571,7 +571,7 @@ namespace Oxide.Plugins
         /*void CheckSilenceKill(TakeDamage takedamage, DamageEvent damage)
         {
             if (damage.victim.networkView == null) return;
-            
+
             if (!(damage.extraData is WeaponImpact)) return;
             cachedWeapon = damage.extraData as WeaponImpact;
             if (cachedWeapon.dataBlock == null) return;
@@ -610,7 +610,7 @@ namespace Oxide.Plugins
             if (norecoilhandler.NoRecoils / norecoilhandler.Kills < norecoilPunishMinRatio) return;
             Punish(norecoilhandler.playerClient, string.Format("rNoRecoil({0}/{1})", norecoilhandler.NoRecoils.ToString(), norecoilhandler.Kills.ToString()));
         }
-        
+
         void OnKilled(TakeDamage takedamage, DamageEvent damage)
         {
 
@@ -646,7 +646,7 @@ namespace Oxide.Plugins
             // AntiCheat Handler functions
             /////////////////////////
 
-       
+
         NetUser GetLooter(Inventory inventory)
         {
             foreach (uLink.NetworkPlayer netplayer in (HashSet<uLink.NetworkPlayer>)getlooters.GetValue(inventory))
@@ -736,7 +736,7 @@ namespace Oxide.Plugins
             if (!player.character.stateFlags.grounded) { player.lastSprint = true; player.walkspeednum = 0; return; }
             if (player.lastSprint) { player.lastSprint = false; player.walkspeednum = 0; return; }
             if (player.lastWalkSpeed != player.lastTick) { player.walkspeednum = 0; player.lastWalkSpeed = player.currentTick; return; }
-            
+
             player.walkspeednum++;
             player.lastWalkSpeed = player.currentTick;
             AntiCheatBroadcastAdmins(string.Format("{0} - rWalkspeed ({1}m/s)", player.playerclient.userName, player.distance3D.ToString()));
@@ -769,7 +769,7 @@ namespace Oxide.Plugins
                 autoLoot[looter.playerClient] = Time.realtimeSinceStartup;
             }
         }
-       
+
         static void AntiCheatBan(ulong userid, string name, string reason)
         {
             BanList.Add(userid, name, reason);

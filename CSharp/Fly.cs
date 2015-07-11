@@ -11,7 +11,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Fly", "Reneb", 1.4)]
+    [Info("Fly", "Reneb", 1.4, ResourceId = 934)]
     class Fly : RustPlugin
     {
 

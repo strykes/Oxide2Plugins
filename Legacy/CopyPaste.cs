@@ -156,7 +156,7 @@ namespace Oxide.Plugins
 
         bool GetStructureClean(StructureComponent initialBlock, float playerRot, StructureComponent currentBlock, out Dictionary<string, object> data)
         {
-            
+
             data = new Dictionary<string, object>();
             posCleanData = new Dictionary<string, object>(); 
             rotCleanData = new Dictionary<string, object>();
@@ -349,7 +349,7 @@ namespace Oxide.Plugins
             SendReply(player, string.Format("{0} building parts detected", rawStructure.Count.ToString()));
             SendReply(player, string.Format("{0} deployables detected", rawDeployables.Count.ToString()));
         }
-        
+
         [ChatCommand("paste")]
         void cmdChatPaste(NetUser player, string command, string[] args)
         {
@@ -396,7 +396,7 @@ namespace Oxide.Plugins
             PasteBuilding(structureData, closestHitpoint, currentRot.ToEulerAngles().y, heightAdjustment, player);
             PasteDeployables(deployablesData, closestHitpoint, currentRot.ToEulerAngles().y, heightAdjustment, player);
         }
-        
+
         [ChatCommand("placeback")]
         void cmdChatPlaceback(NetUser player, string command, string[] args)
         {
@@ -428,7 +428,7 @@ namespace Oxide.Plugins
             PasteBuilding(structureData, defaultposition, Convert.ToSingle(defaultData["yrotation"]), heightAdjustment, player);
             PasteDeployables(deployablesData, defaultposition, Convert.ToSingle(defaultData["yrotation"]), heightAdjustment, player);
         }
-        
+
         StructureComponent SpawnStructure(string prefab, Vector3 pos, Quaternion angle)
         {
             StructureComponent build = NetCull.InstantiateStatic(prefab,pos, angle).GetComponent<StructureComponent>();
@@ -450,7 +450,7 @@ namespace Oxide.Plugins
             StructureMaster themaster = null;
             foreach (Dictionary<string, object> structure in structureData)
             {
-                
+
                 Dictionary<string, object> structPos = structure["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = structure["rot"] as Dictionary<string, object>;
                 string prefabname = (string)structure["prefabname"];

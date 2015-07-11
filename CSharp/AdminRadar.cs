@@ -99,4 +99,4 @@ namespace Oxide.Plugins
             SendReply(player, string.Format("Admin Radar: Activated - {0}s refresh - {1}m distance - {2}m box-height", defaulttime.ToString(), defaultdistance.ToString(), boxheight.ToString()));
         }
     }
-} 
+}

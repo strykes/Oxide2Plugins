@@ -10,16 +10,16 @@ namespace Oxide.Plugins
     [Info("Building Owners", "Reneb", "2.1.3", ResourceId = 682)]
     class BuildingOwners : RustPlugin
     {
-    	private static DateTime epoch;
+        private static DateTime epoch;
         private Core.Configuration.DynamicConfigFile ReverseData;
         private Dictionary<float,string> OwnersData;
         private FieldInfo keyvalues;
         private static bool serverInitialized;
-        void Loaded() 
+        void Loaded()
         {
             serverInitialized = false;
-            OwnersData = new Dictionary<float, string>(); 
-        	epoch = new System.DateTime(1970, 1, 1);
+            OwnersData = new Dictionary<float, string>();
+            epoch = new System.DateTime(1970, 1, 1);
             keyvalues = typeof(Oxide.Core.Configuration.DynamicConfigFile).GetField("keyvalues", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         }
         void OnServerInitialized()
@@ -96,7 +96,7 @@ namespace Oxide.Plugins
             if (player.net.connection.authLevel < 1)
             {
                 SendReply(player, "You are not allowed to use this command");
-                return; 
+                return;
             }
             if (args == null || args.Length < 1)
             {

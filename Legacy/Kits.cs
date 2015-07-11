@@ -471,7 +471,7 @@ namespace Oxide.Plugins
                 else
                     playerData.Add(kitname, currentKitData);
                 KitsData[userid] = playerData;
-                
+
             }
         }
         void OnServerSave()
@@ -489,7 +489,7 @@ namespace Oxide.Plugins
                 SendReply(netuser, unknownKit);
                 return false;
             }
-            
+
             if (netuser.playerClient == null || netuser.playerClient.rootControllable == null) return false;
 
             var inv = netuser.playerClient.rootControllable.idMain.GetComponent<Inventory>();

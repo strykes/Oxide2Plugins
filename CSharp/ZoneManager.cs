@@ -34,7 +34,7 @@ namespace Oxide.Plugins
                 Changed = true;
             }
             return value;
-        } 
+        }
         private void LoadVariables()
         {
             AutolightOnTime = Convert.ToSingle(GetConfig("AutoLights", "Lights On Time", "18.0"));
@@ -45,13 +45,13 @@ namespace Oxide.Plugins
                 SaveConfig();
                 Changed = false;
             }
-        } 
+        }
         void LoadDefaultConfig()
         {
             Config.Clear();
             LoadVariables();
         }
-         
+
 
         ////////////////////////////////////////////
         /// FIELDS
@@ -157,11 +157,11 @@ namespace Oxide.Plugins
         // used to detect the colliders with players
         // and created everything on it's own (radiations, locations, etc)
         /////////////////////////////////////////
-		
-		static float GetSkyHour()
-		{
-			return TOD_Sky.Instance.Cycle.Hour;
-		}
+
+        static float GetSkyHour()
+        {
+            return TOD_Sky.Instance.Cycle.Hour;
+        }
         public class Zone : MonoBehaviour
         {
             public ZoneDefinition info;
@@ -179,12 +179,12 @@ namespace Oxide.Plugins
             {
                 gameObject.layer = triggerLayer;
                 gameObject.name = "Zone Manager";
-                
+
                  gameObject.AddComponent<UnityEngine.SphereCollider>();
-          
+
                 gameObject.SetActive(true);
                 enabled = false;
-            } 
+            }
             public void SetInfo(ZoneDefinition info)
             {
                 this.info = info;
@@ -209,9 +209,9 @@ namespace Oxide.Plugins
                 if (zoneMask != 0) InvokeRepeating("CheckCollisions", 0f, 10f);
 
                 if (info.autolights != null)
-                { 
+                {
                     float currentTime = GetSkyHour();
-					
+
                     if (currentTime > AutolightOffTime && currentTime < AutolightOnTime)
                     {
                         lightsOn = true;
@@ -224,10 +224,10 @@ namespace Oxide.Plugins
                 }
 
                 if (float.TryParse(info.radiation, out radiationamount))
-                    radiationzone = gameObject.AddComponent<RadiationZone>();  
+                    radiationzone = gameObject.AddComponent<RadiationZone>();
             }
-            void OnDestroy() 
-            { 
+            void OnDestroy()
+            {
                 if (radiationzone != null)
                     GameObject.Destroy(radiationzone);
             }
@@ -252,7 +252,7 @@ namespace Oxide.Plugins
                 else
                 {
                     if (!lightsOn)
-                    { 
+                    {
                         foreach(Collider col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
                         {
                             if(col.GetComponentInParent<BaseOven>())
@@ -272,7 +272,7 @@ namespace Oxide.Plugins
                     {
                         buildingblocks.Add(col);
                         BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
-                        
+
                         ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
                         if (baseresource != null)
                         {
@@ -299,7 +299,7 @@ namespace Oxide.Plugins
                             }
                         }
                     }
-                } 
+                }
             }
             void OnTriggerEnter(Collider col)
             {
@@ -341,7 +341,7 @@ namespace Oxide.Plugins
             public string nochat;
             public string nogather;
             public string nopve;
-			public string nowounded;
+            public string nowounded;
             public string nodecay;
             public string nodeploy;
             public string nokits;
@@ -474,13 +474,13 @@ namespace Oxide.Plugins
             if (hasTag(deployer.ownerPlayer, "nodeploy"))
             {
                 if (!hasPermission(deployer.ownerPlayer, "candeploy"))
-                { 
+                {
                     deployedEntity.Kill(BaseNetworkable.DestroyMode.Gib);
                     SendMessage(deployer.ownerPlayer, "You are not allowed to deploy here");
                 }
             }
         }
-         
+
         /////////////////////////////////////////
         // OnPlayerChat(ConsoleSystem.Arg arg)
         // Called when a user writes something in the chat, doesn't take in count the commands
@@ -541,7 +541,7 @@ namespace Oxide.Plugins
                 }
             }
         }
-         
+
         /////////////////////////////////////////
         // OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         // Called when any entity is attacked
@@ -606,7 +606,7 @@ namespace Oxide.Plugins
                     timer.Once(0.1f, () => EraseCorpse(entity.transform.position));
                 }
                 if(playerZones[cachedPlayer] != null)
-                    playerZones[cachedPlayer].Clear(); 
+                    playerZones[cachedPlayer].Clear();
             }
         }
         void EraseCorpse(Vector3 position)
@@ -623,35 +623,35 @@ namespace Oxide.Plugins
                 corpse.Kill(BaseNetworkable.DestroyMode.None);
             }
         }
-        
+
         /////////////////////////////////////////
         // OnPlayerLoot(PlayerLoot lootInventory,  BasePlayer targetPlayer)
         // Called when a player tries to loot another player
         /////////////////////////////////////////
         void OnPlayerLoot(PlayerLoot lootInventory, object target)
         {
-        	BasePlayer targetPlayer = target as BasePlayer;
-			if (targetPlayer != null) { OnLootPlayer( lootInventory, targetPlayer); return; }
-			OnLootBox( lootInventory.GetComponent("BasePlayer") as BasePlayer, target);
-			
+            BasePlayer targetPlayer = target as BasePlayer;
+            if (targetPlayer != null) { OnLootPlayer( lootInventory, targetPlayer); return; }
+            OnLootBox( lootInventory.GetComponent("BasePlayer") as BasePlayer, target);
+
         }
         void OnLootPlayer(PlayerLoot lootInventory, BasePlayer targetPlayer)
         {
-        	if(hasTag(targetPlayer,"noplayerloot"))
-			{
-				BasePlayer looter = lootInventory.GetComponent("BasePlayer") as BasePlayer;
-				timer.Once(0.01f, () => looter.EndLooting());
-			}
+            if(hasTag(targetPlayer,"noplayerloot"))
+            {
+                BasePlayer looter = lootInventory.GetComponent("BasePlayer") as BasePlayer;
+                timer.Once(0.01f, () => looter.EndLooting());
+            }
         }
         void OnLootBox(BasePlayer looter, object target)
         {
-        	if(hasTag(looter,"noboxloot"))
-			{
-				timer.Once(0.01f, () => looter.EndLooting());
-			}
+            if(hasTag(looter,"noboxloot"))
+            {
+                timer.Once(0.01f, () => looter.EndLooting());
+            }
         }
-        
-		/////////////////////////////////////////
+
+        /////////////////////////////////////////
         // CanBeWounded(BasePlayer player)
         // Called from the Kits plugin (Reneb) when trying to redeem a kit
         /////////////////////////////////////////
@@ -660,9 +660,9 @@ namespace Oxide.Plugins
             if (hasTag(player, "nowounded")) { return false; }
             return null;
         }
-		
+
         /////////////////////////////////////////
-        // Outside Plugin Hooks 
+        // Outside Plugin Hooks
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -735,7 +735,7 @@ namespace Oxide.Plugins
             }
 
             if (position != default(Vector3)) { zonedef.Location = new ZoneLocation((Vector3)position, (zonedef.radius != null) ? zonedef.radius : "20"); }
-            
+
             zonedefinitions[ZoneID] = zonedef;
             storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
             SaveData();
@@ -746,7 +746,7 @@ namespace Oxide.Plugins
         bool EraseZone(string ZoneID)
         {
             if (zonedefinitions[ZoneID] == null) return false;
-            
+
             storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
             zonedefinitions[ZoneID] = null;
             SaveData();
@@ -799,14 +799,14 @@ namespace Oxide.Plugins
             Zone targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             RemoveFromWhitelist(targetZone, player);
-            return true; 
+            return true;
         }
         bool RemovePlayerFromZoneKeepinlist(string ZoneID, BasePlayer player)
         {
             Zone targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             RemoveFromKeepinlist(targetZone, player);
-            return true; 
+            return true;
         }
 
         void ShowZone(BasePlayer player, string ZoneID)
@@ -838,7 +838,7 @@ namespace Oxide.Plugins
 
         void NewZone(ZoneDefinition zonedef)
         {
-            
+
             if (zonedef == null) return;
             var newgameObject = new UnityEngine.GameObject();
             var newZone = newgameObject.AddComponent<Zone>();
@@ -925,7 +925,7 @@ namespace Oxide.Plugins
         {
             if (playerZones[player] == null) playerZones[player] = new List<Zone>();
             if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
-            
+
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
             if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player) && !zone.keepInList.Contains(player)) EjectPlayer(zone, player);
             Interface.CallHook("OnEnterZone", zone.info.ID, player);
@@ -940,7 +940,7 @@ namespace Oxide.Plugins
 
         static void EjectPlayer(Zone zone, BasePlayer player)
         {
-            
+
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
