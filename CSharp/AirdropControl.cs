@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System.Reflection;
 using System;
@@ -9,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("AirdropControl", "Reneb", "1.1.5")]
+    [Info("AirdropControl", "Reneb", "1.1.6", ResourceId = 804)]
     class AirdropControl : RustPlugin
     {
         private FieldInfo CPstartPos;
