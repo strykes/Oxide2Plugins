@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -9,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Building Owners", "Reneb", "2.1.2")]
+    [Info("Building Owners", "Reneb", "2.1.3", ResourceId = 682)]
     class BuildingOwners : RustPlugin
     {
     	private static DateTime epoch;
