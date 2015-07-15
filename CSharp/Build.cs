@@ -7,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.17")]
+    [Info("Build", "Reneb", "1.0.18", ResourceId = 715)]
     class Build : RustPlugin
     { 
         class BuildPlayer : MonoBehaviour
