@@ -16,7 +16,7 @@ namespace Oxide.Plugins
         /// FIELDS
         ////////////////////////////////////////////
         static RustServerManagement management;
-         
+
         StoredData storedData; 
 
         static Hash<string, ZoneDefinition> zonedefinitions = new Hash<string, ZoneDefinition>();
@@ -29,7 +29,7 @@ namespace Oxide.Plugins
         public FieldInfo[] allZoneFields;
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
-         
+
         /////////////////////////////////////////
         /// Cached Fields, used to make the plugin faster
         /////////////////////////////////////////
@@ -508,7 +508,7 @@ namespace Oxide.Plugins
             if (zonedefinitions[ZoneID] == null) return false;
             storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
             zonedefinitions[ZoneID] = null;
-            
+
             SaveData();
             RefreshZone(ZoneID);
             return true;
@@ -608,7 +608,7 @@ namespace Oxide.Plugins
                             if (pair.Value.Contains(gameObj)) playerZones[pair.Key].Remove(gameObj);
                         }
                         GameObject.Destroy(gameObj);
-                        
+
                         break;
                     }
                 }

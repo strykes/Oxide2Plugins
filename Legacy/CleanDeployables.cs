@@ -121,7 +121,7 @@ namespace Oxide.Plugins
             }
             SendReply(netuser, string.Format("You've successfully cleaned {0} {1}.", totalCleaned.ToString(), args[0]));
         }
-        
+
         bool shouldDestroy(Vector3 position, bool all)
         {
             if (all) return true;
@@ -210,4 +210,4 @@ namespace Oxide.Plugins
         }
     }
 }
- 
+

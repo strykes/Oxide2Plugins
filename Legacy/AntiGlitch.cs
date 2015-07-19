@@ -185,7 +185,7 @@ namespace Oxide.Plugins
                 ConsoleNetworker.SendClientCommand(player.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe("You have been detected Rock Glitching! Die!"));
                 TakeDamage.KillSelf(player.controllable.GetComponent<Character>());
             }
-            
+
         }
         static void AntiGlitchBroadcastAdmins(string message)
         {
@@ -315,7 +315,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
-            
+
         }
         void OnStructurePlaced(StructureComponent component, IStructureComponentItem structureComponentItem)
         {
@@ -376,4 +376,4 @@ namespace Oxide.Plugins
         }
     }
 }
- 
+

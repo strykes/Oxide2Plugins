@@ -6,7 +6,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Copy Paste", "Reneb & VVoid", "2.2.6")]
+    [Info("Copy Paste", "Reneb & VVoid", "2.2.6", ResourceId = 629)]
     class CopyPaste : RustPlugin
     {
         private MethodInfo inventoryClear = typeof(ItemContainer).GetMethod("Clear", BindingFlags.NonPublic | BindingFlags.Instance);

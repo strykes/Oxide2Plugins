@@ -10,7 +10,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Save", "Reneb", "2.0.1")]
+    [Info("Save", "Reneb", "2.0.1", ResourceId = 710)]
     class Save : RustPlugin
     {
         private int saveAuth;

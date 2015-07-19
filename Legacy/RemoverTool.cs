@@ -228,7 +228,7 @@ namespace Oxide.Plugins
                     if(!deployables.ContainsKey(gameObj.name))
                         deployables.Add(gameObj.name, true);
                 } 
-             
+
             return deployables;
         }
         static Dictionary<string, object>  GetStructureList()
@@ -243,7 +243,7 @@ namespace Oxide.Plugins
                     if (!structures.ContainsKey(gameObj.name))
                         structures.Add(gameObj.name, true);
                 }
-                
+
             return structures;
         }
         static Dictionary<string,object> GetBlueprints()

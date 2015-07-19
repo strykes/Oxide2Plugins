@@ -17,7 +17,7 @@ namespace Oxide.Plugins
     [Info("DeathMessages", "Reneb", "1.0.0")]
     class DeathMessages : RustLegacyPlugin
     {
-        
+
         /////////////////////////
         // Config Management
         /////////////////////////
@@ -104,4 +104,4 @@ namespace Oxide.Plugins
         }
     }
 }
- 
+

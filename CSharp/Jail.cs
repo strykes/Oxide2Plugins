@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Jail", "Reneb", "2.0.5")]
+    [Info("Jail", "Reneb", "2.0.5", ResourceId = 794)]
     class Jail : RustPlugin
     {
         [PluginReference] Plugin ZoneManager;
@@ -230,10 +230,10 @@ namespace Oxide.Plugins
             if (Spawns == null) { Puts(NoSpawnDatabase); return null; }
             if (spawnfile == null) { Puts(NoSpawnFile); return null; }
             var count = Spawns.Call("GetSpawnsCount", spawnfile);
-            
+
             if (count is bool) return null;
             if (Convert.ToInt32(count) == 0) { Puts(EmptySpawnFile); return null; }
-            
+
             return Spawns.Call("GetRandomSpawn", spawnfile, count);
         }
 
@@ -264,7 +264,7 @@ namespace Oxide.Plugins
 
         int CurrentTime() { return System.Convert.ToInt32(System.DateTime.UtcNow.Subtract(epoch).TotalSeconds); }
 
-        
+
         private object FindPlayer(string tofind)
         {
             if (tofind.Length == 17)

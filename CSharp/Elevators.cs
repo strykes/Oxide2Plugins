@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Elevators", "Reneb", "1.0.1")]
+    [Info("Elevators", "Reneb", "1.0.1", ResourceId = 983)]
     class Elevators : RustPlugin
     {
         [PluginReference]
@@ -83,7 +83,7 @@ namespace Oxide.Plugins
                 this.PrefabName = block.blockDefinition.fullName;
             }
         }
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class WaypointInfo
         ///  Waypoint information, position & speed
         ///  public => will be saved in the data file
@@ -177,7 +177,7 @@ namespace Oxide.Plugins
 
             public void SetInfo(ElevatorInfo info)
             {
-               
+
                 this.info = info;
                 var cwaypoints = Interface.CallHook("GetWaypointsList", this.info.WaypointsName);
                 if (cwaypoints == null)
@@ -212,7 +212,7 @@ namespace Oxide.Plugins
                 trigger = block.GetComponentInChildren<MeshCollider>().gameObject.AddComponent<TriggerBase>();
                 trigger.gameObject.name = "Elevator";
                 var newlayermask = new UnityEngine.LayerMask();
-                newlayermask.value = 133120;   
+                newlayermask.value = 133120;
                 trigger.interestLayers = newlayermask;
                 trigger.gameObject.layer = UnityEngine.LayerMask.NameToLayer("Trigger");
                 spawnedElevators.Add(this);
@@ -220,7 +220,7 @@ namespace Oxide.Plugins
             void Awake()
             {
                 enabled = false;
-            } 
+            }
             void OnDestroy()
             {
                 if (this.block != null)
@@ -229,7 +229,7 @@ namespace Oxide.Plugins
                     this.block.KillMessage();
                 }
                 if (this.trigger != null) GameObject.Destroy(this.trigger);
-            } 
+            }
             void FixedUpdate()
             {
                 if (secondsTaken == 0f) GetNextPath();
@@ -260,14 +260,14 @@ namespace Oxide.Plugins
                 if (block.transform.position == waypoints[currentWaypoint].GetPosition()) { DeactivateMovement(); Invoke("ActivateMovement", waypoints[currentWaypoint].GetSpeed()); return; }
             }
             public void SetMovementPoint(Vector3 startpos, Vector3 endpos, float s)
-            { 
+            {
                 StartPos = startpos;
                 EndPos = endpos;
                 if (StartPos != EndPos)
                     secondsToTake = Vector3.Distance(EndPos, StartPos) / s;
                 secondsTaken = 0f;
                 waypointDone = 0f;
-            }  
+            }
             public void ActivateMovement()
             {
                 enabled = true;
@@ -288,7 +288,7 @@ namespace Oxide.Plugins
                     if (!ele.collidingPlayers.Contains(entity))
                         ele.collidingPlayers.Add(entity);
                     ele.ActivateMovement();
-                } 
+                }
             }
         }
         void OnEntityLeave(TriggerBase triggerbase, BaseEntity entity)
@@ -324,20 +324,20 @@ namespace Oxide.Plugins
             emptyDamageType = new DamageTypeList();
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadData();
-        } 
-        void Unload() 
+        }
+        void Unload()
         {
             var objects = GameObject.FindObjectsOfType(typeof(Elevator));
             if (objects != null)
                 foreach (Elevator gameObj in objects)
                 {
                     GameObject.Destroy(gameObj);
-                } 
+                }
             foreach (Elevator ele in spawnedElevators)
             {
-                if(ele != null) 
+                if(ele != null)
                     GameObject.Destroy(ele.gameObject);
-            }                    
+            }
         }
         void OnServerInitialized()
         {
@@ -358,7 +358,7 @@ namespace Oxide.Plugins
             block.transform.rotation = rotation;
             block.gameObject.SetActive(true);
             block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
-            block.Spawn(true); 
+            block.Spawn(true);
             block.SetGrade(NumToGrade(grade));
             block.health = block.MaxHealth();
             block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
@@ -428,10 +428,10 @@ namespace Oxide.Plugins
         {
             if (!hasPermission(player)) { SendReply(player, "You don't have access to this command"); return; }
             if (args.Length < 2)
-            { 
+            {
                 SendReply(player, "/elevator_add NAME WAYPOINTS");
                 return;
-            } 
+            }
             var waypoints = Waypoints.Call("GetWaypointsList", args[1]);
             if(waypoints == null)
             {
@@ -447,7 +447,7 @@ namespace Oxide.Plugins
             if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint)) return;
             Debug.Log(closestEnt.ToString());
             BuildingBlock block = ((Collider)closestEnt).GetComponentInParent<BuildingBlock>();
-            if (block == null) 
+            if (block == null)
             {
                 SendReply(player, "What you are looking at is not a building block");
                 return;
@@ -456,7 +456,7 @@ namespace Oxide.Plugins
             if (elevators[newelevatorinfo.Name] != null) storedData.Elevators.Remove(elevators[newelevatorinfo.Name]);
             elevators[newelevatorinfo.Name] = newelevatorinfo;
             storedData.Elevators.Add(elevators[newelevatorinfo.Name]);
-            SaveData(); 
+            SaveData();
             SendReply(player, "You've successfully created a new elevator");
             NewElevator(elevators[newelevatorinfo.Name]);
         }

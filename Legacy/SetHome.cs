@@ -31,7 +31,7 @@ namespace Oxide.Plugins
 
         Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         Vector3 UnderPlayerAdjustement = new Vector3(0f, -1.15f, 0f);
-         
+
         NetUser cachedUser;
         string cachedString;
         string cachedUserid;

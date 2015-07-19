@@ -44,7 +44,7 @@ namespace Oxide.Plugins
             CheckCfg<List<object>>("Blueprints: Block List", ref blockedBlueprints);
             SaveConfig();
         }
-         
+
 
         object OnBlueprintUse(BlueprintDataBlock bpdb, IBlueprintItem item)
         {
@@ -74,4 +74,4 @@ namespace Oxide.Plugins
         } 
     }
 }
- 
+

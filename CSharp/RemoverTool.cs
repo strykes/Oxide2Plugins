@@ -11,10 +11,10 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb & Mughisi & Cryptoc", "2.2.13")]
+    [Info("RemoverTool", "Reneb & Mughisi & Cryptoc", "2.2.13", ResourceId = 651)]
     class RemoverTool : RustPlugin
     {
-    	private static DateTime epoch;
+        private static DateTime epoch;
         private bool Changed;
 
         private int removeAuth;
@@ -36,15 +36,15 @@ namespace Oxide.Plugins
         private string noToolCupboard;
         private string noToolCupboardAccess;
         private string noTargetFound;
-		private string canRemove;
-		private string canRemoveAdmin;
-		private string canRemoveAll;
-		private string canRemoveGive;
+        private string canRemove;
+        private string canRemoveAdmin;
+        private string canRemoveAll;
+        private string canRemoveGive;
         private string helpBasic;
         private string helpAdmin;
         private string helpAll;
         private string helpRay;
-		private MethodInfo isInstalled;
+        private MethodInfo isInstalled;
         private MethodInfo hasFriend;
 
         private Dictionary<BasePlayer, double> deactivationTimer;
@@ -53,11 +53,11 @@ namespace Oxide.Plugins
         private List<BasePlayer> todelete;
         private FieldInfo buildingPrivlidges;
         private FieldInfo serverinput;
-		private Library RustIO;
+        private Library RustIO;
 
-        void Loaded() 
+        void Loaded()
         {
-        	epoch = new System.DateTime(1970, 1, 1);
+            epoch = new System.DateTime(1970, 1, 1);
             Changed = false;
             deactivationTimer = new Dictionary<BasePlayer, double>();
             removing = new Dictionary<BasePlayer, string>();
@@ -65,39 +65,39 @@ namespace Oxide.Plugins
             nextCheck = CurrentTime() + 1.0;
             buildingPrivlidges = typeof(BasePlayer).GetField("buildingPrivlidges", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             if (!permission.PermissionExists("canRemove")) permission.RegisterPermission("canRemove", this);
-			if (!permission.PermissionExists("canRemoveAdmin")) permission.RegisterPermission("canRemoveAdmin", this);
-			if (!permission.PermissionExists("canRemoveAll")) permission.RegisterPermission("canRemoveAll", this);
-			if (!permission.PermissionExists("canRemoveGive")) permission.RegisterPermission("canRemoveGive", this);
+            if (!permission.PermissionExists("canRemoveAdmin")) permission.RegisterPermission("canRemoveAdmin", this);
+            if (!permission.PermissionExists("canRemoveAll")) permission.RegisterPermission("canRemoveAll", this);
+            if (!permission.PermissionExists("canRemoveGive")) permission.RegisterPermission("canRemoveGive", this);
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadVariables();
-			InitializeRustIO();
-			
+            InitializeRustIO();
+
         }
-		
-		private void InitializeRustIO() {
-			if(!useRustIO) {
-				RustIO = null;
-				return;
-			}
+
+        private void InitializeRustIO() {
+            if(!useRustIO) {
+                RustIO = null;
+                return;
+            }
             RustIO = Interface.GetMod().GetLibrary<Library>("RustIO");
             if (RustIO == null || (isInstalled = RustIO.GetFunction("IsInstalled")) == null || (hasFriend = RustIO.GetFunction("HasFriend")) == null) {
                 RustIO = null;
                 Puts("{0}: {1}", Title, "Rust:IO is not present. You need to install Rust:IO first in order to use this plugin!");
             }
         }
-		
-		private bool HasFriend(string playerId, string friendId) {
+
+        private bool HasFriend(string playerId, string friendId) {
             if (RustIO == null) return false;
             return (bool)hasFriend.Invoke(RustIO, new object[] { playerId, friendId });
         }
-		private bool RustIOIsInstalled() {
+        private bool RustIOIsInstalled() {
             if (RustIO == null) return false;
             return (bool)isInstalled.Invoke(RustIO, new object[] {});
         }
-		
+
         void OnServerInitialized()
         {
-            
+
         }
         double CurrentTime()
         {
@@ -144,16 +144,16 @@ namespace Oxide.Plugins
             noToolCupboardAccess = Convert.ToString(GetConfig("Messages", "noToolCupboardAccess", "You need access to all Tool Cupboards around you to do this"));
             noTargetFound = Convert.ToString(GetConfig("Messages", "noTargetFound", "Target player not found"));
 
-			canRemove = Convert.ToString(GetConfig("permissions", "remove", "canRemove"));
-			canRemoveAdmin = Convert.ToString(GetConfig("permissions", "removeAdmin", "canRemoveAdmin"));
-			canRemoveAll = Convert.ToString(GetConfig("permissions", "removeAll", "canRemoveAll"));
-			canRemoveGive = Convert.ToString(GetConfig("permissions", "removeGive", "canRemoveGive"));
+            canRemove = Convert.ToString(GetConfig("permissions", "remove", "canRemove"));
+            canRemoveAdmin = Convert.ToString(GetConfig("permissions", "removeAdmin", "canRemoveAdmin"));
+            canRemoveAll = Convert.ToString(GetConfig("permissions", "removeAll", "canRemoveAll"));
+            canRemoveGive = Convert.ToString(GetConfig("permissions", "removeGive", "canRemoveGive"));
 
             helpBasic = Convert.ToString(GetConfig("Messages", "helpBasic", "/remove Optional:Time - To remove start removing"));
             helpAdmin = Convert.ToString(GetConfig("Messages", "helpAdmin", "/remove admin Optional:Time - To remove start removing anything"));
             helpAll = Convert.ToString(GetConfig("Messages", "helpAll", "/remove all Optional:Time - To remove start removing an entire building"));
             helpRay = Convert.ToString(GetConfig("Messages", "helpRay", "/rayremove - To remove the entire building that you are looking at"));
-            
+
 
             if (Changed)
             {
@@ -190,7 +190,7 @@ namespace Oxide.Plugins
                             checkFrom.Add(fbuildingblock.transform.position);
                             if (!fbuildingblock.isDestroyed)
                                 fbuildingblock.KillMessage();
-                        } 
+                        }
                         else if (hit.GetComponentInParent<BasePlayer>() == null && hit.GetComponentInParent<BaseEntity>() != null)
                         {
                             if(!(hit.GetComponentInParent<BaseEntity>().isDestroyed))
@@ -316,18 +316,18 @@ namespace Oxide.Plugins
                             return true;
                         if (useRustIO && RustIOIsInstalled())
                         {
-                        	if(HasFriend(ownerid, player.userID.ToString()))
-							{
-								if (Vector3.Distance(player.transform.position, entity.transform.position) < 3f)
-									return true;
-								else
-									SendReply(player, tooFar);
-							}
-                        }                    
+                            if(HasFriend(ownerid, player.userID.ToString()))
+                            {
+                                if (Vector3.Distance(player.transform.position, entity.transform.position) < 3f)
+                                    return true;
+                                else
+                                    SendReply(player, tooFar);
+                            }
+                        }
                     }
                 }
             }
-			if (useToolCupboard)
+            if (useToolCupboard)
             {
                 if (hasTotalAccess(player))
                 {
@@ -343,7 +343,7 @@ namespace Oxide.Plugins
         {
             if (CurrentTime() >= nextCheck)
             {
-                var currenttime = CurrentTime();                
+                var currenttime = CurrentTime();
                 if (removing.Count > 0)
                 {
                     foreach (KeyValuePair<BasePlayer, string> pair in removing)
@@ -419,15 +419,15 @@ namespace Oxide.Plugins
         }
         bool hasAccess(BasePlayer player, string ttype)
         {
-			string uid = Convert.ToString(player.userID);
+            string uid = Convert.ToString(player.userID);
             if (ttype == "normal" && permission.UserHasPermission(uid, canRemove))
-				return true;
+                return true;
             if (ttype == "admin" && permission.UserHasPermission(uid, canRemoveAdmin))
-				return true;
+                return true;
             if (ttype == "all" && permission.UserHasPermission(uid, canRemoveAll))
-				return true;
+                return true;
             if (ttype == "target" && permission.UserHasPermission(uid, canRemoveGive))
-				return true;
+                return true;
 
             if (ttype == "normal" && player.net.connection.authLevel >= removeAuth)
                 return true;

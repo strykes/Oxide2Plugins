@@ -9,7 +9,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("BlockBlockElevators", "Reneb", "1.0.1")]
+    [Info("BlockBlockElevators", "Reneb", "1.0.1", ResourceId = 870)]
     class BlockBlockElevators : RustPlugin
     {
 

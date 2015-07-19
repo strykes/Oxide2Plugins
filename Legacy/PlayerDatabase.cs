@@ -83,9 +83,9 @@ namespace Oxide.Plugins
                 sqlite.Append("PRAGMA encoding = 'UTF - 8'"); 
                 Interface.Oxide.GetLibrary<Ext.SQLite.Libraries.SQLite>("SQLite").Query(sqlite, sqconnection);
                 sqlite.Append("SELECT steamid FROM playerdatabase");
-                
+
                 IEnumerable<Dictionary<string, object>> res = Interface.Oxide.GetLibrary<Ext.SQLite.Libraries.SQLite>("SQLite").Query(sqlite, sqconnection);
-                
+
                 foreach (Dictionary<string, object> obj in res)
                 {
                     foreach (object key in obj.Values)
@@ -95,13 +95,13 @@ namespace Oxide.Plugins
                 }
                 sqlite.Append("SELECT * FROM playerdatabase");
                 res = Interface.Oxide.GetLibrary<Ext.SQLite.Libraries.SQLite>("SQLite").Query(sqlite, sqconnection);
-                
+
                 foreach (Dictionary<string, object> obj in res)
                 {
                     Debug.Log(obj.ToString());
                     foreach (string key in obj.Keys)
                     {
-                        
+
                         AvaibleKeys.Add(key.ToString());
                     }
                     break;
@@ -258,7 +258,7 @@ namespace Oxide.Plugins
                     Interface.Oxide.GetLibrary<Ext.SQLite.Libraries.SQLite>("SQLite").Query(sqlite, sqconnection);
                     AvaibleKeys.Add(key);
                 }
-                
+
                 if (!AvaibleUserID.Contains(userid))
                 {
                     query = string.Format("INSERT INTO {0} (steamid) VALUES ('{1}');", "playerdatabase", userid);
@@ -267,7 +267,7 @@ namespace Oxide.Plugins
                     Debug.Log(test2.ToString());
                     AvaibleUserID.Add(userid);
                 }
-                
+
                 query = string.Format("UPDATE {0} SET {2} = '{3}' WHERE steamid = '{1}';", "playerdatabase", userid, key, value.ToString());
                 sqlite.Append(query);
                 var test = Interface.Oxide.GetLibrary<Ext.SQLite.Libraries.SQLite>("SQLite").Update(sqlite, sqconnection);
@@ -297,9 +297,9 @@ namespace Oxide.Plugins
                 query = string.Format("UPDATE `{0}` SET `{2}` = '{3}' WHERE `{0}`.`steamid` = {1};", mysqlTable, userid, key, value.ToString());
                 sql = Interface.Oxide.GetLibrary<Ext.MySql.Libraries.MySql>("MySql").NewSql();
                 sql.Append(query);
-                
+
                 Interface.Oxide.GetLibrary<Ext.MySql.Libraries.MySql>("MySql").Query(sql, connection);
-                
+
             }
             else
             {

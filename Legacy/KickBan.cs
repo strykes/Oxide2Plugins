@@ -114,7 +114,7 @@ namespace Oxide.Plugins
             if(!broadcastBan) ConsoleNetworker.SendClientCommand(netuser.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format(banMessage, cachedSteamid, cachedName, cachedReason)));
             else Broadcast(string.Format(banMessage, cachedSteamid, cachedName, cachedReason));
             Interface.CallHook("cmdBan", cachedSteamid, cachedName, cachedReason);
-            
+
         }
         [ChatCommand("kick")]
         void cmdChatKick(NetUser netuser, string command, string[] args)
@@ -149,14 +149,14 @@ namespace Oxide.Plugins
             if(!broadcastKick) ConsoleNetworker.SendClientCommand(netuser.playerClient.netPlayer, "chat.add Oxide " + Facepunch.Utility.String.QuoteSafe(string.Format(kickMessage, cachedSteamid, cachedName, cachedReason)));
             else Broadcast(string.Format(kickMessage, cachedSteamid, cachedName, cachedReason));
             Interface.CallHook("cmdKick", cachedSteamid, cachedName, cachedReason);
-            
+
         }
         [ChatCommand("unban")]
         void cmdChatUnban(NetUser netuser, string command, string[] args)
         {
             if (!hasAccess(netuser, "canunban")) { SendReply(netuser, notAllowed); return; }
             if (args.Length == 0) { SendReply(netuser, "/unban STEAMID|PLAYERNAME"); return; }
-             
+
             var targetunban = args[0];
             var bannedusers = bannedUsers.GetValue(null);
             MethodInfo Enumerator = bannedusers.GetType().GetMethod("GetEnumerator");
