@@ -753,7 +753,7 @@ namespace Oxide.Plugins
             RefreshZone(ZoneID);
             return true;
         }
-        List<string> ZoneFieldList()
+        List<string> ZoneFieldListRaw()
         {
         	List<string> zonefieldlist = new List<string>();
         	foreach (FieldInfo fieldinfo in allZoneFields)
