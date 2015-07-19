@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.1.0", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.1.2", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -26,10 +26,13 @@ namespace Oxide.Plugins
         [PluginReference]
         Plugin ZoneManager;
 
+        [PluginReference]
+        Plugin DeadPlayersList;
+
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
-
+        
 
         private bool EventOpen;
         private bool EventStarted;
@@ -44,7 +47,7 @@ namespace Oxide.Plugins
 
         private int stackable;
         private int giveamount;
-
+        
 
 
         ////////////////////////////////////////////////////////////
@@ -230,10 +233,9 @@ namespace Oxide.Plugins
         {
             Interface.CallHook("RegisterGame");
             SelectSpawnfile(defaultSpawnfile);
-            Debug.Log(defaultSpawnfile);
-        }
+        }  
         void Unload()
-        {
+        { 
             EndEvent();
             var objects = GameObject.FindObjectsOfType(typeof(EventPlayer));
             if (objects != null)
@@ -241,7 +243,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-
+        
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -411,9 +413,9 @@ namespace Oxide.Plugins
                 if (!(bool)Kits.Call("isKit", rewards[rewardname].item)) return "The kit doesn't exist anymore";
                 for (int i = 1; i < amount; i++)
                 {
-                    Kits.Call("GiveKit", rewards[rewardname].item);
+                    Kits.Call("GiveKit", player, rewards[rewardname].item);
                 }
-                return (bool)Kits.Call("GiveKit", rewards[rewardname].item);
+                return (bool)Kits.Call("GiveKit", player, rewards[rewardname].item);
             }
             var definition = ItemManager.FindItemDefinition(rewards[rewardname].item);
             if (definition == null)
@@ -544,6 +546,17 @@ namespace Oxide.Plugins
         private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
 
+        private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
+        private static string MessageRewardCurrent = "You have {0} tokens";
+        private static string MessageRewardHelp = "/reward \"RewardName\" Amount";
+        private static string MessageRewardItem = "Reward Name: {0} - Cost: <color={4}>{1}</color> - {2} - Amount: {3}";
+        private static string MessageRewardWrong = "This reward doesn't exist";
+        private static string MessageRewardNegative = "The amount to buy can't be 0 or negative.";
+        private static string MessageRewardNotEnoughTokens = "You don't have enough tokens to buy {1} of {0}.";
+
+        private static string noPlayerFound = "No players found";
+        private static string multipleNames = "Multiple players found";
+
         private static string defaultGame = "Deathmatch";
         private static string defaultSpawnfile = "deathmatchspawns";
         private static int eventAuth = 1;
@@ -567,6 +580,8 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
             CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
 
+            CheckCfg<string>("Messages - Error - No players found", ref noPlayerFound);
+            CheckCfg<string>("Messages - Error - Multiple players found", ref multipleNames);
 
             CheckCfg<string>("Messages - Status - Closed & End", ref MessagesEventStatusClosedEnd);
             CheckCfg<string>("Messages - Status - Closed & Started", ref MessagesEventStatusClosedStarted);
@@ -580,6 +595,14 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
             CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
             CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
+
+            CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
+            CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
+            CheckCfg<string>("Messages - Reward - Help", ref MessageRewardHelp);
+            CheckCfg<string>("Messages - Reward - Reward Description", ref MessageRewardItem);
+            CheckCfg<string>("Messages - Reward - Doesnt Exist", ref MessageRewardWrong);
+            CheckCfg<string>("Messages - Reward - Negative Amount", ref MessageRewardNegative);
+            CheckCfg<string>("Messages - Reward - Not Enough Tokens", ref MessageRewardNotEnoughTokens);
 
             SaveConfig();
         }
@@ -710,8 +733,9 @@ namespace Oxide.Plugins
                 player.CancelInvoke("WoundingEnd");
                 player.health = 50f;
             }
-            SendReply(player, string.Format("You currently have {0} for the /reward shop", GetTokens(player.userID.ToString()).ToString()));
+            SendReply(player, string.Format(MessageRewardCurrentReward, GetTokens(player.userID.ToString()).ToString()));
         }
+        
         void EjectAllPlayers()
         {
             foreach (EventPlayer eventplayer in EventPlayers)
@@ -825,8 +849,7 @@ namespace Oxide.Plugins
                 if (EventPlayers.Contains(player.GetComponent<EventPlayer>()))
                     return MessagesEventAlreadyJoined;
             }
-            if (!EventOpen)
-                return "The Event is currently closed.";
+
             object success = Interface.CallHook("CanEventJoin", new object[] { player });
             if (success is string)
             {
@@ -848,6 +871,13 @@ namespace Oxide.Plugins
             BroadcastToChat(string.Format(MessagesEventJoined, player.displayName.ToString(), EventPlayers.Count.ToString()));
             Interface.CallHook("OnEventJoinPost", new object[] { player });
             return true;
+        }
+        object CanEventJoin(BasePlayer player)
+        {
+        	if(!EventOpen)
+        		return "The Event is currently closed.";
+        		
+        	return null;
         }
         object LeaveEvent(BasePlayer player)
         {
@@ -929,7 +959,7 @@ namespace Oxide.Plugins
                 EventGames.Add(name);
             Puts(string.Format("Registered event game: {0}", name));
             Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
-
+            
             if (EventGameName == name)
             {
                 object success = SelectEvent(EventGameName);
@@ -948,6 +978,78 @@ namespace Oxide.Plugins
             if (!EventStarted) return null;
             EventPlayer eplayer = player.GetComponent<EventPlayer>();
             if (eplayer == null) return null;
+            return false;
+        }
+
+        Dictionary<string, string> deadPlayers = new Dictionary<string, string>();
+        bool FindPlayer(string name, out string targetid, out string targetname)
+        {
+            ulong userid;
+            targetid = string.Empty;
+            targetname = string.Empty;
+            if (name.Length == 17 && ulong.TryParse(name, out userid))
+            {
+                targetid = name;
+                return true;
+            }
+
+            foreach (BasePlayer player in Resources.FindObjectsOfTypeAll(typeof(BasePlayer)))
+            {
+                if (player.displayName == name)
+                {
+                    targetid = player.userID.ToString();
+                    targetname = player.displayName;
+                    return true;
+                }
+                if (player.displayName.Contains(name))
+                {
+                    if (targetid == string.Empty)
+                    {
+                        targetid = player.userID.ToString();
+                        targetname = player.displayName;
+                    }
+                    else
+                    {
+                        targetid = multipleNames;
+                    }
+                }
+            }
+            if (targetid == multipleNames)
+                return false;
+            if (targetid != string.Empty)
+                return true;
+            targetid = noPlayerFound;
+            if (DeadPlayersList == null)
+                return false;
+            deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
+            if (deadPlayers == null)
+                return false;
+
+            foreach (KeyValuePair<string, string> pair in deadPlayers)
+            {
+                if (pair.Value == name)
+                {
+                    targetid = pair.Key;
+                    targetname = pair.Value;
+                    return true;
+                }
+                if (pair.Value.Contains(name))
+                {
+                    if (targetid == noPlayerFound)
+                    {
+                        targetid = pair.Key;
+                        targetname = pair.Value;
+                    }
+                    else
+                    {
+                        targetid = multipleNames;
+                    }
+                }
+            }
+            if (targetid == multipleNames)
+                return false;
+            if (targetid != noPlayerFound)
+                return true;
             return false;
         }
 
@@ -985,6 +1087,7 @@ namespace Oxide.Plugins
             else message = MessagesEventStatusClosedStarted;
             SendReply(player, string.Format(message, EventGameName));
         }
+        
 
         [ChatCommand("reward")]
         void cmdEventReward(BasePlayer player, string command, string[] args)
@@ -992,32 +1095,32 @@ namespace Oxide.Plugins
             int currenttokens = GetTokens(player.userID.ToString());
             if (args.Length == 0)
             {
-                SendReply(player, string.Format("You have {0} tokens", currenttokens.ToString()));
-                SendReply(player, "/reward \"RewardName\" Amount");
+                SendReply(player, string.Format(MessageRewardCurrent, currenttokens.ToString()));
+                SendReply(player, MessageRewardHelp);
                 foreach (KeyValuePair<string, Reward> pair in rewards)
                 {
                     string color = "green";
                     if (pair.Value.GetCost() > currenttokens)
                         color = "red";
-                    SendReply(player, string.Format("Reward Name: {0} - Cost: <color={4}>{1}</color> - {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString() ));
+                    SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString() ));
                 }
                 return;
             }
             if (rewards[args[0]] == null)
             {
-                SendReply(player, "This reward doesn't exist");
+                SendReply(player, MessageRewardWrong);
                 return;
             }
             int amount = 1;
             if (args.Length > 1) int.TryParse(args[1], out amount);
             if (amount < 1)
             {
-                SendReply(player, "The amount to buy can't be 0 or negative.");
+                SendReply(player, MessageRewardNegative);
                 return;
             }
             if (rewards[args[0]].GetCost() * amount > currenttokens)
             {
-                SendReply(player, string.Format("You don't have enough tokens to buy {1} of {0}.", args[0], amount.ToString()));
+                SendReply(player, string.Format(MessageRewardNotEnoughTokens, args[0], amount.ToString()));
                 return;
             }
             var success = GiveReward(player, args[0], amount);
@@ -1114,10 +1217,10 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return;
+                return; 
             }
             defaultSpawnfile = arg.Args[0];
-            SaveConfig();
+            SaveConfig(); 
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.zone")]
@@ -1140,7 +1243,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
-
+            
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
         }
         [ConsoleCommand("event.reward")]
@@ -1150,11 +1253,107 @@ namespace Oxide.Plugins
             if (arg.Args == null || arg.Args.Length == 0)
             {
                 SendReply(arg, "Reward Related: event.reward add/list/remove");
-                //SendReply(arg, "Players Related: event.reward set/clear/give/take/check");
+                SendReply(arg, "Players Related: event.reward set/clear/give/take/check");
                 return;
             }
+            string targetid = string.Empty;
+            string targetname = string.Empty;
+            int amount = 0;
+            bool foundtarget;
             switch (arg.Args[0])
             {
+                case "check":
+                    if(arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "event.reward check PLAYERNAME/STEAMID");
+                        return;
+                    }
+                    
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if(!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    SendReply(arg, string.Format("{0} {1} has {2} tokens",targetid, targetname, GetTokens(targetid).ToString()));
+                break;
+                case "clear":
+                    if (arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "You must confirm by saying: event.reward clear yes");
+                        return;
+                    }
+                    if(arg.Args[1] != "yes")
+                    {
+                        SendReply(arg, "You must confirm clearing the players token list by added: yes, at the end.");
+                        return;
+                    }
+                    storedData.Tokens.Clear();
+                    SendReply(arg, "Cleared all player tokens!!!!!");
+                    break;
+                case "set":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward set PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+                    
+                    if(!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    SetTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "give":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward give PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    AddTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "take":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward take PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    RemoveTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
                 case "add":
                     if (arg.Args.Length < 5)
                     {
@@ -1174,7 +1373,6 @@ namespace Oxide.Plugins
                         return;
                     }
 
-                    int amount = 0;
                     if (!int.TryParse(arg.Args[4], out amount))
                     {
                         SendReply(arg, "The amount needs to be a number");
@@ -1246,7 +1444,7 @@ namespace Oxide.Plugins
                     rewards[arg.Args[1]] = null;
                     SendReply(arg, "You've successfully removed this reward");
                  break;
-
+                
 
             }
         }
