@@ -782,13 +782,30 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////// 
         /// OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         /// Called when an entity gets attacked (can be anything, building, animal, player ..)
+        /// deprecated function
         //////////////////////////////////////////////////////
-        void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
+        /*void OnEntityAttacked(BaseCombatEntity entity, HitInfo hitinfo)
         {
             
             if (entity.GetComponent<HumanPlayer>() != null)
             {
                 
+                Interface.CallHook("OnHitNPC", entity.GetComponent<BaseCombatEntity>(), hitinfo);
+                if (entity.GetComponent<HumanPlayer>().invulnerability)
+                {
+                    hitinfo.damageTypes = emptyDamage;
+                    hitinfo.HitMaterial = 0;
+                }
+            }
+        }*/
+        
+        /// REPLACED deprecated function
+        void OnEntityTakeDamage(BaseCombatEntity entity, HitInfo hitinfo)
+        {
+
+            if (entity.GetComponent<HumanPlayer>() != null)
+            {
+
                 Interface.CallHook("OnHitNPC", entity.GetComponent<BaseCombatEntity>(), hitinfo);
                 if (entity.GetComponent<HumanPlayer>().invulnerability)
                 {
