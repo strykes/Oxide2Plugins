@@ -7,7 +7,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.18", ResourceId = 715)]
+    [Info("Build", "Reneb", "1.0.19", ResourceId = 715)]
     class Build : RustPlugin
     {
         class BuildPlayer : MonoBehaviour
@@ -23,6 +23,7 @@ namespace Oxide.Plugins
             public float lastTickPress;
             public float currentHeightAdjustment;
             public string selection;
+            
             void Awake()
             {
                 input = serverinput.GetValue(GetComponent<BasePlayer>()) as InputState;
@@ -35,7 +36,6 @@ namespace Oxide.Plugins
             {
                 if (input.WasJustPressed(BUTTON.FIRE_SECONDARY) && !ispressed)
                 {
-
                     lastTickPress = Time.realtimeSinceStartup;
                     ispressed = true;
                     DoAction(this);
@@ -51,6 +51,17 @@ namespace Oxide.Plugins
                 {
                     ispressed = false;
                 }
+            }
+            public void LoadMsgGui(string Msg)
+            {
+            	if(!useGui) return;
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
+                string send = json.Replace("{msg}", Msg);
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
+            }
+            public void DestroyGui()
+            {
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
             }
         }
         enum SocketType
@@ -73,8 +84,49 @@ namespace Oxide.Plugins
         private static Dictionary<SocketType, object> TypeToType;
         private static List<string> resourcesList;
         private static Dictionary<string, string> animalList;
+        
+        
+        public static string json = @"[  
+			{ 
+				""name"": ""BuildMsg"",
+				""parent"": ""Overlay"",
+				""components"":
+				[
+					{
+						 ""type"":""UnityEngine.UI.Image"",
+						 ""color"":""0.1 0.1 0.1 0.7"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""{xmin} {ymin}"",
+						""anchormax"": ""{xmax} {ymax}""
+						
+					}
+				]
+			},
+			{
+				""parent"": ""BuildMsg"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{msg}"",
+						""fontSize"":15,
+						""align"": ""MiddleCenter"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0 0.1"",
+						""anchormax"": ""1 0.8""
+					}
+				]
+			}
+		]
+		";
+        
+        
         /// CACHED VARIABLES
-        ///
+        /// 
 
         private static Quaternion currentRot;
         private static Vector3 closestHitpoint;
@@ -106,7 +158,14 @@ namespace Oxide.Plugins
         public static float timeForMultiple;
         private static int levelRequired;
         private static bool Changed = false;
-
+		
+		private static bool useGui;
+		private string xmin;
+        private string ymin;
+        private string xmax;
+        private string ymax;
+		
+		
         private object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
@@ -129,6 +188,13 @@ namespace Oxide.Plugins
         {
             timeForMultiple = Convert.ToSingle(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1f));
             levelRequired = Convert.ToInt32(GetConfig("Config", "authLevel Required (1 moderator, 2 admin)", 2));
+            
+            useGui = Convert.ToBoolean(GetConfig("GUI", "activated", true));
+            xmin = Convert.ToString(GetConfig("GUI", "x min", "0.020"));
+            xmax = Convert.ToString(GetConfig("GUI", "x max", "0.980"));
+            ymin = Convert.ToString(GetConfig("GUI", "y min", "0.95"));
+            ymax = Convert.ToString(GetConfig("GUI", "y max", "0.99"));
+
             if (Changed)
             {
                 SaveConfig();
@@ -160,6 +226,7 @@ namespace Oxide.Plugins
             nameToBlockPrefab = new Dictionary<string, string>();
             VectorUP = new Vector3(0f, 1f, 0f);
             if (!permission.PermissionExists("builder")) permission.RegisterPermission("builder", this);
+            json = json.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
         }
 
         /////////////////////////////////////////////////////
@@ -199,7 +266,7 @@ namespace Oxide.Plugins
                 if (resourcefile.Contains("autospawn/animals"))
                 {
                     animalList.Add(resourcefile.Substring(18),resourcefile);
-                }
+                } 
             }
         }
 
@@ -243,7 +310,7 @@ namespace Oxide.Plugins
 
         void InitializeSockets()
         {
-            // PrefabName to SocketType
+            // PrefabName to SocketType 
             nameToSockets = new Dictionary<string, SocketType>();
 
             // Get all possible sockets from the SocketType
@@ -354,14 +421,14 @@ namespace Oxide.Plugins
 
             // Floor Triangles to Wall type
             var FTtoWall = new Dictionary<Vector3, Quaternion>();
-            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
+            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f)); 
             FTtoWall.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
             FTtoWall.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
             FloorTriangleType.Add(SocketType.Wall, FTtoWall);
 
             // Floor Triangles to Floor type is a big fail, need to work on that still
            /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
+            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f)); 
             FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
             FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
             FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
@@ -410,7 +477,7 @@ namespace Oxide.Plugins
                         Puts("================");
                     }*/
                 nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
-            }
+            } 
         }
 
         /////////////////////////////////////////////////////
@@ -533,14 +600,14 @@ namespace Oxide.Plugins
             else
                 block.health = health;
             block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-
+            
         }
 
         /////////////////////////////////////////////////////
         ///  SpawnDeployable()
         ///  Function to spawn a resource (tree, barrel, ores)
         /////////////////////////////////////////////////////
-        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles)
+        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles) 
         {
             UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
             if (newPrefab == null)
@@ -997,6 +1064,7 @@ namespace Oxide.Plugins
             {
                 if (player.GetComponent<BuildPlayer>())
                 {
+                    player.GetComponent<BuildPlayer>().DestroyGui();
                     UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
                     SendReply(player, "Build Tool Deactivated");
                 }
@@ -1005,7 +1073,7 @@ namespace Oxide.Plugins
                 return true;
             }
             return false;
-        }
+        } 
 
         /////////////////////////////////////////////////////
         ///  GetBuildPlayer(BasePlayer player)
@@ -1026,7 +1094,7 @@ namespace Oxide.Plugins
         {
             if (!hasAccess(player)) return;
             if (hasNoArguments(player, args)) return;
-
+            
             if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
             {
                 SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
@@ -1038,7 +1106,7 @@ namespace Oxide.Plugins
                 return;
             }
             BuildPlayer buildplayer = GetBuildPlayer(player);
-
+            
             defaultGrade = 0;
             defaultHealth = -1f;
             heightAdjustment = 0f;
@@ -1052,7 +1120,11 @@ namespace Oxide.Plugins
             buildplayer.currentHealth = defaultHealth;
             buildplayer.currentGrade = GetGrade(defaultGrade);
             buildplayer.currentHeightAdjustment = heightAdjustment;
-            SendReply(player, string.Format("Building Tool AIBuild: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString()));
+
+            var msg = string.Format("Building Tool AIBuild: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
+         
         }
         [ChatCommand("spawn")]
         void cmdChatSpawn(BasePlayer player, string command, string[] args)
@@ -1086,7 +1158,11 @@ namespace Oxide.Plugins
             buildplayer.currentHealth = defaultHealth;
             buildplayer.currentGrade = GetGrade(defaultGrade);
             buildplayer.currentHeightAdjustment = heightAdjustment;
-            SendReply(player, string.Format("Building Tool RawSpawning: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString()));
+
+            var msg = string.Format("Building Tool RawSpawning: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
+            
         }
         [ChatCommand("deploy")]
         void cmdChatDeploy(BasePlayer player, string command, string[] args)
@@ -1113,7 +1189,9 @@ namespace Oxide.Plugins
             buildplayer.currentType = buildType;
             buildplayer.currentHeightAdjustment = heightAdjustment;
 
-            SendReply(player, string.Format("Building Tool Deploying: {0} - Height Adjustment: {1}", buildplayer.currentPrefab, buildplayer.currentHeightAdjustment.ToString()));
+            var msg = string.Format("Building Tool Deploying: {0} - Height Adjustment: {1}", buildplayer.currentPrefab, buildplayer.currentHeightAdjustment.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("erase")]
         void cmdChatErase(BasePlayer player, string command, string[] args)
@@ -1122,6 +1200,7 @@ namespace Oxide.Plugins
             BuildPlayer buildplayer = GetBuildPlayer(player);
             if (buildplayer.currentType != null && buildplayer.currentType == "erase")
             {
+                player.GetComponent<BuildPlayer>().DestroyGui();
                 UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
                 SendReply(player, "Building Tool: Remove Deactivated");
             }
@@ -1129,6 +1208,11 @@ namespace Oxide.Plugins
             {
                 buildplayer.currentType = "erase";
                 SendReply(player, "Building Tool: Remove Activated");
+
+                var msg = "Building Tool: Remove Activated";
+                buildplayer.LoadMsgGui(msg);
+                SendReply(player, msg);
+
             }
         }
         [ChatCommand("plant")]
@@ -1156,7 +1240,9 @@ namespace Oxide.Plugins
             buildplayer.currentType = buildType;
             buildplayer.currentHeightAdjustment = heightAdjustment;
 
-            SendReply(player, string.Format("Building Tool Planting: {0} - HeightAdjustment: {1}", prefabName, buildplayer.currentHeightAdjustment.ToString()));
+            var msg = string.Format("Building Tool Planting: {0} - HeightAdjustment: {1}", prefabName, buildplayer.currentHeightAdjustment.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("animal")]
         void cmdChatAnimal(BasePlayer player, string command, string[] args)
@@ -1183,7 +1269,9 @@ namespace Oxide.Plugins
             buildplayer.currentType = buildType;
             buildplayer.currentHeightAdjustment = heightAdjustment;
 
-            SendReply(player, string.Format("Building Tool Spawning Animals: {0} - HeightAdjustment: {1}", prefabName, heightAdjustment.ToString()));
+            var msg = string.Format("Building Tool Spawning Animals: {0} - HeightAdjustment: {1}", prefabName, heightAdjustment.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("buildup")]
         void cmdChatBuildup(BasePlayer player, string command, string[] args)
@@ -1218,7 +1306,10 @@ namespace Oxide.Plugins
             buildplayer.currentHealth = defaultHealth;
             buildplayer.currentGrade = GetGrade(defaultGrade);
             buildplayer.currentHeightAdjustment = heightAdjustment;
-            SendReply(player, string.Format("Building Tool BuildUP: {0} - Height: {1} - Grade: {2} - Health: {3}", args[0], buildplayer.currentHeightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString()));
+
+            var msg = string.Format("Building Tool BuildUP: {0} - Height: {1} - Grade: {2} - Health: {3}", args[0], buildplayer.currentHeightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("buildgrade")]
         void cmdChatBuilGrade(BasePlayer player, string command, string[] args)
@@ -1235,7 +1326,9 @@ namespace Oxide.Plugins
                     buildplayer.selection = "all";
             buildplayer.currentGrade = GetGrade(defaultGrade);
 
-            SendReply(player, string.Format("Building Tool SetGrade: {0} - for {1}", buildplayer.currentGrade.ToString(), buildplayer.selection));
+            var msg = string.Format("Building Tool SetGrade: {0} - for {1}", buildplayer.currentGrade.ToString(), buildplayer.selection);
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("buildheal")]
         void cmdChatBuilHeal(BasePlayer player, string command, string[] args)
@@ -1243,14 +1336,16 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) return;
             if (hasNoArguments(player, args)) return;
             BuildPlayer buildplayer = GetBuildPlayer(player);
-
+            
             buildplayer.currentType = "heal";
             buildplayer.selection = "select";
             if (args.Length > 0)
                 if (args[0] == "all")
                     buildplayer.selection = "all";
 
-            SendReply(player, string.Format("Building Tool Heal for: {0}", buildplayer.selection));
+            var msg = string.Format("Building Tool Heal for: {0}", buildplayer.selection);
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("buildrotate")]
         void cmdChatBuilRotate(BasePlayer player, string command, string[] args)
@@ -1261,13 +1356,16 @@ namespace Oxide.Plugins
             buildplayer.currentType = "rotate";
             buildplayer.selection = "select";
             float rotate = 0f;
-
+            
             if (args.Length > 0) float.TryParse(args[0], out rotate);
             if (args.Length > 1)
                 if (args[1] == "all")
                     buildplayer.selection = "all";
             buildplayer.currentRotate = Quaternion.Euler(0f, rotate, 0f);
-            SendReply(player, string.Format("Building Tool Rotation for: {0}", buildplayer.selection));
+
+            var msg = string.Format("Building Tool Rotation for: {0}", buildplayer.selection);
+            buildplayer.LoadMsgGui(msg);
+            SendReply(player, msg);
         }
         [ChatCommand("buildhelp")]
         void cmdChatBuildhelp(BasePlayer player, string command, string[] args)
@@ -1368,4 +1466,4 @@ namespace Oxide.Plugins
             }
         }
     }
-}
+} 
