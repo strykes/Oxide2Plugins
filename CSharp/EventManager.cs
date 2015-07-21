@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Reflection;
 using System;
 using System.Data;
@@ -37,6 +35,7 @@ namespace Oxide.Plugins
         private bool EventOpen;
         private bool EventStarted;
         private bool EventEnded;
+        private bool EventPending;
         private bool isBP;
         private bool Changed;
 
@@ -48,7 +47,8 @@ namespace Oxide.Plugins
         private int stackable;
         private int giveamount;
         
-
+		
+		public Oxide.Plugins.Timer AutoArenaTimer;
 
         ////////////////////////////////////////////////////////////
         // EventPlayer class to store informations /////////////////
@@ -225,6 +225,7 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
+            EventPending = false;
             EventGameName = defaultGame;
             timer.Once(0.1f, () => InitializeZones());
             timer.Once(0.2f, () => InitializeGames());
@@ -545,7 +546,10 @@ namespace Oxide.Plugins
         private static string MessagesEventStatusClosedEnd = "There is currently no event";
         private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
-
+		private static string MessagesAutoEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
+		private static string MessagesAutoEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
+        private static bool EventAutoEvents = true;
+        
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
         private static string MessageRewardCurrent = "You have {0} tokens";
         private static string MessageRewardHelp = "/reward \"RewardName\" Amount";
@@ -567,6 +571,8 @@ namespace Oxide.Plugins
 
             CheckCfg<string>("Default - Game", ref defaultGame);
             CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
+            
+            CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
@@ -595,7 +601,10 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
             CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
             CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
-
+            
+            CheckCfg<string>("Messages - AutoEvent - MaxPlayersReached", ref MessagesAutoEventMaxPlayers);
+			CheckCfg<string>("Messages - AutoEvent - MinPlayersReached", ref MessagesAutoEventMinPlayers);
+			
             CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
             CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
             CheckCfg<string>("Messages - Reward - Help", ref MessageRewardHelp);
@@ -810,7 +819,7 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
-
+			EventPending = false;
 
             SendPlayersHome();
             RedeemPlayersInventory();
@@ -835,7 +844,7 @@ namespace Oxide.Plugins
             BroadcastToChat(string.Format(MessagesEventBegin, EventGameName));
             EventStarted = true;
             EventEnded = false;
-
+			ResetTimer();
             SaveAllInventories();
             SaveAllHomeLocations();
             TeleportAllPlayersToEvent();
@@ -876,7 +885,34 @@ namespace Oxide.Plugins
         {
         	if(!EventOpen)
         		return "The Event is currently closed.";
-        		
+        	
+        	if(!EventAutoEvents) return null;
+        	
+        	object maxplayers = Interface.CallHook("GetEventConfig", "AutoEvent - MaxPlayers" );
+        	if(maxplayers == null) return null;
+        	if( EventPlayers.Count >= Convert.ToInt32(maxplayers.ToString()) )
+        	{
+        		return string.Format(MessagesAutoEventMaxPlayers, EventGameName);
+        	}
+        	return null;
+        }
+        object OnEventJoinPost(BasePlayer player)
+        {
+        	if(!EventAutoEvents) return null;
+        	
+        	object minplayers = Interface.CallHook("GetEventConfig", "AutoEvent - MinPlayers" );
+        	
+        	if(minplayers == null) return null;
+        	
+        	if( EventPlayers.Count >= Convert.ToInt32(minplayers.ToString()) && !EventStarted && EventEnded && !EventPending )
+        	{
+        		float timerStart = 30f;
+        		object timetojoin = Interface.CallHook("GetEventConfig", "AutoEvent - TimeToJoin" );
+        		if(timetojoin != null) { timerStart = Convert.ToSingle( timetojoin.ToString() ); }
+        		BroadcastToChat(string.Format(MessagesAutoEventMinPlayers, EventGameName, timerStart.ToString()));
+        		EventPending = true;
+        		AutoArenaTimer = timer.Once( timerStart, () => StartEvent() );
+        	}
         	return null;
         }
         object LeaveEvent(BasePlayer player)
@@ -1052,7 +1088,12 @@ namespace Oxide.Plugins
                 return true;
             return false;
         }
-
+		void ResetTimer()
+		{
+			AutoArenaTimer.Destroy();
+			if(!EventAutoEvents) return;
+		
+		}
         //////////////////////////////////////////////////////////////////////////////////////
         // Chat Commands /////////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
