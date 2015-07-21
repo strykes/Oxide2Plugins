@@ -113,8 +113,11 @@ namespace Oxide.Plugins
 
         static int TokensAddKill = 1;
         static int TokensAddWon = 5;
-
-
+		
+		static int EventAutoArenaMaxPlayers = 10;
+		static int EventAutoArenaMinPlayers = 4;
+		static int EventAutoArenaTimeToJoin = 30;
+		
 		private void LoadZoneConfig()
 		{
 			EventZoneConfig = new Dictionary<string,object>();
@@ -171,6 +174,11 @@ namespace Oxide.Plugins
             CheckCfg<int>("Tokens - Per Kill", ref TokensAddKill);
             CheckCfg<int>("Tokens - On Win", ref TokensAddWon);
 
+
+			CheckCfg<int>("AutoEvent - MaxPlayers", ref EventAutoArenaMaxPlayers);
+			CheckCfg<int>("AutoEvent - MinPlayers", ref EventAutoArenaMinPlayers);
+			CheckCfg<int>("AutoEvent - TimeToJoin", ref EventAutoArenaTimeToJoin);
+			
             CurrentKit = DefaultKit;
 
             SaveConfig();
@@ -207,6 +215,13 @@ namespace Oxide.Plugins
                 Changed = true;
             }
             return value;
+        }
+        
+        object GetEventConfig( string configname )
+        {
+        	if( !useThisEvent ) return null;
+        	if(Config[configname] == null) return null;
+        	return Config[configname];
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
