@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.13", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.14", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
 
