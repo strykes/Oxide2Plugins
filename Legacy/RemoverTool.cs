@@ -1,29 +1,19 @@
-// Reference: Oxide.Ext.RustLegacy
-// Reference: Facepunch.ID
-// Reference: Facepunch.MeshBatch
-// Reference: Facepunch.Utility
-// Reference: Google.ProtocolBuffers
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
-using System.Data;
 using UnityEngine;
-using Oxide.Core;
-using Oxide.RustLegacy;
 using Oxide.Core.Plugins;
-using RustProto;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", "1.0.3")]
+    [Info("RemoverTool", "Reneb", "1.0.6")]
     class RemoverTool : RustLegacyPlugin
     {
         [PluginReference]
         Plugin PlayerDatabase;
         [PluginReference]
         Plugin Share;
-
+         
         private static FieldInfo structureComponents;
 
         static Hash<string, string> deployableCloneToGood = new Hash<string, string>();
@@ -83,9 +73,9 @@ namespace Oxide.Plugins
         bool antiFloat = true;
         bool useShare = true;
 
-        static Dictionary<string, object> deployableList = GetDeployableList();
-        static Dictionary<string, object> structureList = GetStructureList();
-        static Dictionary<string, object> refundList = GetBlueprints();
+        static Dictionary<string, object> deployableList = new Dictionary<string, object>();
+        static Dictionary<string, object> structureList = new Dictionary<string, object>();
+        static Dictionary<string, object> refundList = new Dictionary<string, object>();
 
         void LoadDefaultConfig() { }
 
@@ -97,8 +87,21 @@ namespace Oxide.Plugins
                 Config[Key] = var;
         }
 
-        void Init()
+        void OnServerInitialized()
         {
+        	
+        	
+        	if (!permission.PermissionExists("canremove"))
+                permission.RegisterPermission("canremove", this);
+            structureComponents = typeof(StructureMaster).GetField("_structureComponents", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            
+            
+            InitializeTable();
+            deployableList = GetDeployableList();
+        	structureList = GetStructureList();
+        	refundList = GetBlueprints();
+            
+        
             CheckCfg<bool>("Remove: For Players", ref playerCanRemove);
             CheckCfg<string>("Messages: No Access", ref noAccess);
             CheckCfg<string>("Messages: Wrong Arguments", ref wrongArguments);
@@ -228,7 +231,7 @@ namespace Oxide.Plugins
                     if(!deployables.ContainsKey(gameObj.name))
                         deployables.Add(gameObj.name, true);
                 } 
-
+             
             return deployables;
         }
         static Dictionary<string, object>  GetStructureList()
@@ -243,7 +246,7 @@ namespace Oxide.Plugins
                     if (!structures.ContainsKey(gameObj.name))
                         structures.Add(gameObj.name, true);
                 }
-
+                
             return structures;
         }
         static Dictionary<string,object> GetBlueprints()
@@ -266,14 +269,6 @@ namespace Oxide.Plugins
                 } 
             return bps;
         }
-        void Loaded()
-        {
-            if (!permission.PermissionExists("canremove"))
-                permission.RegisterPermission("canremove", this);
-            structureComponents = typeof(StructureMaster).GetField("_structureComponents", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            InitializeTable();
-
-        } 
         bool hasAccess(NetUser netuser, string ttype)
         {
             if (netuser.CanAdmin()) return true;
