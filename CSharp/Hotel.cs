@@ -9,6 +9,9 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
 		
 		
+		// FIELDS
+		static int deployableColl = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
+		static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction" });
 		 ////////////////////////////////////////////////////////////
         // cached Fields
         ////////////////////////////////////////////////////////////
@@ -57,14 +60,42 @@ namespace Oxide.Plugins
             }
             
         }
+		public class DeployableItem
+		{
+			public string x;
+			public string y;
+			public string z;
+			public string rx;
+			public string ry;
+			public string rz;
+			public string rw;
+			public string prefabname;
+			
+			public DeployableItem()
+            {
+            }
 
+            public DeployableItem(Deployable deployable)
+            {
+            	prefabname = StringPool.Get(deployable.prefabID).ToString();
+            	
+                this.x = Math.Ceil(deployable.transform.position.x).ToString();
+                this.y = Math.Ceil(deployable.transform.position.y).ToString();
+                this.z = Math.Ceil(deployable.transform.position.z).ToString();
+                
+                this.rx = deployable.transform.rotation.x.ToString();
+                this.ry = deployable.transform.rotation.y.ToString();
+                this.rz = deployable.transform.rotation.z.ToString();
+                this.rw = deployable.transform.rotation.w.ToString();
+            }
+		}
         public class Room
         {
             public string roomid;
             public string x;
             public string y;
             public string z;
-            public List<object> defaultDeployables;
+            public List<DeployableItem> defaultDeployables;
 			public string renter;
 			public string checkingTime;
 			public string checkoutTime;
@@ -75,17 +106,12 @@ namespace Oxide.Plugins
             {
             }
 
-            public Room(string userid, string logType, Vector3 frompos, Vector3 topos)
+            public Room(Vector3 position)
             {
-                this.userid = userid;
-                this.fx = frompos.x.ToString();
-                this.fy = frompos.y.ToString();
-                this.fz = frompos.z.ToString();
-                this.tx = topos.x.ToString();
-                this.ty = topos.y.ToString();
-                this.tz = topos.z.ToString();
-                this.td = logType;
-                this.lg = LogTime().ToString();
+                this.x = Math.Ceil(position.x).ToString();
+                this.y = Math.Ceil(position.y).ToString();
+                this.z = Math.Ceil(position.z).ToString();
+                this.roomid = string.Format("{0}:{1}:{2}", this.x, this.y, this.z);
             }
 
             public Vector3 Pos()
@@ -103,6 +129,7 @@ namespace Oxide.Plugins
             public string y;
             public string z;
             public string r;
+            public string rr;
 			
 			public Dictionary<string, Room> rooms;
 			
@@ -115,10 +142,17 @@ namespace Oxide.Plugins
             public HotelData(string hotelname)
             {
                 this.hotelname = hotelname;
+                this.x = "0";
+                this.y = "0";
+                this.z = "0";
+                this.r = "60";
+                this.rr = "20"
             }
 
             public Vector3 Pos()
             {
+            	if (this.x == "0" && this.y == "0" && this.z == "0")
+            		return default(Vector3);
                 if (pos == default(Vector3))
                     pos = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
                 return pos;
@@ -126,7 +160,9 @@ namespace Oxide.Plugins
             
             public void RefreshRooms()
             {
-				
+            	if(Pos() == default(Vector3))
+            		return;
+				Dictionary<string, Room> detectedRooms = FindAllRooms( Pos(), Convert.ToSingle(this.r), Convert.ToSingle(this.rr) );
             }
             
             public void AddRoom(Room newroom)
@@ -139,7 +175,67 @@ namespace Oxide.Plugins
             
             
         }
-
+		
+		static Dictionary<string, Room> FindAllRooms( Vector3 position, float radius, float roomradius )
+		{
+			List<BaseLock> listLocks = new List<BaseLock>();
+			foreach(Collider col in UnityEngine.Physics.OverlapSphere(position, radius, deployableColl))
+			{
+				if( col.GetComponentInParent<BaseLock>() != null )
+				{
+					listLocks.Add( col.GetComponentInParent<BaseLock>() );
+					
+				}
+			}
+			
+			Dictionary<Deployable, string> deployables = new Dictionary<Deployable, string>();
+			Dictionary<string, Room> tempRooms = new Dictionary<string, Room>();
+			
+			foreach( BaseLock lock in listLocks )
+			{
+				Room newRoom = new Room(lock.transform.position);
+				newRoom.defaultDeployables = new List<DeployableItem>();
+				var founditems = new List<Deployable>();
+				foreach(Collider col in UnityEngine.Physics.OverlapSphere(position, radius, deployableColl))
+				{
+					Deployable deploy = col.GetComponentInParent<Deployable>();
+					if( deploy != null )
+					{
+						if( !founditems.Contains( deploy ) )
+						{
+							founditems.Add( deploy );
+							bool canReach = true;
+							foreach( RaycastHit rayhit in UnityEngine.Physics.RaycastAll( deploy.transform.position, (lock.transform.position - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, lock.transform.position ) - 0.5f, constructionColl ))
+							{
+								canReach = false;
+								break;
+							}
+							if(!canReach) continue;
+							
+							if( deployables.ContainsKey( deploy ) )
+							{
+								deployables[deploy] = "0";
+							}
+							else
+							{
+								deployables.Add( deploy, newRoom.roomid );
+							}
+						}
+					}
+				}
+				tempRooms.Add(newRoom.roomid, newRoom);
+			}
+			foreach (KeyValuePair<Deployable, string> pair in deployables)
+			{
+				if( pair.Value != "0" )
+				{
+					DeployableItem newDeployItem = new DeployableItem( pair.Key );
+					tempRooms[ pair.Value ].defaultDeployables.Add( newDeployItem );
+				}
+			}
+			
+			return tempRooms;
+		}
 		
         static void AddLog(string userid, string logType, Vector3 frompos, Vector3 topos)
         {
