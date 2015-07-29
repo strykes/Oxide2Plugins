@@ -11,7 +11,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.0.11")]
+    [Info("Kits", "Reneb", "2.1.0")]
     class Kits : RustPlugin
     {
         static string noAccess = "You are not allowed to use this command";
@@ -23,7 +23,9 @@ namespace Oxide.Plugins
         static string unknownKit = "This kit doesn't exist";
         static string kitredeemed = "You've redeemed a kit";
         static string kitsreset = "All kits data from players were deleted";
-
+		static int retreiveType = 0;
+		static Dictionary<string,object> npcKitList = GetDefaultNpcKit();
+		
         private DateTime epoch;
         private Core.Configuration.DynamicConfigFile KitsConfig;
         private Core.Configuration.DynamicConfigFile KitsData;
@@ -96,6 +98,11 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages: unknownKit", ref unknownKit);
             CheckCfg<string>("Messages: kitredeemed", ref kitredeemed);
             CheckCfg<string>("Messages: kitsreset", ref kitsreset);
+            
+            CheckCfg<int>("Type: 0 is by command only, 1 is by either NPC or command, 2 is by NPC only", ref retreiveType);
+            
+            CheckCfg<Dictionary<string,object>>("NPC Kits", ref npcKitList);
+            
             SaveConfig();
 
         }
@@ -107,6 +114,20 @@ namespace Oxide.Plugins
             var newobject = new List<object>();
             newobject.Add("vip");
             newobject.Add("donator");
+            return newobject;
+        }
+        
+        static Dictionary<string,object> GetDefaultNpcKit()
+        {
+            var newobject = new Dictionary<string,object>();
+            var newlist = new List<object>();
+            newlist.Add("stones");
+            newlist.Add("building");
+            newobject.Add("123456",newlist);
+            
+            newlist.Add("vipkit");
+            newobject.Add("999999",newlist);
+            
             return newobject;
         }
 
