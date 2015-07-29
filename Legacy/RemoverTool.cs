@@ -6,7 +6,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", "1.0.6")]
+    [Info("RemoverTool", "Reneb", "1.0.7")]
     class RemoverTool : RustLegacyPlugin
     {
         [PluginReference]
@@ -26,6 +26,8 @@ namespace Oxide.Plugins
         DeployableObject cachedDeployable;
         StructureMaster cachedMaster;
         List<object> cachedListObject;
+        DeployableObject lastRemovedDeployable;
+        StructureComponent lastRemovedStructure;
 
         public class RemoveHandler : MonoBehaviour
         {
@@ -164,13 +166,16 @@ namespace Oxide.Plugins
         {
             if(!canRemoveDeployable(deployable, rplayer.removeType)) { SendReply(rplayer.playerclient.netUser, noRemoveAccess); return; }
             if (canRefund) TryRefund(deployableCloneToGood[deployable.gameObject.name], rplayer);
+            lastRemovedDeployable = deployable;
             TakeDamage.KillSelf(deployable.GetComponent<IDMain>());
         }
         void SimpleRemove(StructureComponent structurecomponent, RemoveHandler rplayer)
         {
             object canremove = canRemoveStructure(structurecomponent, rplayer.removeType);
             if(canremove is string) { SendReply(rplayer.playerclient.netUser, canremove as string); return; }
+            if(!(bool)canremove) return;
             if (canRefund) TryRefund(structureCloneToGood[structurecomponent.gameObject.name], rplayer);
+            lastRemovedStructure = structurecomponent;
             TakeDamage.KillSelf(structurecomponent.GetComponent<IDMain>());
         } 
         void TryRefund(string gameobjectname, RemoveHandler rplayer)
@@ -196,12 +201,14 @@ namespace Oxide.Plugins
         }
         bool canRemoveDeployable(DeployableObject deployable, string ttype)
         {
+            if (lastRemovedDeployable == deployable) return false;
             if (ttype == "admin" || ttype == "all") return true;
             if (deployableCloneToGood[deployable.gameObject.name] == null) return false;
             return (bool)deployableList[deployableCloneToGood[deployable.gameObject.name]];
         }
         object canRemoveStructure(StructureComponent structurecomponent, string ttype)
         {
+            if (lastRemovedStructure == structurecomponent) return false;
             if (ttype == "admin" || ttype == "all") return true;
             if (antiFloat && structurecomponent._master.ComponentCarryingWeight(structurecomponent)) return carryingWeight;
             if (structureCloneToGood[structurecomponent.gameObject.name] == null) return noRemoveAccess;
