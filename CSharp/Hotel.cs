@@ -126,7 +126,7 @@ namespace Oxide.Plugins
             
             public void RefreshRooms()
             {
-
+				
             }
             
             public void AddRoom(Room newroom)
@@ -135,13 +135,6 @@ namespace Oxide.Plugins
             		rooms.Remove(newroom.roomid);
             	
             	rooms.Add(newroom.roomid, newroom);
-            }
-            
-            public Dictionary<string, Room> GetRooms()
-            {
-            	if( rooms == default(Dictionary<string, Room>) )
-            		RefreshRooms();
-            	return rooms;
             }
             
             
@@ -246,6 +239,7 @@ namespace Oxide.Plugins
             	SendReply(player, "You are not editing a hotel. Create a new one with /hotel_new, or edit an existing one with /hotel_edit");
 				return;
             }
+            
         	HotelData editedhotel = EditHotel[player.userID.ToString()];
 
         	if (args.Count == 0)
@@ -253,6 +247,7 @@ namespace Oxide.Plugins
         		SendReply(player, "==== Available options ====");
         		SendReply(player, "/hotel location => sets the center hotel location where you stand");
         		SendReply(player, "/hotel radius XX => sets the radius of the hotel (the entire structure of the hotel needs to be covered by the zone");
+        		SendReply(player, "/hotel rooms => refreshs the rooms (detects new rooms, deletes rooms if they don't exist anymore, if rooms are in use they won't get taken in count)");
         	}
         	else
         	{
@@ -269,6 +264,13 @@ namespace Oxide.Plugins
                     	
                     	SendReply(player, string.Format("Location set to {0}", player.transform.position.ToString()));
         			break;
+        			
+        			case "rooms":
+        				SendReply(player, "Rooms Refreshing ...");
+        				(EditHotel[player.userID.ToString()]).RefreshRooms();
+        				SendReply(player, "Rooms Refreshed");
+        			break;
+        			
         			case "radius":
         				if(args.Count == 1)
         				{
