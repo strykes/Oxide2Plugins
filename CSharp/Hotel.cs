@@ -134,9 +134,11 @@ namespace Oxide.Plugins
 			public Dictionary<string, Room> rooms;
 			
             Vector3 pos;
+            bool enabled;
 
             public HotelData()
             {
+            	this.enabled = false;
             }
 
             public HotelData(string hotelname)
@@ -147,6 +149,7 @@ namespace Oxide.Plugins
                 this.z = "0";
                 this.r = "60";
                 this.rr = "20"
+                this.enabled = false;
             }
 
             public Vector3 Pos()
@@ -163,6 +166,50 @@ namespace Oxide.Plugins
             	if(Pos() == default(Vector3))
             		return;
 				Dictionary<string, Room> detectedRooms = FindAllRooms( Pos(), Convert.ToSingle(this.r), Convert.ToSingle(this.rr) );
+            	
+            	List<string> toAdd = new List<string>();
+            	List<string> toDelete = new List<string>();
+            	
+            	foreach( KeyValuePair<string, Room> pair in rooms )
+            	{
+            		if( pair.Value.renter != null )
+					{
+						detectedRooms.Remove( pair.Key );
+						Debug.Log( string.Format( "{0} is occupied and can't be edited", pair.Key ) );
+						continue;
+					}
+            		if( !detectedRooms.ContainsKey( pair.Key ) )
+            		{
+            			toDelete.Add( pair.Key );
+            		}
+            	}
+            	foreach( KeyValuePair<string, Room> pair in detectedRooms )
+            	{
+            		if( !rooms.ContainsKey( pair.Key ) )
+            		{
+            			toAdd.Add( pair.Key );
+            		}
+            	}
+            	foreach( string roomid in toDelete )
+            	{
+            		rooms.Remove( roomid );
+            		Debug.Log( string.Format( "{0} doesnt exist anymore, removing this room", roomid ) );
+            	}
+            	foreach( string roomid in toAdd )
+            	{
+            		Debug.Log( string.Format( "{0} is a new room, adding it", roomid ) );
+            		rooms.Add( roomid, detectedRooms[roomid] );
+            	}
+            	
+            }
+            
+            public void Deactivate()
+            {
+            	enabled = false;
+            }
+            public void Activate()
+            {
+            	enabled = true;
             }
             
             public void AddRoom(Room newroom)
@@ -395,6 +442,42 @@ namespace Oxide.Plugins
         	RefreshAdminHotelGUI(player);
         }
         
+        
+        [ChatCommand("hotel_edit")]
+        void cmdChatHotelEdit(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
+            
+            if(EditHotel.ContainsKey(player.userID.ToString()))
+            {
+            	SendReply(player, "You are already editing a hotel. You must close or save it first.");
+				return;
+            }
+            
+            if(args.Count == 0)
+            {
+            	SendReply(player, "You must select the name of the hotel you want to edit: /hotel_edit HOTELNAME");
+				return;
+            }
+            
+            string hname = args[0];
+            foreach(HotelData hotel in storedData.Hotels)
+            {
+            	if(hotel.hotelname.ToLower() == hname.ToLower())
+            	{
+            		EditHotel.Add(player.userID.ToString(), hotel);
+            		hotel.Deactivate();
+            		break;
+            	}
+            }
+			if( !EditHotel.ContainsKey(player.userID.ToString()) )
+			{
+				SendReply(player, "The hotel you are trying to edit doesn't exist");
+				return;
+			}
+            SendReply(player, string.Format("You are editing the hotel named: {0}. Now say /hotel to continue configuring your hotel. Note that no one can register/leave the hotel while you are editing it.",EditHotel[player.userID.ToString()].hotelname));
+            RefreshAdminHotelGUI( player );
+        }
         
         [ChatCommand("hotel_new")]
         void cmdChatHotelNew(BasePlayer player, string command, string[] args)
