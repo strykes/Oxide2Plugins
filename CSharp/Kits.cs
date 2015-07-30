@@ -1,4 +1,3 @@
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -14,6 +13,31 @@ namespace Oxide.Plugins
     [Info("Kits", "Reneb", "2.1.0")]
     class Kits : RustPlugin
     {
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	///// Plugin References
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	///// cached Fields
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	
+    	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	///// Fields
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	
+    	private DateTime epoch;
+        
+        private Dictionary<string, string> displaynameToShortname;
+        private List<string> permNames = new List<string>();
+        
+        static int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
+        static int groundLayer = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
+    	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	///// Configuration
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	
         static string noAccess = "You are not allowed to use this command";
         static List<object> permissionsList = GetDefaultPermList();
         static int authLevel = 1;
@@ -32,63 +56,11 @@ namespace Oxide.Plugins
 		static int retreiveType = 0;
 		static Dictionary<string,object> npcKitList = GetDefaultNpcKit();
 		
-        private DateTime epoch;
-        private Core.Configuration.DynamicConfigFile KitsConfig;
+		private Core.Configuration.DynamicConfigFile KitsConfig;
         private Core.Configuration.DynamicConfigFile KitsData;
         private bool Changed;
-        private Dictionary<string, string> displaynameToShortname;
-        private List<string> permNames = new List<string>();
-        
-        static int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
-        static int groundLayer = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
-        
-        void Loaded()
-        {
-            epoch = new System.DateTime(1970, 1, 1);
-            displaynameToShortname = new Dictionary<string, string>();
-            foreach (var perm in permissionsList)
-            {
-                if (!permission.PermissionExists(perm.ToString())) permission.RegisterPermission(perm.ToString(), this);
-                if(!permNames.Contains(perm.ToString())) permNames.Add(perm.ToString());
-            }
-            InitializeKits();
-            foreach(Signage sign in Resources.FindObjectsOfTypeAll<Signage>())
-            {
-                sign.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-            }
-        }
-        void OnServerInitialized()
-        {
-            InitializeTable();
-        }
-        double CurrentTime()
-        {
-            return System.DateTime.UtcNow.Subtract(epoch).TotalSeconds;
-        }
-        private void InitializeKits()
-        {
-            KitsConfig = Interface.GetMod().DataFileSystem.GetDatafile("Kits_List");
-            KitsData = Interface.GetMod().DataFileSystem.GetDatafile("Kits_Data");
-        }
-        private void SaveKits()
-        {
-            Interface.GetMod().DataFileSystem.SaveDatafile("Kits_List");
-        }
-        private void SaveKitsData()
-        {
-            Interface.GetMod().DataFileSystem.SaveDatafile("Kits_Data");
-        }
-        private void InitializeTable()
-        {
-            displaynameToShortname.Clear();
-            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
-            foreach (ItemDefinition itemdef in ItemsDefinition)
-            {
-                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
-            }
-        }
-
-        private void CheckCfg<T>(string Key, ref T var)
+		
+		private void CheckCfg<T>(string Key, ref T var)
         {
             if (Config[Key] is T)
                 var = (T)Config[Key];
@@ -121,7 +93,65 @@ namespace Oxide.Plugins
         }
 
         void LoadDefaultConfig() { }
+        
+         //////////////////////////////////////////////////////////////////////////////////////////
+    	///// Data
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        
+        private void InitializeKits()
+        {
+            KitsConfig = Interface.GetMod().DataFileSystem.GetDatafile("Kits_List");
+            KitsData = Interface.GetMod().DataFileSystem.GetDatafile("Kits_Data");
+        }
+        private void SaveKits()
+        {
+            Interface.GetMod().DataFileSystem.SaveDatafile("Kits_List");
+        }
+        private void SaveKitsData()
+        {
+            Interface.GetMod().DataFileSystem.SaveDatafile("Kits_Data");
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	///// Oxide Hooks
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        
+        
+        void Loaded()
+        {
+            epoch = new System.DateTime(1970, 1, 1);
+            displaynameToShortname = new Dictionary<string, string>();
+            foreach (var perm in permissionsList)
+            {
+                if (!permission.PermissionExists(perm.ToString())) permission.RegisterPermission(perm.ToString(), this);
+                if(!permNames.Contains(perm.ToString())) permNames.Add(perm.ToString());
+            }
+            InitializeKits();
+        }
+        void OnServerInitialized()
+        {
+            InitializeTable();
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	///// Methods
+    	//////////////////////////////////////////////////////////////////////////////////////////
+    	
+        double CurrentTime() { return System.DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
+        
+        
+        private void InitializeTable()
+        {
+            displaynameToShortname.Clear();
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach (ItemDefinition itemdef in ItemsDefinition)
+            {
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
+            }
+        }
 
+        
+	
         static List<object> GetDefaultPermList()
         {
             var newobject = new List<object>();
@@ -129,6 +159,46 @@ namespace Oxide.Plugins
             newobject.Add("donator");
             return newobject;
         }
+        
+        private void SendTheReply(object source, string msg)
+        {
+            if (source is BasePlayer)
+                SendReply((BasePlayer)source, msg);
+            else if (source is ConsoleSystem.Arg)
+                SendReply((ConsoleSystem.Arg)source, msg);
+            else
+                Puts(msg);
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	///// Permission related
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        
+        bool hasAccess(BasePlayer player)
+        {
+            if (player.net.connection.authLevel >= authLevel)
+                return true;
+            return false;
+        }
+        bool hasVip(object source, string name)
+        {
+            if (!(source is BasePlayer)) return true;
+            if (((BasePlayer)source).net.connection.authLevel >= authLevel) return true;
+            return permission.UserHasPermission(((BasePlayer)source).userID.ToString(), name);
+        }
+        
+        int GetSourceLevel(object source) 
+        {
+            if (source is BasePlayer)
+            {
+                return ((BasePlayer)source).net.connection.authLevel;
+            }
+            return 2;
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	///// NPC Related
+    	//////////////////////////////////////////////////////////////////////////////////////////
         
         static Dictionary<string,object> GetDefaultNpcKit()
         {
@@ -144,18 +214,10 @@ namespace Oxide.Plugins
             return newobject;
         }
 
-        bool hasAccess(BasePlayer player)
-        {
-            if (player.net.connection.authLevel >= authLevel)
-                return true;
-            return false;
-        }
-        bool hasVip(object source, string name)
-        {
-            if (!(source is BasePlayer)) return true;
-            if (((BasePlayer)source).net.connection.authLevel >= authLevel) return true;
-            return permission.UserHasPermission(((BasePlayer)source).userID.ToString(), name);
-        }
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	///// GiveItem
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        
         public object GiveItem(BasePlayer player, string itemname, int amount, ItemContainer pref)
         {
             itemname = itemname.ToLower();
@@ -187,15 +249,9 @@ namespace Oxide.Plugins
             }
             return true;
         }
-        private void SendTheReply(object source, string msg)
-        {
-            if (source is BasePlayer)
-                SendReply((BasePlayer)source, msg);
-            else if (source is ConsoleSystem.Arg)
-                SendReply((ConsoleSystem.Arg)source, msg);
-            else
-                Puts(msg);
-        }
+        
+        
+        
         void SendList(object source)
         {
             var kitEnum = KitsConfig.GetEnumerator();
@@ -244,14 +300,7 @@ namespace Oxide.Plugins
                 }
             }
         }
-        int GetSourceLevel(object source)
-        {
-            if (source is BasePlayer)
-            {
-                return ((BasePlayer)source).net.connection.authLevel;
-            }
-            return 2;
-        }
+        
 
         void cmdAddKit(BasePlayer player, string[] args)
         {
