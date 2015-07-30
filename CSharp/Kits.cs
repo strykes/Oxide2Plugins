@@ -23,6 +23,12 @@ namespace Oxide.Plugins
         static string unknownKit = "This kit doesn't exist";
         static string kitredeemed = "You've redeemed a kit";
         static string kitsreset = "All kits data from players were deleted";
+        static string MessageCooldownTimer = "You must wait {0}s before using this kit again";
+        
+        static int guiminX = 0.2;
+        static int guimaxX = 0.8;
+        static int guiminY = 0.2;
+        static int guiYheight = 0.05;
 		static int retreiveType = 0;
 		static Dictionary<string,object> npcKitList = GetDefaultNpcKit();
 		
@@ -32,6 +38,9 @@ namespace Oxide.Plugins
         private bool Changed;
         private Dictionary<string, string> displaynameToShortname;
         private List<string> permNames = new List<string>();
+        
+        static int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
+        static int groundLayer = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
         
         void Loaded()
         {
@@ -98,8 +107,12 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages: unknownKit", ref unknownKit);
             CheckCfg<string>("Messages: kitredeemed", ref kitredeemed);
             CheckCfg<string>("Messages: kitsreset", ref kitsreset);
+            CheckCfg<string>("Messages: Kit in Cooldown", ref MessageCooldownTimer);
             
-            CheckCfg<int>("Type: 0 is by command only, 1 is by either NPC or command, 2 is by NPC only", ref retreiveType);
+            CheckCfg<int>("GUI: min x", ref guiminX);
+            CheckCfg<int>("GUI: max x", ref guimaxX);
+            CheckCfg<int>("GUI: min y", ref guiminY);
+            CheckCfg<int>("GUI: y height", ref guiYheight);
             
             CheckCfg<Dictionary<string,object>>("NPC Kits", ref npcKitList);
             
@@ -472,23 +485,25 @@ namespace Oxide.Plugins
             if (!(currentkit.ContainsKey("cooldown"))) return 0.0;
             return ((double)currentkit["cooldown"] - CurrentTime());
         }
-        void TryGiveKit(BasePlayer player, string kitname)
+        bool CheckIfCanRedeem(BasePlayer player, string kitname, out string reason)
         {
-            if (KitsConfig[kitname] == null)
+        	reason = string.Empty;
+        	if (KitsConfig[kitname] == null)
             {
-                SendTheReply(player, unknownKit);
-                return;
+            	reason = unknownKit;
+            	return false;
             }
+            
             object thereturn = Interface.GetMod().CallHook("canRedeemKit", new object[1] { player });
             if (thereturn != null)
             {
                 if (thereturn is string)
                 {
-                    SendTheReply(player, (string)thereturn);
+                	reason = (string)thereturn;
                 }
-                return;
+                return false;
             }
-
+            
             Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
             double cooldown = 0.0;
             int kitleft = 1;
@@ -498,15 +513,15 @@ namespace Oxide.Plugins
                 kitlvl = (int)kitdata["level"];
             if (kitlvl > player.net.connection.authLevel)
             {
-                SendTheReply(player, cantUseKit);
-                return;
+            	reason = cantUseKit;
+                return false;
             }
             if (kitdata.ContainsKey("max"))
                 kitleft = GetKitLeft(player, kitname, (int)(kitdata["max"]));
             if (kitleft <= 0)
             {
-                SendTheReply(player, maxKitReached);
-                return;
+            	reason = maxKitReached;
+            	return false;
             }
             foreach (string name in permNames)
             {
@@ -514,8 +529,8 @@ namespace Oxide.Plugins
                 {
                     if (!hasVip(player, name))
                     {
-                        SendReply(player, cantUseKit);
-                        return;
+                    	reason = cantUseKit;
+                        return false;
                     }
                 }
             }
@@ -524,9 +539,57 @@ namespace Oxide.Plugins
                 cooldown = GetKitTimeleft(player, kitname, (double)(kitdata["cooldown"]));
             if (cooldown > 0.0)
             {
-                SendTheReply(player, string.Format("You must wait {0}s before using this kit again", cooldown.ToString()));
-                return;
+            	reason =  string.Format(MessageCooldownTimer, cooldown.ToString());
+                return false;
             }
+        	return true;
+        }
+        bool CheckAroundForNPC( BasePlayer player, string kitname )
+        {
+        	var colliderArray = Physics.OverlapSphere(player.transform.position, 3f, playerLayer);
+			foreach (Collider collider in colliderArray)
+			{
+				BasePlayer cachedPlayer = collider.GetComponentInParent<BasePlayer>();
+				if (cachedPlayer == null) continue;
+				if (player == cachedPlayer) continue;
+				string userId = cachedPlayer.userID.ToString();
+				if( !npcKitList.ContainsKey(userId)) continue;
+				if( !npcKitList[userId].Contains(kitname) ) continue;
+				
+				/// NEED TO ADD A WALL COLLIDER CHECK TO MAKE SURE ITS NOT THROUGH WALL
+				return true;
+			}
+			return false;
+        
+        }
+        void TryGiveKit(BasePlayer player, string kitname, bool checkForNPC = false)
+        {
+            string reason;
+            
+			if (checkForNPC)
+			{
+				if(!CheckAroundForNPC( player, kitname ))
+				{
+					SendTheReply(player, "You must be next to the NPC to get this kit");
+					return;
+				}
+			}
+			else
+			{
+				Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
+				if((bool)kitdata["npconly"])
+				{
+					SendTheReply(player, "You are not allowed to redeem this kit here, you must be next to the NPC");
+					return;
+				}
+			}
+			if(!CheckIfCanRedeem(player, kitname, out reason, checkForNPC))
+            {
+            	SendTheReply(player, reason);
+            	return;
+            }
+			
+
             object wasGiven = GiveKit(player, kitname);
             if ((wasGiven is bool) && !((bool)wasGiven))
             {
@@ -646,8 +709,7 @@ namespace Oxide.Plugins
                     ";
         string buttonjson = @"[
         				{
-        					""name"": ""KitButton{buttonid}"",
-                            ""parent"": ""RemoveMsg"",
+                            ""parent"": ""KitOverlay"",
                             ""components"":
                             [
                                 {
@@ -664,13 +726,14 @@ namespace Oxide.Plugins
                             ]
                         },
                         {
-                            ""parent"": ""KitButton{buttonid}"",
+                            ""parent"": ""KitOverlay"",
                             ""components"":
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
+                                    ""close"":""KitOverlay"",
                                     ""command"":""kit.gui '{guimsg}'"",
-                                    ""color"": ""0.3 0.6 0.4 0.1"",
+                                    ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
                                 {
@@ -685,29 +748,66 @@ namespace Oxide.Plugins
         
         Dictionary<string, List<string>> playerGUI = new Dictionary<string, List<string>>();
         
-        void DestroyAllGUI( string UserID )
+        void DestroyAllGUI( BasePlayer player )
         {
-        	if( playerGUI.ContainsKey(UserID) )
+        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay");
+        	/*if( playerGUI.ContainsKey(player.userID.ToString()) )
         	{
-        		foreach( string guiname in playerGUI[UserID] )
+        		foreach( string guiname in playerGUI[player.userID.ToString()] )
         		{
         			CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", guiname);
         		}
-        		playerGUI.Remove(UserID);
-        	}
+        		playerGUI.Remove(player.userID.ToString());
+        	}*/
         }
-        void RefreshKitPanel( string UserID, List<object> kitsList )
+        void RefreshKitPanel( BasePlayer player, List<object> kitsList, string npcId = "0" )
         {
-        	DestroyAllGUI( UserID );
-        	string jsonmsg = 
+        	DestroyAllGUI( player );
+        	playerGUI.Add(player.userID.ToString(), new List<string>() );
         	
-        	
+        	int guipos = 0;
+        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+        	//playerGUI[player.userID.ToString()].Add("KitOverlay");
+        	string reason = string.Empty;
+        	foreach(object kitname in kitsList)
+        	{
+        		string color = CheckIfCanRedeem( player, kitname, out reason ) ? "0 0.6 0 0.2" : "1 0 0 0.2";
+        		var kitdata = KitsConfig[ kitname ];
+        		var msg = kitname + " - " + kitdata["description"];
+        		var localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'",kitname, npcId)).Replace("{msg},msg).Replace("{color}",color).Replace("{xmin}",guiminX.ToString()).Replace("{xmax}",guimaxX.ToString()).Replace("{ymin}",(guiminY + guipos*guiYheight).ToString()).Replace("{ymax}",(guiminY + (guipos+1)*guiYheight).ToString())
+        		CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+        		guipos++;
+        	}
+        	var localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg},"Close").Replace("{color}","1 1 1 0.2").Replace("{xmin}",guiminX.ToString()).Replace("{xmax}",guimaxX.ToString()).Replace("{ymin}",(guiminY + guipos*guiYheight).ToString()).Replace("{ymax}",(guiminY + (guipos+1)*guiYheight).ToString())
+        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
         }
         
         void OnUseNPC(BasePlayer npc, BasePlayer player)
         {
         	if(!npcKitList.ContainsKey(npc.userID.ToString())) return;
-        	RefreshKitPanel( npcKitList[npc.userID.ToString()], player.userID.ToString() );
+        	RefreshKitPanel( player, npcKitList[npc.userID.ToString()], npc.userID.ToString() );
+        }
+        
+        [ConsoleCommand("kit.gui")]
+        void cmdConsoleKitGui(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection -= null)
+            {
+                SendReply(arg, "You can't use this command from the server console");
+                return;
+            }
+            if ((arg.Args == null) || (arg.Args != null && arg.Args.Length < 2))
+            {
+            	SendReply(arg, "You are not allowed to use manually this command");
+                return;
+            }
+            BasePlayer player = (BasePlayer)arg.connection.player;
+            if( arg.Args[0] == "close" )
+            {
+            	DestroyAllGUI( player );
+            	return;
+            }
+            TryGiveKit( player, arg.Args[0], true );
         }
         
         [ChatCommand("kit")]
@@ -733,7 +833,7 @@ namespace Oxide.Plugins
                 SendList(player);
                 return;
             }
-            TryGiveKit(player, args[0]);
+            TryGiveKit(player, args[0], false);
         }
     }
 }
