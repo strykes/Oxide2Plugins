@@ -32,7 +32,7 @@ namespace Oxide.Plugins
         private bool Changed;
         private Dictionary<string, string> displaynameToShortname;
         private List<string> permNames = new List<string>();
-         
+        
         void Loaded()
         {
             epoch = new System.DateTime(1970, 1, 1);
@@ -624,6 +624,41 @@ namespace Oxide.Plugins
             SendTheReply(player, kitredeemed);
             return true;
         }
+        
+        
+        string json = @"[ 
+                        {
+                            ""name"": ""TestButton"",
+                            ""parent"": ""Overlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""close"":""TestButton"",
+                                    ""command"":""chat.say 'Button was pressed!'"",
+                                    ""color"": ""0.3 0.6 0.4 0.8"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 0.15"",
+                                    ""anchormax"": ""0.8 0.25""
+                                }
+                            ]
+                        }
+                    ]
+                    ";
+        void RefreshKitPanel( string UserID, List<object> kitsList )
+        {
+        	string jsonmsg = 
+        }
+        
+        void OnUseNPC(BasePlayer npc, BasePlayer player)
+        {
+        	if(!npcKitList.ContainsKey(npc.userID.ToString())) return;
+        	RefreshKitPanel( npcKitList[npc.userID.ToString()], player.userID.ToString() );
+        }
+        
         [ChatCommand("kit")]
         void cmdChatKits(BasePlayer player, string command, string[] args)
         {
