@@ -625,32 +625,83 @@ namespace Oxide.Plugins
             return true;
         }
         
-        
-        string json = @"[ 
-                        {
-                            ""name"": ""TestButton"",
+        public string overlayjson = @"[  
+		                { 
+							""name"": ""KitOverlay"",
                             ""parent"": ""Overlay"",
                             ""components"":
                             [
                                 {
-                                    ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""TestButton"",
-                                    ""command"":""chat.say 'Button was pressed!'"",
-                                    ""color"": ""0.3 0.6 0.4 0.8"",
-                                    ""imagetype"": ""Tiled""
+                                     ""type"":""UnityEngine.UI.Image"",
+                                     ""color"":""0.1 0.1 0.1 0.7"",
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.2 0.15"",
-                                    ""anchormax"": ""0.8 0.25""
+                                    ""anchormin"": ""0 0"",
+                                    ""anchormax"": ""1 1""
                                 }
                             ]
                         }
                     ]
                     ";
+        string buttonjson = @"[
+        				{
+        					""name"": ""KitButton{buttonid}"",
+                            ""parent"": ""RemoveMsg"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{msg}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""{xmin} {ymin}"",
+                                    ""anchormax"": ""{xmax} {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""KitButton{buttonid}"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""command"":""kit.gui '{guimsg}'"",
+                                    ""color"": ""0.3 0.6 0.4 0.1"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""{xmin} {ymin}"",
+                                    ""anchormax"": ""{xmax} {ymax}""
+                                }
+                            ]
+                        }
+                    ]
+                    ";
+        
+        Dictionary<string, List<string>> playerGUI = new Dictionary<string, List<string>>();
+        
+        void DestroyAllGUI( string UserID )
+        {
+        	if( playerGUI.ContainsKey(UserID) )
+        	{
+        		foreach( string guiname in playerGUI[UserID] )
+        		{
+        			CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", guiname);
+        		}
+        		playerGUI.Remove(UserID);
+        	}
+        }
         void RefreshKitPanel( string UserID, List<object> kitsList )
         {
+        	DestroyAllGUI( UserID );
         	string jsonmsg = 
+        	
+        	
         }
         
         void OnUseNPC(BasePlayer npc, BasePlayer player)
