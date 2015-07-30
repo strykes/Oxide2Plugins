@@ -200,10 +200,8 @@ namespace Oxide.Plugins
                 if (kitdata.ContainsKey("description"))
                     kitdescription = kitdata["description"].ToString();
                 if (kitdata.ContainsKey("level"))
-                {
-                    kitlvl = (int)kitdata["level"];
                     options = string.Format("{0} - {1}+", options, kitlvl.ToString());
-                }
+                
                 foreach (string name in permNames)
                 {
                     if (kitdata.ContainsKey(name))
@@ -211,6 +209,12 @@ namespace Oxide.Plugins
                         options = string.Format("{0} - {1}", options, name);
                         if (!hasVip(source, name)) kitlvl = authLevel;
                     }
+                }
+                
+                if (kitdata.ContainsKey("npconly"))
+                {
+                	options = string.Format("{0} - NPC Only", options);
+                	kitlvl = 2;
                 }
                 
                 if (kitdata.ContainsKey("max"))
@@ -244,6 +248,7 @@ namespace Oxide.Plugins
                 SendTheReply(player, "Options avaible:");
                 SendTheReply(player, "-maxXX => max times someone can use this kit. Default is infinite.");
                 SendTheReply(player, "-cooldownXX => cooldown of the kit. Default is none.");
+                SendTheReply(player, "-npconly => Only allow kit retrieve from the NPC.");
                 SendTheReply(player, "-authlevelXX => Level needed to use this plugin: 0, 1 or 2. Default is 0");
                 foreach( string name in permNames)
                 {
@@ -254,6 +259,7 @@ namespace Oxide.Plugins
             string kitname = args[1].ToString();
             string desription = args[2].ToString();
             int authlevel = 0;
+            bool npconly = false;
             int max = -1;
             var vip = new List<string>();
             double cooldown = 0.0;
@@ -264,7 +270,7 @@ namespace Oxide.Plugins
             }
             if (args.Length > 3)
             {
-                object validoptions = VerifyOptions(args, out authlevel, out max, out cooldown, out vip);
+                object validoptions = VerifyOptions(args, out authlevel, out max, out cooldown, out vip, out npconly);
                 if (validoptions is string)
                 {
                     SendTheReply(player, (string)validoptions);
@@ -284,6 +290,8 @@ namespace Oxide.Plugins
             }
             if (cooldown > 0.0)
                 newkit.Add("cooldown", cooldown);
+            if (npconly)
+            	newkit.Add("npconly", true);
             newkit.Add("description", desription);
             KitsConfig[kitname] = newkit;
             SaveKits();
@@ -333,10 +341,11 @@ namespace Oxide.Plugins
             kitsitems.Add("belt", beltList);
             return kitsitems;
         }
-        object VerifyOptions(string[] args, out int authlevel, out int max, out double cooldown, out List<string> vip)
+        object VerifyOptions(string[] args, out int authlevel, out int max, out double cooldown, out List<string> vip, out bool npconly)
         {
             authlevel = 0;
             max = -1;
+            npconly = false;
             cooldown = 0.0;
             vip = new List<string>();
             bool error = true;
@@ -354,6 +363,10 @@ namespace Oxide.Plugins
                     substring = 9;
                     if (!(double.TryParse(args[i].Substring(substring), out cooldown)))
                         return string.Format("Wrong Number Value for : {0}", args[i].ToString());
+                }
+                else if (args[i].StartsWith("-npconly"))
+                {
+                    npconly = true;
                 }
                 else if (args[i].StartsWith("-authlevel"))
                 {
