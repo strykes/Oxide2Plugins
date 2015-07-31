@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.1.2", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.0", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -38,6 +38,7 @@ namespace Oxide.Plugins
         private bool EventPending;
         private int EventMaxPlayers = 0;
         private int EventMinPlayers = 0;
+        private int EventAutoNum = -1;
         private bool isBP;
         private bool Changed;
 
@@ -838,6 +839,30 @@ namespace Oxide.Plugins
                 BroadcastToChat(MessagesEventCancel);
             return true;
         }
+        object AutoEventNext()
+        {
+        	if( EventAutoConfig.Count == 0 ) {
+        		AutoEventLaunched = false;
+        		return "No Automatic Events Configured";
+        	}
+        	bool 
+        	for( i = 0; i < EventAutoConfig.Count; i++ )
+        	{
+        		EventAutoNum++;
+        		if(EventAutoNum >= EventAutoConfig.Count) EventAutoNum = 0;
+        		
+        		object success = SelectEvent((EventAutoConfig[EventAutoNum])["gametype"]);
+				if (success is string) { continue; }
+				
+				object success = SelectSpawnfile((EventAutoConfig[EventAutoNum])["spawnfile"]);
+				if (success is string) { continue; }
+        		
+        		
+        		
+        		
+        	}
+        
+        }
         object LaunchEvent()
         {
         	// just activate it and take over from where it is currently.
@@ -845,6 +870,12 @@ namespace Oxide.Plugins
         	
         	if(!EventOpen && !EventStarted)
         	{
+        		object success = AutoEventNext();
+        		if(success is string)
+        		{
+        			// SEND MSG HERE
+        			return;
+        		}
         		// set next gametype
         		// set next spawnfile
         		// set next max players & min players
@@ -1302,6 +1333,40 @@ namespace Oxide.Plugins
             defaultGame = EventGameName;
             SaveConfig();
             SendReply(arg, string.Format("{0} is now the next Event game.", arg.Args[0].ToString()));
+        }
+        [ConsoleCommand("event.minplayers")]
+        void ccmdEventminPlayers(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.minplayers XX");
+                return;
+            }
+            object success = SelectMinplayers((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return; 
+            }
+            SendReply(arg, string.Format("Minimum Players for {0} is now {1} (this is only usefull for auto events).", arg.Args[0].ToString(), EventSpawnFile.ToString()));
+        }
+        [ConsoleCommand("event.maxplayers")]
+        void ccmdEventMaxPlayers(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.maxplayers XX");
+                return;
+            }
+            object success = SelectMaxplayers((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return; 
+            }
+            SendReply(arg, string.Format("Maximum Players for {0} is now {1}.", arg.Args[0].ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.spawnfile")]
         void ccmdEventSpawnfile(ConsoleSystem.Arg arg)
