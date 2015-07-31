@@ -36,6 +36,8 @@ namespace Oxide.Plugins
         private bool EventStarted;
         private bool EventEnded;
         private bool EventPending;
+        private int EventMaxPlayers = 0;
+        private int EventMinPlayers = 0;
         private bool isBP;
         private bool Changed;
 
@@ -49,6 +51,7 @@ namespace Oxide.Plugins
         
 		
 		public Oxide.Plugins.Timer AutoArenaTimer;
+		public bool AutoEventLaunched = false;
 
         ////////////////////////////////////////////////////////////
         // EventPlayer class to store informations /////////////////
@@ -546,9 +549,11 @@ namespace Oxide.Plugins
         private static string MessagesEventStatusClosedEnd = "There is currently no event";
         private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
-		private static string MessagesAutoEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
-		private static string MessagesAutoEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
+		private static string MessagesEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
+		private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
         private static bool EventAutoEvents = true;
+        private static int EventAutoInterval = 600;
+        private static List<Dictionary<string,object>> EventAutoConfig = CreateDefaultAutoConfig();
         
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
         private static string MessageRewardCurrent = "You have {0} tokens";
@@ -573,6 +578,8 @@ namespace Oxide.Plugins
             CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
             
             CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
+            CheckCfg<int>("AutoEvents - Interval between 2 events", ref EventAutoInterval);
+            CheckCfg<List<object>>("AutoEvents - Config", ref EventAutoConfig);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
@@ -602,8 +609,8 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
             CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
             
-            CheckCfg<string>("Messages - AutoEvent - MaxPlayersReached", ref MessagesAutoEventMaxPlayers);
-			CheckCfg<string>("Messages - AutoEvent - MinPlayersReached", ref MessagesAutoEventMinPlayers);
+            CheckCfg<string>("Messages - Event - MaxPlayersReached", ref MessagesEventMaxPlayers);
+			CheckCfg<string>("Messages - Event - MinPlayersReached", ref MessagesEventMinPlayers);
 			
             CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
             CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
@@ -615,7 +622,28 @@ namespace Oxide.Plugins
 
             SaveConfig();
         }
-
+		
+		List<Dictionary<string,object>> CreateDefaultAutoConfig()
+		{
+			var newautoconfiglist = new List< Dictionary<string,object> >();
+			var AutoDM = new Dictionary<string,object>();
+			AutoDM.Add("gametype", "Deathmatch");
+			AutoDM.Add("spawnfile", "deathmatchspawnfile");
+			AutoDM.Add("minplayers", "2");
+			AutoDM.Add("maxplayers", "10");
+			
+			var AutoBF = new Dictionary<string,object>();
+			AutoBF.Add("gametype", "Battlefield");
+			AutoBF.Add("spawnfile", "battlefieldspawnfile");
+			AutoBF.Add("minplayers", "0");
+			AutoBF.Add("maxplayers", "30");
+			
+			
+			newautoconfiglist.Add( AutoDM );
+			newautoconfiglist.Add( AutoBF );
+			
+			return newautoconfiglist;
+		}
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Some global methods ///////////////////////////////////////////////////////////////
@@ -810,6 +838,32 @@ namespace Oxide.Plugins
                 BroadcastToChat(MessagesEventCancel);
             return true;
         }
+        object LaunchEvent()
+        {
+        	// just activate it and take over from where it is currently.
+        	AutoEventLaunched = true;
+        	
+        	if(!EventOpen && !EventStarted)
+        	{
+        		// set next gametype
+        		// set next spawnfile
+        		// set next max players & min players
+        		// 
+        	}
+        	else if(EventOpen && !EventStarted)
+        	{
+        		// start check for players
+        		// start laiunch timer if min players reached
+        	}
+        	else if(EventStarted)
+        	{
+        		// add the time limit
+        	}
+        	
+        	
+        	
+        
+        }
         object EndEvent()
         {
             if (EventEnded) return MessagesEventNoGamePlaying;
@@ -886,13 +940,9 @@ namespace Oxide.Plugins
         	if(!EventOpen)
         		return "The Event is currently closed.";
         	
-        	if(!EventAutoEvents) return null;
-        	
-        	object maxplayers = Interface.CallHook("GetEventConfig", "AutoEvent - MaxPlayers" );
-        	if(maxplayers == null) return null;
-        	if( EventPlayers.Count >= Convert.ToInt32(maxplayers.ToString()) )
+        	if( EventMaxPlayers != 0 && EventPlayers.Count >= EventMaxPlayers )
         	{
-        		return string.Format(MessagesAutoEventMaxPlayers, EventGameName);
+        		return string.Format(MessagesEventMaxPlayers, EventGameName);
         	}
         	return null;
         }
@@ -900,11 +950,7 @@ namespace Oxide.Plugins
         {
         	if(!EventAutoEvents) return null;
         	
-        	object minplayers = Interface.CallHook("GetEventConfig", "AutoEvent - MinPlayers" );
-        	
-        	if(minplayers == null) return null;
-        	
-        	if( EventPlayers.Count >= Convert.ToInt32(minplayers.ToString()) && !EventStarted && EventEnded && !EventPending )
+        	if( EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending )
         	{
         		float timerStart = 30f;
         		object timetojoin = Interface.CallHook("GetEventConfig", "AutoEvent - TimeToJoin" );
@@ -1178,6 +1224,18 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         // Console Commands //////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
+        [ConsoleCommand("event.launch")]
+        void ccmdEventLaunch(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = LaunchEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" is now launched.", EventGameName));
+        }
         [ConsoleCommand("event.open")]
         void ccmdEventOpen(ConsoleSystem.Arg arg)
         {
