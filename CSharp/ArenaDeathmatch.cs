@@ -114,10 +114,7 @@ namespace Oxide.Plugins
         static int TokensAddKill = 1;
         static int TokensAddWon = 5;
 		
-		static int EventAutoArenaMaxPlayers = 10;
-		static int EventAutoArenaMinPlayers = 4;
-		static int EventAutoArenaTimeToJoin = 30;
-		
+
 		private void LoadZoneConfig()
 		{
 			EventZoneConfig = new Dictionary<string,object>();
@@ -159,7 +156,14 @@ namespace Oxide.Plugins
 			
 			LoadZoneConfig();
 			
-            CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
+			LoadConfigVariables();
+            
+
+            SaveConfig();
+        }
+        private void LoadConfigVariables()
+        {
+        	CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
             CheckCfg<string>("DeathMatch - Event - Name", ref EventName);
             CheckCfg<string>("DeathMatch - Event - SpawnFile", ref EventSpawnFile);
             CheckCfg<int>("DeathMatch - Win - Kills Needed", ref EventWinKills);
@@ -173,15 +177,9 @@ namespace Oxide.Plugins
 
             CheckCfg<int>("Tokens - Per Kill", ref TokensAddKill);
             CheckCfg<int>("Tokens - On Win", ref TokensAddWon);
-
-
-			CheckCfg<int>("AutoEvent - MaxPlayers", ref EventAutoArenaMaxPlayers);
-			CheckCfg<int>("AutoEvent - MinPlayers", ref EventAutoArenaMinPlayers);
-			CheckCfg<int>("AutoEvent - TimeToJoin", ref EventAutoArenaTimeToJoin);
-			
+	
             CurrentKit = DefaultKit;
-
-            SaveConfig();
+        
         }
         private void CheckCfg<T>(string Key, ref T var)
         {
@@ -222,6 +220,14 @@ namespace Oxide.Plugins
         	if( !useThisEvent ) return null;
         	if(Config[configname] == null) return null;
         	return Config[configname];
+        }
+        
+        object SetEventConfig( string configname, T var )
+        {
+        	if( !useThisEvent ) return null;
+        	Config[configname] = var;
+        	SaveConfig();
+        	LoadConfigVariables();
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
