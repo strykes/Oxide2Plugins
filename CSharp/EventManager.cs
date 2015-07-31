@@ -809,14 +809,6 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         object OpenEvent()
         {
-            if (EventGameName == null) return MessagesEventNotSet;
-            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
-            else if (EventOpen) return MessagesEventAlreadyOpened;
-            object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
-            if (success is string)
-            {
-                return (string)success;
-            }
             success = Interface.CallHook("CanEventOpen", new object[] { });
             if (success is string)
             {
@@ -827,6 +819,20 @@ namespace Oxide.Plugins
             BroadcastToChat(string.Format(MessagesEventOpen, EventGameName));
             Interface.CallHook("OnEventOpenPost", new object[] { });
             return true;
+        }
+        object CanEventOpen()
+        {
+        	if (EventGameName == null) return MessagesEventNotSet;
+            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
+            else if (EventOpen) return MessagesEventAlreadyOpened;
+            
+        	object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
+            if (success is string)
+            {
+                return (string)success;
+            }
+            
+            return null;
         }
         object CloseEvent()
         {
@@ -845,7 +851,7 @@ namespace Oxide.Plugins
         		AutoEventLaunched = false;
         		return "No Automatic Events Configured";
         	}
-        	bool 
+        	bool successed = false;
         	for( i = 0; i < EventAutoConfig.Count; i++ )
         	{
         		EventAutoNum++;
@@ -854,13 +860,27 @@ namespace Oxide.Plugins
         		object success = SelectEvent((EventAutoConfig[EventAutoNum])["gametype"]);
 				if (success is string) { continue; }
 				
-				object success = SelectSpawnfile((EventAutoConfig[EventAutoNum])["spawnfile"]);
+				success = SelectSpawnfile((EventAutoConfig[EventAutoNum])["spawnfile"]);
 				if (success is string) { continue; }
         		
+        		success = SelectMinplayers( (EventAutoConfig[EventAutoNum])["minplayers"] );
+        		if (success is string) { continue; }
         		
+        		success = SelectMaxplayers( (EventAutoConfig[EventAutoNum])["maxplayers"] );
+        		if (success is string) { continue; }
         		
+        		success = Interface.CallHook("CanEventOpen", new object[] { });
+				if (success is string) { continue; }
         		
+        		successed = true;
         	}
+        	
+        	if(!successed)
+        	{
+        		return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
+        	}
+        	
+        	
         
         }
         object LaunchEvent()
@@ -1053,6 +1073,40 @@ namespace Oxide.Plugins
             }
 
             return true;
+        }
+        object SelectMaxplayers(string num)
+        {
+        	int mplayer = 0;
+        	if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+        	if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+        	
+        	if( !int.TryParse( num, out mplayer ) )
+        	{
+        		return string.Format("{0} is not a number", num);
+        	}
+        	
+        	EventMaxPlayers = mplayer;
+        	
+        	Interface.CallHook("OnPostSelectMaxPlayers", EventMaxPlayers);
+        	
+        	return true;
+        }
+        object SelectMinplayers(string num)
+        {
+        	int mplayer = 0;
+        	if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+        	if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+        	
+        	if( !int.TryParse( num, out mplayer ) )
+        	{
+        		return string.Format("{0} is not a number", num);
+        	}
+        	
+        	EventMinPlayers = mplayer;
+        	
+        	Interface.CallHook("OnPostSelectMinPlayers", EventMinPlayers);
+        	
+        	return true;
         }
         object SelectNewZone(MonoBehaviour monoplayer, string radius)
         {
