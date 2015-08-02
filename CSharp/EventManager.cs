@@ -51,7 +51,8 @@ namespace Oxide.Plugins
         private int giveamount;
         
 		
-		public Oxide.Plugins.Timer AutoArenaTimer;
+		public List<Oxide.Plugins.Timer> AutoArenaTimers;
+		public float LastAnnounce;
 		public bool AutoEventLaunched = false;
 
         ////////////////////////////////////////////////////////////
@@ -554,6 +555,7 @@ namespace Oxide.Plugins
 		private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
         private static bool EventAutoEvents = true;
         private static int EventAutoInterval = 600;
+        private static int EventAutoAnnounceInterval = 30;
         private static List<Dictionary<string,object>> EventAutoConfig = CreateDefaultAutoConfig();
         
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
@@ -580,6 +582,7 @@ namespace Oxide.Plugins
             
             CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
             CheckCfg<int>("AutoEvents - Interval between 2 events", ref EventAutoInterval);
+            CheckCfg<int>("AutoEvents - Announce Open Interval", ref EventAutoAnnounceInterval);
             CheckCfg<List<object>>("AutoEvents - Config", ref EventAutoConfig);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
@@ -630,12 +633,18 @@ namespace Oxide.Plugins
 			var AutoDM = new Dictionary<string,object>();
 			AutoDM.Add("gametype", "Deathmatch");
 			AutoDM.Add("spawnfile", "deathmatchspawnfile");
+			AutoDM.Add("closeonstart", "false");
+			AutoDM.Add("timetojoin", "30");
 			AutoDM.Add("minplayers", "2");
 			AutoDM.Add("maxplayers", "10");
+			AutoDM.Add("timelimit", "1200");
 			
 			var AutoBF = new Dictionary<string,object>();
 			AutoBF.Add("gametype", "Battlefield");
 			AutoBF.Add("spawnfile", "battlefieldspawnfile");
+			AutoDM.Add("closeonstart", "false");
+			AutoDM.Add("timetojoin", "0");
+			AutoDM.Add("timelimit", null);
 			AutoBF.Add("minplayers", "0");
 			AutoBF.Add("maxplayers", "30");
 			
@@ -820,6 +829,14 @@ namespace Oxide.Plugins
             Interface.CallHook("OnEventOpenPost", new object[] { });
             return true;
         }
+        void OnEventOpenPost()
+        {
+        	if(!EventAutoEvents) return null;
+        	
+        	DestroyTimers();
+			AutoArenaTimers.Add( timer.Once( 300f, () => CancelEvent("Not enough players") );
+			AutoArenaTimers.Add( timer.Repeat( 0f, 30f, () => AnnounceEvent() );
+        }
         object CanEventOpen()
         {
         	if (EventGameName == null) return MessagesEventNotSet;
@@ -871,6 +888,7 @@ namespace Oxide.Plugins
         		
         		success = Interface.CallHook("CanEventOpen", new object[] { });
 				if (success is string) { continue; }
+				
         		
         		successed = true;
         	}
@@ -880,33 +898,75 @@ namespace Oxide.Plugins
         		return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
         	}
         	
-        	
-        
+        	AutoArenaTimers.Add( timer.Once( Convert.ToSingle(EventAutoInterval), () => OpenEvent() ));
+        }
+        void OnEventStartPost()
+        {
+        	DestroyTimers();
+        	AutoArenaTimers.Add( timer.Once( 600f, () => CancelEvent("Time limit reached") );
+        }
+        void DestroyTimers()
+        {
+        	foreach( Oxide.Plugins.Timer eventimer in AutoArenaTimers )
+        	{
+        		eventimer.Destroy();
+        	}
+        	AutoArenaTimers.Clear();
+        }
+        void CancelEvent(string reason)
+        {
+        	var message = "Event {0} was cancelled for {1}";
+        	object success = Interface.CallHook("OnEventCancel", new object[] { });
+            if (success != null)
+            {
+            	if(success is string)
+            		message = (string)success;
+            	else 
+            		return;
+            }
+            BroadcastToChat(string.Format(message, EventGameName));
+        	DestroyTimers();
+        	EndEvent();
+        }
+        void AnnounceEvent()
+        {
+        	var message = "Event {0} in now opened, you join it by saying /event_join";
+        	object success = Interface.CallHook("OnEventAnnounce", new object[] { });
+            if (success is string)
+            {
+            	message = (string)success;
+            }
+            BroadcastToChat(string.Format(message, EventGameName));
         }
         object LaunchEvent()
         {
         	// just activate it and take over from where it is currently.
         	AutoEventLaunched = true;
         	
-        	if(!EventOpen && !EventStarted)
+        	if(!EventStarted)
         	{
-        		object success = AutoEventNext();
-        		if(success is string)
-        		{
-        			// SEND MSG HERE
-        			return;
-        		}
-        		// set next gametype
-        		// set next spawnfile
-        		// set next max players & min players
-        		// 
+        		if(!EventOpen)
+				{
+					object success = AutoEventNext();
+					if(success is string)
+					{
+						// SEND MSG HERE
+						return;
+					}
+					success = OpenEvent();
+					if(success is string) {
+						// SENDM MSG EHERE
+						return;
+					}
+				}
+				else
+				{
+					// start check for players
+					// start laiunch timer if min players reached
+					
+				}
         	}
-        	else if(EventOpen && !EventStarted)
-        	{
-        		// start check for players
-        		// start laiunch timer if min players reached
-        	}
-        	else if(EventStarted)
+        	else
         	{
         		// add the time limit
         	}
@@ -1004,13 +1064,20 @@ namespace Oxide.Plugins
         	if( EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending )
         	{
         		float timerStart = 30f;
-        		object timetojoin = Interface.CallHook("GetEventConfig", "AutoEvent - TimeToJoin" );
-        		if(timetojoin != null) { timerStart = Convert.ToSingle( timetojoin.ToString() ); }
+        		if(EventAutoConfig[EventAutoNum]["timetojoin"] != null) timerStart = Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]);
         		BroadcastToChat(string.Format(MessagesAutoEventMinPlayers, EventGameName, timerStart.ToString()));
+        		
         		EventPending = true;
-        		AutoArenaTimer = timer.Once( timerStart, () => StartEvent() );
+        		DestroyTimers();
+        		AutoArenaTimers.Add( timer.Once( timerStart, () => StartEvent() ));
         	}
         	return null;
+        }
+        void OnEventEndPost()
+        {
+        	if(!EventAutoEvents) return null;
+        	DestroyTimers();
+        	AutoEventNext();
         }
         object LeaveEvent(BasePlayer player)
         {
