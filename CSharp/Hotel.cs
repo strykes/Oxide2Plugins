@@ -8,13 +8,19 @@ namespace Oxide.Plugins
         // Plugin References
         ////////////////////////////////////////////////////////////
 		
+		[PluginReference] Plugin ZoneManager;
 		
-		// FIELDS
+		////////////////////////////////////////////////////////////
+        // Fields
+        ////////////////////////////////////////////////////////////
+        
 		static int deployableColl = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
 		static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction" });
-		 ////////////////////////////////////////////////////////////
+		
+		////////////////////////////////////////////////////////////
         // cached Fields
         ////////////////////////////////////////////////////////////
+        
 		public static Dictionary<string, HotelData> EditHotel = new Dictionary<string, HotelData>();
 		
 		////////////////////////////////////////////////////////////
@@ -22,6 +28,59 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
 		
 		static int authlevel = 2;
+		static string MessageAlreadyEditing = "You are already editing a hotel. You must close or save it first.";
+		static string MessageHotelNewHelp = "You must select a name for the new hotel: /hotel_new HOTELNAME";
+		static string MessageHotelEditHelp = "You must select the name of the hotel you want to edit: /hotel_edit HOTELNAME";
+		static string MessageHotelEditEditing = "You are editing the hotel named: {0}. Now say /hotel to continue configuring your hotel. Note that no one can register/leave the hotel while you are editing it.";
+		static string MessageErrorAlreadyExist = "{0} is already the name of a hotel";
+		static string MessageErrorNotAllowed = "You are not allowed to use this command";
+		static string MessageErrorEditDoesntExist = "The hotel \"{0}\" doesn't exist";
+		
+		static string MessageHotelNewCreated = "You've created a new Hotel named: {0}. Now say /hotel to continue configuring your hotel.";
+		
+		static string GUIBoardAdmin = "Hotel Name: {name} \nHotel Location: {loc} \nHotel Radius: {hrad} \nRooms Radius: {rrad} \nRooms: {rnum} \nOccupied: {onum}"; 
+		static string xmin = "0.7";
+		static string xmax= "1.0";
+		static string ymin = "0.2";
+		static string ymax = "0.8";
+		
+		public static string adminguijson = @"[  
+			{ 
+				""name"": ""HotelAdmin"",
+				""parent"": ""Overlay"",
+				""components"":
+				[
+					{
+						 ""type"":""UnityEngine.UI.Image"",
+						 ""color"":""0.1 0.1 0.1 0.7"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""{xmin} {ymin}"",
+						""anchormax"": ""{xmax} {ymax}""
+						
+					}
+				]
+			},
+			{
+				""parent"": ""BuildMsg"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{msg}"",
+						""fontSize"":15,
+						""align"": ""MiddleCenter"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0 0.1"",
+						""anchormax"": ""1 0.8""
+					}
+				]
+			}
+		]
+		";
 		
 		////////////////////////////////////////////////////////////
         // Data Management
@@ -33,33 +92,19 @@ namespace Oxide.Plugins
         {
             public HashSet<HotelData> Hotels = new HashSet<HotelData>();
 
-            public StoredData()
-            {
-            }
+            public StoredData() { }
         }
 
-        void OnServerSave()
-        {
-            SaveData();
-        }
+        void OnServerSave() { SaveData(); }
 
-        void SaveData()
-        {
-            Interface.GetMod().DataFileSystem.WriteObject("Hotel", storedData);
-        }
+        void SaveData() { Interface.GetMod().DataFileSystem.WriteObject("Hotel", storedData); }
 
         void LoadData()
         {
-            try
-            {
-                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("Hotel");
-            }
-            catch
-            {
-                storedData = new StoredData();
-            }
-            
+            try { storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("Hotel"); }
+            catch { storedData = new StoredData(); }
         }
+        
 		public class DeployableItem
 		{
 			public string x;
@@ -95,7 +140,9 @@ namespace Oxide.Plugins
             public string x;
             public string y;
             public string z;
+            
             public List<DeployableItem> defaultDeployables;
+            
 			public string renter;
 			public string checkingTime;
 			public string checkoutTime;
@@ -219,8 +266,6 @@ namespace Oxide.Plugins
             	
             	rooms.Add(newroom.roomid, newroom);
             }
-            
-            
         }
 		
 		static Dictionary<string, Room> FindAllRooms( Vector3 position, float radius, float roomradius )
@@ -231,7 +276,6 @@ namespace Oxide.Plugins
 				if( col.GetComponentInParent<BaseLock>() != null )
 				{
 					listLocks.Add( col.GetComponentInParent<BaseLock>() );
-					
 				}
 			}
 			
@@ -252,7 +296,7 @@ namespace Oxide.Plugins
 						{
 							founditems.Add( deploy );
 							bool canReach = true;
-							foreach( RaycastHit rayhit in UnityEngine.Physics.RaycastAll( deploy.transform.position, (lock.transform.position - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, lock.transform.position ) - 0.5f, constructionColl ))
+							foreach( RaycastHit rayhit in UnityEngine.Physics.RaycastAll( deploy.transform.position, (lock.transform.position - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, lock.transform.position ), constructionColl ))
 							{
 								canReach = false;
 								break;
@@ -295,21 +339,64 @@ namespace Oxide.Plugins
 
         static double LogTime() { return DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
         
-        
+        void Loaded()
+        {
+        	adminguijson = json.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
+        }
         
         void RefreshAdminHotelGUI(BasePlayer player)
         {
+        	RemoveAdminHotelGUI( player );
         	
+        	if( !EditHotel.ContainsKey(player.userID.ToString() ) return;
+        	
+        	var Msg = CreateAdminGUIMsg( player );
+        	if(Msg == string.Empty) return;
+        	
+        	string send = adminguijson.Replace("{msg}", Msg);
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
+        }
+        
+        string CreateAdminGUIMsg(BasePlayer player)
+        {
+        	string newguimsg = string.Empty;
+        	HotelData hoteldata = EditHotel[player.userID.ToString()];
+        	
+        	//GUIBoardAdmin = "Hotel Name: {name} \nHotel Location: {loc} \nHotel Radius: {hrad} \nRooms Radius: {rrad} \nRooms: {rnum} \nOccupied: {onum}"; 
+        	var loc = hoteldata.x == null ? "None" : string.Format("{0} {1} {2}", hoteldata.x, hoteldata.y, hoteldata.z);
+        	var hrad = hoteldata.r == null ? "None" : hoteldata.r;
+        	var rrad = hoteldata.rr == null ? "None": hoteldata.rr;
+        	var rnum = hoteldata.rooms.Count.ToString();
+        	
+        	var onumint = 0;
+        	foreach( KeyValuePair<string, Room> pair in hoteldata.rooms )
+			{
+				if( pair.Value.renter != null )
+				{
+					onumint++;
+				}
+			}
+			var onum = onumint.ToString();
+			
+			newguimsg = GUIBoardAdmin.Replace("{name}", hoteldata.hotelname).Replace("{loc}", loc).Replace("{hrad}", hrad).Replace("{rrad}", rrad).Replace("{rnum}", rnum).Replace("{onum}", onum);
+        
+        	return newguimsg;
         }
         
         void RemoveAdminHotelGUI(BasePlayer player)
         {
-        
+        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "HotelAdmin");
         }
         
         void ShowHotelGrid(BasePlayer player)
         {
-        
+        	HotelData hoteldata = EditHotel[player.userID.ToString()];
+        	if(hoteldata.x != null && hoteldata.r != null)
+        	{
+        		Vector3 hpos = hoteldata.Pos();
+        		float hrad = Convert.ToSingle(hoteldata.r);
+        		player.SendConsoleCommand("ddraw.sphere", 5f, UnityEngine.Color.blue, hpos, hrad);
+        	}
         }
         
         bool hasAccess(BasePlayer player)
@@ -446,72 +533,45 @@ namespace Oxide.Plugins
         [ChatCommand("hotel_edit")]
         void cmdChatHotelEdit(BasePlayer player, string command, string[] args)
         {
-            if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
-            
-            if(EditHotel.ContainsKey(player.userID.ToString()))
-            {
-            	SendReply(player, "You are already editing a hotel. You must close or save it first.");
-				return;
-            }
-            
-            if(args.Count == 0)
-            {
-            	SendReply(player, "You must select the name of the hotel you want to edit: /hotel_edit HOTELNAME");
-				return;
-            }
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            if(EditHotel.ContainsKey(player.userID.ToString())) { SendReply(player, MessageAlreadyEditing); return; }
+            if(args.Count == 0) { SendReply(player, MessageHotelEditHelp); return; }
             
             string hname = args[0];
             foreach(HotelData hotel in storedData.Hotels)
             {
             	if(hotel.hotelname.ToLower() == hname.ToLower())
             	{
-            		EditHotel.Add(player.userID.ToString(), hotel);
             		hotel.Deactivate();
+            		EditHotel.Add(player.userID.ToString(), hotel);
             		break;
             	}
             }
-			if( !EditHotel.ContainsKey(player.userID.ToString()) )
-			{
-				SendReply(player, "The hotel you are trying to edit doesn't exist");
-				return;
-			}
-            SendReply(player, string.Format("You are editing the hotel named: {0}. Now say /hotel to continue configuring your hotel. Note that no one can register/leave the hotel while you are editing it.",EditHotel[player.userID.ToString()].hotelname));
+			if( !EditHotel.ContainsKey(player.userID.ToString()) ) { SendReply(player, string.Format(MessageErrorEditDoesntExist, args[0])); return; }
+			
+            SendReply(player, string.Format( MessageHotelEditEditing, EditHotel[player.userID.ToString()].hotelname ) );
+            
             RefreshAdminHotelGUI( player );
         }
         
         [ChatCommand("hotel_new")]
         void cmdChatHotelNew(BasePlayer player, string command, string[] args)
         {
-            if (!hasAccess(player)) { SendReply(player, "You dont have access to this command"); return; }
-            
-            if(EditHotel.ContainsKey(player.userID.ToString()))
-            {
-            	SendReply(player, "You are already editing a hotel. You must close or save it first.");
-				return;
-            }
-            
-            if(args.Count == 0)
-            {
-            	SendReply(player, "You must select a name for the new hotel: /hotel_new HOTELNAME");
-				return;
-            }
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            if(EditHotel.ContainsKey(player.userID.ToString())) { SendReply(player, MessageAlreadyEditing); return; }
+            if(args.Count == 0) { SendReply(player, MessageHotelNewHelp); return; }
             
             string hname = args[0];
-            foreach(HotelData hotel in storedData.Hotels)
-            {
-            	if(hotel.hotelname.ToLower() == hname.ToLower())
-            	{
-            		SendReply(player, string.Format("{0} is already the name of a hotel",hname));
-            		return;
-            	}
-            }
             
-            HotelData newhotel = new HotelData(args[0]);
+            foreach(HotelData hotel in storedData.Hotels) { if(hotel.hotelname.ToLower() == hname.ToLower()) { SendReply(player, string.Format(MessageErrorAlreadyExist,hname)); return; } }
+            
+            HotelData newhotel = new HotelData(hname);
+            newhotel.Deactivate();
             EditHotel.Add(player.userID.ToString(), newhotel);
-            SendReply(player, string.Format("You've created a new Hotel named: {0}. Now say /hotel to continue configuring your hotel.",hname));
+            
+            SendReply(player, string.Format( MessageHotelNewCreated,hname ));
+            
             RefreshAdminHotelGUI( player );
         }
-        
-        
 	}
 }
