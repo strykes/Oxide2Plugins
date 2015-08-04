@@ -116,6 +116,8 @@ namespace Oxide.Plugins
 			public string rw;
 			public string prefabname;
 			
+			Vector3 pos;
+			
 			public DeployableItem()
             {
             }
@@ -132,6 +134,12 @@ namespace Oxide.Plugins
                 this.ry = deployable.transform.rotation.y.ToString();
                 this.rz = deployable.transform.rotation.z.ToString();
                 this.rw = deployable.transform.rotation.w.ToString();
+            }
+            public Vector3 Pos()
+            {
+                if (pos == default(Vector3))
+                    pos = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
+                return pos;
             }
 		}
         public class Room
@@ -397,6 +405,15 @@ namespace Oxide.Plugins
         		float hrad = Convert.ToSingle(hoteldata.r);
         		player.SendConsoleCommand("ddraw.sphere", 5f, UnityEngine.Color.blue, hpos, hrad);
         	}
+        	
+        	foreach( KeyValuePair<string, Room> pair in rooms )
+			{
+				List<DeployableItem> deployables = pair.Value.defaultDeployables;
+				foreach( DeployableItem deployable in deployables )
+				{
+					player.SendConsoleCommand("ddraw.arrow", 10f, UnityEngine.Color.green, pair.Value.Pos(), deployable.Pos(), 0.5f);
+				}
+			}
         }
         
         bool hasAccess(BasePlayer player)
