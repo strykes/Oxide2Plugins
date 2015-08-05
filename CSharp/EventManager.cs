@@ -831,6 +831,10 @@ namespace Oxide.Plugins
         }
         void OnEventOpenPost()
         {
+        	OnEventOpenPostAutoEvent();
+        }
+        void OnEventOpenPostAutoEvent()
+        {
         	if(!EventAutoEvents) return null;
         	
         	DestroyTimers();
@@ -902,6 +906,12 @@ namespace Oxide.Plugins
         }
         void OnEventStartPost()
         {
+        	OnEventStartPostAutoEvent();
+        }
+        void OnEventStartPostAutoEvent()
+        {
+        	if( !EventAutoEvents ) return;
+        	
         	DestroyTimers();
         	AutoArenaTimers.Add( timer.Once( 600f, () => CancelEvent("Time limit reached") );
         }
@@ -950,30 +960,24 @@ namespace Oxide.Plugins
 					object success = AutoEventNext();
 					if(success is string)
 					{
-						// SEND MSG HERE
-						return;
+						return (string)success;
 					}
 					success = OpenEvent();
 					if(success is string) {
-						// SENDM MSG EHERE
-						return;
+						return (string)success;
 					}
 				}
 				else
 				{
-					// start check for players
+					OnEventOpenPostAutoEvent();
 					// start laiunch timer if min players reached
-					
 				}
         	}
         	else
         	{
-        		// add the time limit
+        		OnEventStartPostAutoEvent();
         	}
-        	
-        	
-        	
-        
+         	return null;
         }
         object EndEvent()
         {
@@ -995,11 +999,15 @@ namespace Oxide.Plugins
             Interface.CallHook("OnEventEndPost", new object[] { });
             return true;
         }
-        object StartEvent()
+        object CanEventStart()
         {
-            if (EventGameName == null) return MessagesEventNotSet;
+        	if (EventGameName == null) return MessagesEventNotSet;
             else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
             else if (EventStarted) return MessagesEventAlreadyStarted;
+            return null;
+        }
+        object StartEvent()
+        {
             object success = Interface.CallHook("CanEventStart", new object[] { });
             if (success is string)
             {
@@ -1063,8 +1071,7 @@ namespace Oxide.Plugins
         	
         	if( EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending )
         	{
-        		float timerStart = 30f;
-        		if(EventAutoConfig[EventAutoNum]["timetojoin"] != null) timerStart = Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]);
+        		float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
         		BroadcastToChat(string.Format(MessagesAutoEventMinPlayers, EventGameName, timerStart.ToString()));
         		
         		EventPending = true;
