@@ -6,7 +6,7 @@ using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Copy Paste", "Reneb & VVoid", "2.2.6", ResourceId = 629)]
+    [Info("Copy Paste", "Reneb & VVoid & Alex", "2.2.10")]
     class CopyPaste : RustPlugin
     {
         private MethodInfo inventoryClear = typeof(ItemContainer).GetMethod("Clear", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -43,7 +43,7 @@ namespace Oxide.Plugins
             {
                 if (itemDef.GetComponent<ItemModDeployable>() != null)
                 {
-                    deployedToItem.Add(itemDef.GetComponent<ItemModDeployable>().entityPrefab.targetObject.gameObject.name.ToString(), itemDef.shortname.ToString());
+                    deployedToItem.Add(itemDef.GetComponent<ItemModDeployable>().entityPrefab.Get().gameObject.name.ToString(), itemDef.shortname.ToString());
                 }
             }
         }
@@ -238,7 +238,7 @@ namespace Oxide.Plugins
                                     foreach (Item item in box.inventory.itemList)
                                     {
                                         var newitem = new Dictionary<string, object>();
-                                        newitem.Add("blueprint", item.isBlueprint.ToString());
+                                        newitem.Add("blueprint", item.IsBlueprint().ToString());
                                         newitem.Add("id", item.info.itemid.ToString());
                                         newitem.Add("amount", item.amount.ToString());
                                         itemlist.Add(newitem);
@@ -252,8 +252,9 @@ namespace Oxide.Plugins
                                 {
                                     var signage = fdeployable.GetComponent<Signage>();
                                     var sign = new Dictionary<string, object>();
-                                    if (signage.textureID > 0 && FileStorage.server.Exists(signage.textureID, FileStorage.Type.png))
-                                        sign.Add("texture", Convert.ToBase64String(FileStorage.server.Get(signage.textureID, FileStorage.Type.png)));
+									var get = FileStorage.server.Get(signage.textureID, FileStorage.Type.png, signage.net.ID);
+                                    if (signage.textureID > 0 && get!=null)
+                                        sign.Add("texture", Convert.ToBase64String(get));
                                     sign.Add("locked", signage.IsLocked());
                                     housedata.Add("sign", sign);
                                 }
@@ -470,7 +471,7 @@ namespace Oxide.Plugins
             {
                 return;
             }
-            var deployable = newitem.info.GetComponent<ItemModDeployable>().entityPrefab.targetObject.GetComponent<Deployable>();
+            var deployable = newitem.info.GetComponent<ItemModDeployable>().entityPrefab.Get().GetComponent<Deployable>();
             if (deployable == null)
             {
                 return;
@@ -495,6 +496,7 @@ namespace Oxide.Plugins
                 Dictionary<string, object> structPos = structure["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = structure["rot"] as Dictionary<string, object>;
                 string prefabname = (string)structure["prefabname"];
+				if (!prefabname.Contains(".prefab")) prefabname = "assets/bundled/prefabs/"+prefabname+".prefab";
                 BuildingGrade.Enum grade = (BuildingGrade.Enum)structure["grade"];
                 Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
                 Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
@@ -535,7 +537,7 @@ namespace Oxide.Plugins
             BaseEntity lockentity = null;
             if (structure.ContainsKey("codelock"))
             {
-                lockentity = GameManager.server.CreateEntity("build/locks/lock.code", Vector3.zero, new Quaternion());
+                lockentity = GameManager.server.CreateEntity("assets/bundled/prefabs/build/locks/lock.code.prefab", Vector3.zero, new Quaternion());
                 lockentity.OnDeployed(lockableEntity);
                 var code = (string)structure["codelock"];
                 if (!string.IsNullOrEmpty(code))
@@ -547,7 +549,7 @@ namespace Oxide.Plugins
             }
             else if (structure.ContainsKey("keycode"))
             {
-                lockentity = GameManager.server.CreateEntity("build/locks/lock.key", Vector3.zero, new Quaternion());
+                lockentity = GameManager.server.CreateEntity("assets/bundled/prefabs/build/locks/lock.key.prefab", Vector3.zero, new Quaternion());
                 lockentity.OnDeployed(lockableEntity);
                 var code = Convert.ToInt32(structure["keycode"]);
                 var @lock = lockentity.GetComponent<KeyLock>();
@@ -580,7 +582,7 @@ namespace Oxide.Plugins
                 Dictionary<string, object> structPos = deployable["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = deployable["rot"] as Dictionary<string, object>;
                 string prefabname = (string)deployable["prefabname"];
-
+				if (!prefabname.Contains(".prefab")) prefabname = "assets/bundled/prefabs/"+prefabname+".prefab";
                 Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
                 Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
                 Vector3 NewPos = TempPos + targetPoint;
@@ -612,7 +614,7 @@ namespace Oxide.Plugins
                         var sign = entity.GetComponent<Signage>();
                         var signData = deployable["sign"] as Dictionary<string, object>;
                         if (signData.ContainsKey("texture"))
-                            sign.textureID = FileStorage.server.Store(Convert.FromBase64String(signData["texture"].ToString()), FileStorage.Type.png);
+                            sign.textureID = FileStorage.server.Store(Convert.FromBase64String(signData["texture"].ToString()), FileStorage.Type.png, sign.net.ID);
                         if (Convert.ToBoolean(signData["locked"]))
                             sign.SetFlag(BaseEntity.Flags.Locked, true);
                         sign.SendNetworkUpdate();
@@ -637,6 +639,7 @@ namespace Oxide.Plugins
                 Dictionary<string, object> structPos = spawnable["pos"] as Dictionary<string, object>;
                 Dictionary<string, object> structRot = spawnable["rot"] as Dictionary<string, object>;
                 string prefabname = (string)spawnable["prefabname"];
+				if (!prefabname.Contains(".prefab")) prefabname = "assets/bundled/prefabs/"+prefabname+".prefab";
                 Quaternion newAngles = Quaternion.EulerRotation((new Vector3(Convert.ToSingle(structRot["x"]), Convert.ToSingle(structRot["y"]), Convert.ToSingle(structRot["z"]))) + OriginRotation);
                 Vector3 TempPos = OriginRot * (new Vector3(Convert.ToSingle(structPos["x"]), Convert.ToSingle(structPos["y"]), Convert.ToSingle(structPos["z"])));
                 Vector3 NewPos = TempPos + targetPoint;
