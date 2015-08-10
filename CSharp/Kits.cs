@@ -13,31 +13,31 @@ namespace Oxide.Plugins
     [Info("Kits", "Reneb", "2.1.0")]
     class Kits : RustPlugin
     {
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	///// Plugin References
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	///// cached Fields
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	
-    	
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	///// Fields
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	
-    	private DateTime epoch;
-        
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// Plugin References
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// cached Fields
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// Fields
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+        private DateTime epoch;
+
         private Dictionary<string, string> displaynameToShortname;
         private List<string> permNames = new List<string>();
-        
+
         static int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
         static int groundLayer = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Terrain", "World" });
-    	
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	///// Configuration
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	
+
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// Configuration
+        //////////////////////////////////////////////////////////////////////////////////////////
+
         static string noAccess = "You are not allowed to use this command";
         static List<object> permissionsList = GetDefaultPermList();
         static int authLevel = 1;
@@ -48,19 +48,25 @@ namespace Oxide.Plugins
         static string kitredeemed = "You've redeemed a kit";
         static string kitsreset = "All kits data from players were deleted";
         static string MessageCooldownTimer = "You must wait {0}s before using this kit again";
-        
-        static int guiminX = 0.2;
-        static int guimaxX = 0.8;
-        static int guiminY = 0.2;
-        static int guiYheight = 0.05;
-		static int retreiveType = 0;
-		static Dictionary<string,object> npcKitList = GetDefaultNpcKit();
-		
-		private Core.Configuration.DynamicConfigFile KitsConfig;
+
+        static string guiminXcfg = "0.2";
+        static string guimaxXcfg = "0.8";
+        static string guiminYcfg = "0.2";
+        static string guiYheightcfg = "0.05";
+
+        static double guiminX = 0.2;
+        static double guimaxX = 0.8;
+        static double guiminY = 0.2;
+        static double guiYheight = 0.05;
+
+        static int retreiveType = 0;
+        static Dictionary<string, object> npcKitList = GetDefaultNpcKit();
+
+        private Core.Configuration.DynamicConfigFile KitsConfig;
         private Core.Configuration.DynamicConfigFile KitsData;
         private bool Changed;
-		
-		private void CheckCfg<T>(string Key, ref T var)
+
+        private void CheckCfg<T>(string Key, ref T var)
         {
             if (Config[Key] is T)
                 var = (T)Config[Key];
@@ -80,24 +86,24 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages: kitredeemed", ref kitredeemed);
             CheckCfg<string>("Messages: kitsreset", ref kitsreset);
             CheckCfg<string>("Messages: Kit in Cooldown", ref MessageCooldownTimer);
-            
-            CheckCfg<int>("GUI: min x", ref guiminX);
-            CheckCfg<int>("GUI: max x", ref guimaxX);
-            CheckCfg<int>("GUI: min y", ref guiminY);
-            CheckCfg<int>("GUI: y height", ref guiYheight);
-            
-            CheckCfg<Dictionary<string,object>>("NPC Kits", ref npcKitList);
-            
+
+            CheckCfg<string>("GUI: min x", ref guiminXcfg);
+            CheckCfg<string>("GUI: max x", ref guimaxXcfg);
+            CheckCfg<string>("GUI: min y", ref guiminYcfg);
+            CheckCfg<string>("GUI: y height", ref guiYheightcfg);
+
+            CheckCfg<Dictionary<string, object>>("NPC Kits", ref npcKitList);
+
             SaveConfig();
 
         }
 
         void LoadDefaultConfig() { }
-        
-         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// Data
-    	//////////////////////////////////////////////////////////////////////////////////////////
-        
+
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// Data
+        //////////////////////////////////////////////////////////////////////////////////////////
+
         private void InitializeKits()
         {
             KitsConfig = Interface.GetMod().DataFileSystem.GetDatafile("Kits_List");
@@ -111,12 +117,12 @@ namespace Oxide.Plugins
         {
             Interface.GetMod().DataFileSystem.SaveDatafile("Kits_Data");
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// Oxide Hooks
-    	//////////////////////////////////////////////////////////////////////////////////////////
-        
-        
+        ///// Oxide Hooks
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+
         void Loaded()
         {
             epoch = new System.DateTime(1970, 1, 1);
@@ -124,22 +130,27 @@ namespace Oxide.Plugins
             foreach (var perm in permissionsList)
             {
                 if (!permission.PermissionExists(perm.ToString())) permission.RegisterPermission(perm.ToString(), this);
-                if(!permNames.Contains(perm.ToString())) permNames.Add(perm.ToString());
+                if (!permNames.Contains(perm.ToString())) permNames.Add(perm.ToString());
             }
             InitializeKits();
+
+            guiminX = Convert.ToDouble(guiminXcfg);
+            guimaxX = Convert.ToDouble(guimaxXcfg);
+            guiminY = Convert.ToDouble(guiminYcfg);
+            guiYheight = Convert.ToDouble(guiYheightcfg);
         }
         void OnServerInitialized()
         {
             InitializeTable();
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// Methods
-    	//////////////////////////////////////////////////////////////////////////////////////////
-    	
+        ///// Methods
+        //////////////////////////////////////////////////////////////////////////////////////////
+
         double CurrentTime() { return System.DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
-        
-        
+
+
         private void InitializeTable()
         {
             displaynameToShortname.Clear();
@@ -150,8 +161,8 @@ namespace Oxide.Plugins
             }
         }
 
-        
-	
+
+
         static List<object> GetDefaultPermList()
         {
             var newobject = new List<object>();
@@ -159,7 +170,7 @@ namespace Oxide.Plugins
             newobject.Add("donator");
             return newobject;
         }
-        
+
         private void SendTheReply(object source, string msg)
         {
             if (source is BasePlayer)
@@ -169,11 +180,11 @@ namespace Oxide.Plugins
             else
                 Puts(msg);
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// Permission related
-    	//////////////////////////////////////////////////////////////////////////////////////////
-        
+        ///// Permission related
+        //////////////////////////////////////////////////////////////////////////////////////////
+
         bool hasAccess(BasePlayer player)
         {
             if (player.net.connection.authLevel >= authLevel)
@@ -186,8 +197,8 @@ namespace Oxide.Plugins
             if (((BasePlayer)source).net.connection.authLevel >= authLevel) return true;
             return permission.UserHasPermission(((BasePlayer)source).userID.ToString(), name);
         }
-        
-        int GetSourceLevel(object source) 
+
+        int GetSourceLevel(object source)
         {
             if (source is BasePlayer)
             {
@@ -195,29 +206,29 @@ namespace Oxide.Plugins
             }
             return 2;
         }
-        
+
         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// NPC Related
-    	//////////////////////////////////////////////////////////////////////////////////////////
-        
-        static Dictionary<string,object> GetDefaultNpcKit()
+        ///// NPC Related
+        //////////////////////////////////////////////////////////////////////////////////////////
+
+        static Dictionary<string, object> GetDefaultNpcKit()
         {
-            var newobject = new Dictionary<string,object>();
+            var newobject = new Dictionary<string, object>();
             var newlist = new List<object>();
             newlist.Add("stones");
             newlist.Add("building");
-            newobject.Add("123456",newlist);
-            
+            newobject.Add("123456", newlist);
+
             newlist.Add("vipkit");
-            newobject.Add("999999",newlist);
-            
+            newobject.Add("999999", newlist);
+
             return newobject;
         }
 
         //////////////////////////////////////////////////////////////////////////////////////////
-    	///// GiveItem
-    	//////////////////////////////////////////////////////////////////////////////////////////
-        
+        ///// GiveItem
+        //////////////////////////////////////////////////////////////////////////////////////////
+
         public object GiveItem(BasePlayer player, string itemname, int amount, ItemContainer pref)
         {
             itemname = itemname.ToLower();
@@ -249,9 +260,9 @@ namespace Oxide.Plugins
             }
             return true;
         }
-        
-        
-        
+
+
+
         void SendList(object source)
         {
             var kitEnum = KitsConfig.GetEnumerator();
@@ -270,7 +281,7 @@ namespace Oxide.Plugins
                     kitdescription = kitdata["description"].ToString();
                 if (kitdata.ContainsKey("level"))
                     options = string.Format("{0} - {1}+", options, kitlvl.ToString());
-                
+
                 foreach (string name in permNames)
                 {
                     if (kitdata.ContainsKey(name))
@@ -279,13 +290,13 @@ namespace Oxide.Plugins
                         if (!hasVip(source, name)) kitlvl = authLevel;
                     }
                 }
-                
+
                 if (kitdata.ContainsKey("npconly"))
                 {
-                	options = string.Format("{0} - NPC Only", options);
-                	kitlvl = 2;
+                    options = string.Format("{0} - NPC Only", options);
+                    kitlvl = 2;
                 }
-                
+
                 if (kitdata.ContainsKey("max"))
                 {
                     options = string.Format("{0} - {1} max", options, kitdata["max"].ToString());
@@ -300,7 +311,7 @@ namespace Oxide.Plugins
                 }
             }
         }
-        
+
 
         void cmdAddKit(BasePlayer player, string[] args)
         {
@@ -312,7 +323,7 @@ namespace Oxide.Plugins
                 SendTheReply(player, "-cooldownXX => cooldown of the kit. Default is none.");
                 SendTheReply(player, "-npconly => Only allow kit retrieve from the NPC.");
                 SendTheReply(player, "-authlevelXX => Level needed to use this plugin: 0, 1 or 2. Default is 0");
-                foreach( string name in permNames)
+                foreach (string name in permNames)
                 {
                     SendTheReply(player, string.Format("-{0} => Allow to give this kit only to {0}s", name));
                 }
@@ -353,7 +364,7 @@ namespace Oxide.Plugins
             if (cooldown > 0.0)
                 newkit.Add("cooldown", cooldown);
             if (npconly)
-            	newkit.Add("npconly", true);
+                newkit.Add("npconly", true);
             newkit.Add("description", desription);
             KitsConfig[kitname] = newkit;
             SaveKits();
@@ -383,7 +394,7 @@ namespace Oxide.Plugins
             {
                 Dictionary<string, object> newObject = new Dictionary<string, object>();
                 itemname = item.info.shortname.ToString();
-                if ((bool)item.isBlueprint)
+                if (item.IsBlueprint())
                     itemname = string.Format("{0} BP", itemname);
                 newObject.Add(itemname, (int)item.amount);
                 mainList.Add(newObject);
@@ -392,7 +403,7 @@ namespace Oxide.Plugins
             {
                 Dictionary<string, object> newObject = new Dictionary<string, object>();
                 itemname = item.info.shortname.ToString();
-                if ((bool)item.isBlueprint)
+                if (item.IsBlueprint())
                     itemname = string.Format("{0} BP", itemname);
                 newObject.Add(itemname, (int)item.amount);
                 beltList.Add(newObject);
@@ -445,14 +456,14 @@ namespace Oxide.Plugins
                     error = true;
                     foreach (string name in permNames)
                     {
-                        if(args[i].StartsWith("-"+name))
+                        if (args[i].StartsWith("-" + name))
                         {
                             if (!vip.Contains(name)) vip.Add(name);
                             error = false;
                         }
                     }
-                    if(error)
-                        return string.Format("Wrong Options: {0}", args[i].ToString()); 
+                    if (error)
+                        return string.Format("Wrong Options: {0}", args[i].ToString());
                 }
             }
             return true;
@@ -471,7 +482,7 @@ namespace Oxide.Plugins
             {
                 player.inventory.Strip();
                 GiveKit(player, "autokit");
-            } 
+            }
         }
         void cmdRemoveKit(BasePlayer player, string[] args)
         {
@@ -536,23 +547,23 @@ namespace Oxide.Plugins
         }
         bool CheckIfCanRedeem(BasePlayer player, string kitname, out string reason)
         {
-        	reason = string.Empty;
-        	if (KitsConfig[kitname] == null)
+            reason = string.Empty;
+            if (KitsConfig[kitname] == null)
             {
-            	reason = unknownKit;
-            	return false;
+                reason = unknownKit;
+                return false;
             }
-            
+
             object thereturn = Interface.GetMod().CallHook("canRedeemKit", new object[1] { player });
             if (thereturn != null)
             {
                 if (thereturn is string)
                 {
-                	reason = (string)thereturn;
+                    reason = (string)thereturn;
                 }
                 return false;
             }
-            
+
             Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
             double cooldown = 0.0;
             int kitleft = 1;
@@ -562,82 +573,82 @@ namespace Oxide.Plugins
                 kitlvl = (int)kitdata["level"];
             if (kitlvl > player.net.connection.authLevel)
             {
-            	reason = cantUseKit;
+                reason = cantUseKit;
                 return false;
             }
             if (kitdata.ContainsKey("max"))
                 kitleft = GetKitLeft(player, kitname, (int)(kitdata["max"]));
             if (kitleft <= 0)
             {
-            	reason = maxKitReached;
-            	return false;
+                reason = maxKitReached;
+                return false;
             }
             foreach (string name in permNames)
             {
-                if(kitdata.ContainsKey(name))
+                if (kitdata.ContainsKey(name))
                 {
                     if (!hasVip(player, name))
                     {
-                    	reason = cantUseKit;
+                        reason = cantUseKit;
                         return false;
                     }
                 }
             }
-                
+
             if (kitdata.ContainsKey("cooldown"))
                 cooldown = GetKitTimeleft(player, kitname, (double)(kitdata["cooldown"]));
             if (cooldown > 0.0)
             {
-            	reason =  string.Format(MessageCooldownTimer, cooldown.ToString());
+                reason = string.Format(MessageCooldownTimer, cooldown.ToString());
                 return false;
             }
-        	return true;
+            return true;
         }
-        bool CheckAroundForNPC( BasePlayer player, string kitname )
+        bool CheckAroundForNPC(BasePlayer player, string kitname)
         {
-        	var colliderArray = Physics.OverlapSphere(player.transform.position, 3f, playerLayer);
-			foreach (Collider collider in colliderArray)
-			{
-				BasePlayer cachedPlayer = collider.GetComponentInParent<BasePlayer>();
-				if (cachedPlayer == null) continue;
-				if (player == cachedPlayer) continue;
-				string userId = cachedPlayer.userID.ToString();
-				if( !npcKitList.ContainsKey(userId)) continue;
-				if( !npcKitList[userId].Contains(kitname) ) continue;
-				
-				/// NEED TO ADD A WALL COLLIDER CHECK TO MAKE SURE ITS NOT THROUGH WALL
-				return true;
-			}
-			return false;
-        
+            var colliderArray = Physics.OverlapSphere(player.transform.position, 3f, playerLayer);
+            foreach (Collider collider in colliderArray)
+            {
+                BasePlayer cachedPlayer = collider.GetComponentInParent<BasePlayer>();
+                if (cachedPlayer == null) continue;
+                if (player == cachedPlayer) continue;
+                string userId = cachedPlayer.userID.ToString();
+                if (!npcKitList.ContainsKey(userId)) continue;
+                if (!((List<object>)npcKitList[userId]).Contains(kitname)) continue;
+
+                /// NEED TO ADD A WALL COLLIDER CHECK TO MAKE SURE ITS NOT THROUGH WALL
+                return true;
+            }
+            return false;
+
         }
         void TryGiveKit(BasePlayer player, string kitname, bool checkForNPC = false)
         {
             string reason;
-            
-			if (checkForNPC)
-			{
-				if(!CheckAroundForNPC( player, kitname ))
-				{
-					SendTheReply(player, "You must be next to the NPC to get this kit");
-					return;
-				}
-			}
-			else
-			{
-				Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
-				if((bool)kitdata["npconly"])
-				{
-					SendTheReply(player, "You are not allowed to redeem this kit here, you must be next to the NPC");
-					return;
-				}
-			}
-			if(!CheckIfCanRedeem(player, kitname, out reason, checkForNPC))
+
+            if (checkForNPC)
             {
-            	SendTheReply(player, reason);
-            	return;
+                if (!CheckAroundForNPC(player, kitname))
+                {
+                    SendTheReply(player, "You must be next to the NPC to get this kit");
+                    return;
+                }
             }
-			
+            else
+            {
+                Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
+                if ((bool)kitdata["npconly"])
+                {
+                    SendTheReply(player, "You are not allowed to redeem this kit here, you must be next to the NPC");
+                    return;
+                }
+            }
+            if (!CheckIfCanRedeem(player, kitname, out reason))
+            {
+                SendTheReply(player, reason);
+                return;
+            }
+
 
             object wasGiven = GiveKit(player, kitname);
             if ((wasGiven is bool) && !((bool)wasGiven))
@@ -645,22 +656,23 @@ namespace Oxide.Plugins
                 Puts(string.Format("An error occurred while giving the kit {0} to {1}", kitname, player.displayName.ToString()));
                 return;
             }
-            proccessKitGiven(player, kitname, kitdata, kitleft);
+            proccessKitGiven(player, kitname);
         }
 
-        void proccessKitGiven(BasePlayer player, string kitname, Dictionary<string, object> kitdata, int kitleft)
+        void proccessKitGiven(BasePlayer player, string kitname)
         {
             string userid = player.userID.ToString();
             if (KitsData[userid] == null)
             {
                 (KitsData[userid]) = new Dictionary<string, object>();
             }
+            Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
             var playerData = (KitsData[userid]) as Dictionary<string, object>;
             var currentKitData = new Dictionary<string, object>();
             bool write = false;
             if (kitdata.ContainsKey("max"))
             {
-                currentKitData.Add("used", (((int)kitdata["max"] - kitleft) + 1));
+                currentKitData.Add("used", (((int)kitdata["max"] - GetKitLeft(player,kitname, (int)kitdata["max"])) + 1));
                 write = true;
             }
             if (kitdata.ContainsKey("cooldown"))
@@ -680,11 +692,11 @@ namespace Oxide.Plugins
         }
         bool isKit(string kitname)
         {
-        	if (KitsConfig[kitname] == null)
-        		return false;
-        	return true;
+            if (KitsConfig[kitname] == null)
+                return false;
+            return true;
         }
-        
+
         object GiveKit(BasePlayer player, string kitname)
         {
             if (KitsConfig[kitname] == null)
@@ -736,7 +748,7 @@ namespace Oxide.Plugins
             SendTheReply(player, kitredeemed);
             return true;
         }
-        
+
         public string overlayjson = @"[  
 		                { 
 							""name"": ""KitOverlay"",
@@ -757,20 +769,36 @@ namespace Oxide.Plugins
                     ]
                     ";
         string buttonjson = @"[
+                        { 
+							""name"": ""KitOverlay"",
+                            ""parent"": ""Overlay"",
+                            ""components"":
+                            [
+                                {
+                                     ""type"":""UnityEngine.UI.Image"",
+                                     ""color"":""0.1 0.1 0.1 0.7"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0 0"",
+                                    ""anchormax"": ""1 1""
+                                }
+                            ]
+                        },
         				{
                             ""parent"": ""KitOverlay"",
                             ""components"":
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Text"",
-                                    ""text"":""{msg}"",
+                                    ""text"":""testtesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttest"",
                                     ""fontSize"":15,
                                     ""align"": ""MiddleCenter"",
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""{xmin} {ymin}"",
-                                    ""anchormax"": ""{xmax} {ymax}""
+                                    ""anchormin"": ""0 0"",
+                                    ""anchormax"": ""1 1""
                                 }
                             ]
                         },
@@ -794,13 +822,14 @@ namespace Oxide.Plugins
                         }
                     ]
                     ";
-        
+
         Dictionary<string, List<string>> playerGUI = new Dictionary<string, List<string>>();
-        
-        void DestroyAllGUI( BasePlayer player )
+
+        void DestroyAllGUI(BasePlayer player)
         {
-        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay");
-        	/*if( playerGUI.ContainsKey(player.userID.ToString()) )
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay");
+            playerGUI.Remove(player.userID.ToString());
+            /*if( playerGUI.ContainsKey(player.userID.ToString()) )
         	{
         		foreach( string guiname in playerGUI[player.userID.ToString()] )
         		{
@@ -809,56 +838,60 @@ namespace Oxide.Plugins
         		playerGUI.Remove(player.userID.ToString());
         	}*/
         }
-        void RefreshKitPanel( BasePlayer player, List<object> kitsList, string npcId = "0" )
+        void RefreshKitPanel(BasePlayer player, List<object> kitsList, string npcId = "0")
         {
-        	DestroyAllGUI( player );
-        	playerGUI.Add(player.userID.ToString(), new List<string>() );
-        	
-        	int guipos = 0;
-        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
-        	//playerGUI[player.userID.ToString()].Add("KitOverlay");
-        	string reason = string.Empty;
-        	foreach(object kitname in kitsList)
-        	{
-        		string color = CheckIfCanRedeem( player, kitname, out reason ) ? "0 0.6 0 0.2" : "1 0 0 0.2";
-        		var kitdata = KitsConfig[ kitname ];
-        		var msg = kitname + " - " + kitdata["description"];
-        		var localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'",kitname, npcId)).Replace("{msg},msg).Replace("{color}",color).Replace("{xmin}",guiminX.ToString()).Replace("{xmax}",guimaxX.ToString()).Replace("{ymin}",(guiminY + guipos*guiYheight).ToString()).Replace("{ymax}",(guiminY + (guipos+1)*guiYheight).ToString())
-        		CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
-        		guipos++;
-        	}
-        	var localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg},"Close").Replace("{color}","1 1 1 0.2").Replace("{xmin}",guiminX.ToString()).Replace("{xmax}",guimaxX.ToString()).Replace("{ymin}",(guiminY + guipos*guiYheight).ToString()).Replace("{ymax}",(guiminY + (guipos+1)*guiYheight).ToString())
-        	CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+            DestroyAllGUI(player);
+            playerGUI.Add(player.userID.ToString(), new List<string>());
+            Debug.Log(overlayjson.ToString());
+            int guipos = 0;
+            //CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+            //playerGUI[player.userID.ToString()].Add("KitOverlay");
+            string reason = string.Empty;
+            string localmsg = string.Empty;
+            /*foreach (object kitname in kitsList)
+            {
+                string kitnamestring = kitname.ToString();
+                string color = CheckIfCanRedeem(player, kitnamestring, out reason) ? "0 0.6 0 0.2" : "1 0 0 0.2";
+                var kitdata = KitsConfig[kitnamestring] as Dictionary<string,object>;
+                string msg = kitnamestring + " - " + (kitdata["description"] as string);
+                localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'", kitnamestring, npcId)).Replace("{msg}", msg).Replace("{color}", color).Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guiminY + guipos * guiYheight).ToString()).Replace("{ymax}", (guiminY + (guipos + 1) * guiYheight).ToString());
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+                guipos++;
+            }*/
+           
+            localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guiminY + guipos * guiYheight).ToString()).Replace("{ymax}", (guiminY + (guipos + 1) * guiYheight).ToString());
+            Debug.Log(localmsg.ToString());
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
         }
-        
+
         void OnUseNPC(BasePlayer npc, BasePlayer player)
         {
-        	if(!npcKitList.ContainsKey(npc.userID.ToString())) return;
-        	RefreshKitPanel( player, npcKitList[npc.userID.ToString()], npc.userID.ToString() );
-        }
-        
+            if (!npcKitList.ContainsKey(npc.userID.ToString())) return;
+            RefreshKitPanel(player, npcKitList[npc.userID.ToString()] as List<object>, npc.userID.ToString());
+        } 
+
         [ConsoleCommand("kit.gui")]
         void cmdConsoleKitGui(ConsoleSystem.Arg arg)
         {
-            if (arg.connection -= null)
+            if (arg.connection == null)
             {
                 SendReply(arg, "You can't use this command from the server console");
                 return;
             }
             if ((arg.Args == null) || (arg.Args != null && arg.Args.Length < 2))
             {
-            	SendReply(arg, "You are not allowed to use manually this command");
+                SendReply(arg, "You are not allowed to use manually this command");
                 return;
             }
             BasePlayer player = (BasePlayer)arg.connection.player;
-            if( arg.Args[0] == "close" )
+            if (arg.Args[0] == "close")
             {
-            	DestroyAllGUI( player );
-            	return;
+                DestroyAllGUI(player);
+                return;
             }
-            TryGiveKit( player, arg.Args[0], true );
+            TryGiveKit(player, arg.Args[0], true);
         }
-        
+
         [ChatCommand("kit")]
         void cmdChatKits(BasePlayer player, string command, string[] args)
         {
