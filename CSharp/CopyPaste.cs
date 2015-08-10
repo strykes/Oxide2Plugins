@@ -3,7 +3,7 @@ using System;
 using System.Reflection;
 using UnityEngine;
 using Oxide.Core;
-
+ 
 namespace Oxide.Plugins
 {
     [Info("Copy Paste", "Reneb & VVoid & Alex", "2.2.10")]
