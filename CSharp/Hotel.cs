@@ -23,7 +23,7 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
 
         static int deployableColl = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
-        static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction" });
+        static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Construction Trigger" });
 
         ////////////////////////////////////////////////////////////
         // cached Fields
@@ -32,6 +32,8 @@ namespace Oxide.Plugins
         public static Dictionary<string, HotelData> EditHotel = new Dictionary<string, HotelData>();
         static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
         public static Vector3 Vector3UP = new Vector3(0f, 0.1f, 0f);
+        public FieldInfo fieldWhiteList;
+
         ////////////////////////////////////////////////////////////
         // Config Management
         ////////////////////////////////////////////////////////////
@@ -198,7 +200,7 @@ namespace Oxide.Plugins
             public Dictionary<string, Room> rooms;
 
             Vector3 pos;
-            bool enabled;
+            public bool enabled;
 
             public HotelData()
             {
@@ -304,6 +306,8 @@ namespace Oxide.Plugins
                 {
                     if (door.HasSlot(BaseEntity.Slot.Lock))
                     {
+                        door.SetFlag(BaseEntity.Flags.Open, false);
+                        door.SendNetworkUpdateImmediate(true);
                         listLocks.Add(door);
                     }
                 }
@@ -364,9 +368,53 @@ namespace Oxide.Plugins
         void Loaded()
         {
             adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
+            fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadData();
         }
 
+        object CanUseDoor( BasePlayer player, CodeLock codelock )
+        {
+            BaseEntity parententity = codelock.GetParentEntity();
+            if (parententity == null) return null;
+            if (parententity.HasFlag(BaseEntity.Flags.Open)) return null;
+            string zonename = string.Empty;
+            HotelData targethotel = null;
+            foreach ( HotelData hotel in storedData.Hotels )
+            {
+                object isplayerinzone = ZoneManager.Call("isPlayerInZone", hotel.hotelname, player);
+                if (isplayerinzone is bool && (bool)isplayerinzone)
+                {
+                    targethotel = hotel;
+                }
+            }
+            if (targethotel == null) return null;
+            if( !targethotel.enabled )
+            {
+                SendReply(player, "This Hotel is under maintenance by the admin, you may not open this door at the moment");
+                return false;
+            }
+            List<ulong> whitelitedPlayers = fieldWhiteList.GetValue(codelock) as List<ulong>;
+            if (codelock.IsLocked())
+            {
+                
+                if (whitelitedPlayers.Contains(player.userID)) return true;
+                else return false;
+            }
+            else
+            {
+                if (!whitelitedPlayers.Contains(player.userID))
+                {
+
+                    ResetRoom(codelock);
+                    
+                }
+            }
+            return null;
+        }
+        void ResetRoom( CodeLock codelock )
+        {
+            
+        }
         void RefreshAdminHotelGUI(BasePlayer player)
         {
             RemoveAdminHotelGUI(player);
@@ -456,13 +504,16 @@ namespace Oxide.Plugins
                 if (hoteldata.hotelname.ToLower() == editedhotel.hotelname.ToLower())
                 {
                     removeHotel = hoteldata;
+                    
                     break;
                 }
             }
             if (removeHotel != null)
             {
                 storedData.Hotels.Remove(removeHotel);
+                removeHotel.Activate();
             }
+            editedhotel.Activate();
 
             storedData.Hotels.Add(editedhotel);
 
@@ -485,7 +536,16 @@ namespace Oxide.Plugins
                 return;
             }
             HotelData editedhotel = EditHotel[player.userID.ToString()];
+            foreach (HotelData hoteldata in storedData.Hotels)
+            {
+                if (hoteldata.hotelname.ToLower() == editedhotel.hotelname.ToLower())
+                {
+                    hoteldata.Activate();
 
+                    break;
+                }
+            }
+            
             EditHotel.Remove(player.userID.ToString());
 
             SendReply(player, "Hotel Closed without saving.");
