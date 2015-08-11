@@ -128,6 +128,7 @@ namespace Oxide.Plugins
             public string prefabname;
 
             Vector3 pos;
+            Quaternion rot;
 
             public DeployableItem()
             {
@@ -137,9 +138,9 @@ namespace Oxide.Plugins
             {
                 prefabname = StringPool.Get(deployable.prefabID).ToString();
 
-                this.x = Math.Ceiling(deployable.transform.position.x).ToString();
-                this.y = Math.Ceiling(deployable.transform.position.y).ToString();
-                this.z = Math.Ceiling(deployable.transform.position.z).ToString();
+                this.x = deployable.transform.position.x.ToString();
+                this.y = deployable.transform.position.y.ToString();
+                this.z = deployable.transform.position.z.ToString();
 
                 this.rx = deployable.transform.rotation.x.ToString();
                 this.ry = deployable.transform.rotation.y.ToString();
@@ -151,6 +152,12 @@ namespace Oxide.Plugins
                 if (pos == default(Vector3))
                     pos = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
                 return pos;
+            }
+            public Quaternion Rot()
+            {
+                if (rot == default(Quaternion))
+                    rot = new Quaternion(float.Parse(rx), float.Parse(ry), float.Parse(rz), float.Parse(rw));
+                return rot;
             }
         }
         public class Room
@@ -298,7 +305,7 @@ namespace Oxide.Plugins
 
         static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
         {
-            List<Door> listLocks = new List<Door>();
+            List<Vector3> listLocks = new List<Vector3>();
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(position, radius, constructionColl))
             {
                 Door door = col.GetComponentInParent<Door>();
@@ -308,7 +315,7 @@ namespace Oxide.Plugins
                     {
                         door.SetFlag(BaseEntity.Flags.Open, false);
                         door.SendNetworkUpdateImmediate(true);
-                        listLocks.Add(door);
+                        listLocks.Add(door.transform.position);
                     }
                 }
             }
@@ -316,12 +323,12 @@ namespace Oxide.Plugins
             Dictionary<Deployable, string> deployables = new Dictionary<Deployable, string>();
             Dictionary<string, Room> tempRooms = new Dictionary<string, Room>();
 
-            foreach (Door block in listLocks )
+            foreach (Vector3 block in listLocks )
 			{
-                Room newRoom = new Room(block.transform.position);
+                Room newRoom = new Room(block);
                 newRoom.defaultDeployables = new List<DeployableItem>();
                 var founditems = new List<Deployable>();
-                foreach (Collider col in UnityEngine.Physics.OverlapSphere(position, radius, deployableColl))
+                foreach (Collider col in UnityEngine.Physics.OverlapSphere(block, roomradius, deployableColl))
                 {
                     
                     Deployable deploy = col.GetComponentInParent<Deployable>();
@@ -331,7 +338,7 @@ namespace Oxide.Plugins
                         {
                             founditems.Add(deploy);
                             bool canReach = true;
-                            foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (block.transform.position + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, block.transform.position) - 0.2f, constructionColl ))
+                            foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (block + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, block) - 0.2f, constructionColl ))
 							{
                                 canReach = false;
                                 break;
@@ -404,16 +411,105 @@ namespace Oxide.Plugins
             {
                 if (!whitelitedPlayers.Contains(player.userID))
                 {
-
                     ResetRoom(codelock);
-                    
                 }
             }
             return null;
         }
+        bool FindHotelAndRoomByPos(Vector3 position, out HotelData hoteldata, out Room roomdata)
+        {
+            hoteldata = null;
+            roomdata = null;
+            position.x = Mathf.Ceil(position.x);
+            position.y = Mathf.Ceil(position.y);
+            position.z = Mathf.Ceil(position.z);
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                foreach(KeyValuePair<string,Room> pair in hotel.rooms)
+                {
+                    if(pair.Value.Pos() == position)
+                    {
+                        hoteldata = hotel;
+                        roomdata = pair.Value;
+                        return true;
+                    }
+                }
+            }
+            return false;
+
+        }
         void ResetRoom( CodeLock codelock )
         {
-            
+            BaseEntity door = codelock.GetParentEntity();
+            Vector3 block = door.transform.position;
+            HotelData hotel = null;
+            Room room = null;
+            if(!FindHotelAndRoomByPos(block, out hotel, out room))
+            {
+                Debug.LogWarning(block.ToString() + " was not found as a room from a hotel, WTF?");
+                return;
+            }
+            var founditems = new List<Deployable>();
+            foreach (Collider col in UnityEngine.Physics.OverlapSphere(block, Convert.ToSingle(hotel.rr), deployableColl))
+            {
+                Deployable deploy = col.GetComponentInParent<Deployable>();
+                if (deploy != null)
+                {
+                   
+                    if (!founditems.Contains(deploy))
+                    {
+                        bool canReach = true;
+                        foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (block + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, block) - 0.2f, constructionColl))
+                        {
+                            canReach = false;
+                            break;
+                        }
+                        if (!canReach) continue;
+                        foreach (Collider col2 in UnityEngine.Physics.OverlapSphere(block, Convert.ToSingle(hotel.rr), constructionColl))
+                        {
+                            if (col2.GetComponentInParent<Door>() != null)
+                            {
+                                if (col2.transform.position != block)
+                                {
+                                    bool canreach2 = true;
+                                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (col2.transform.position + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, col2.transform.position) - 0.2f, constructionColl))
+                                    {
+                                        canreach2 = false;
+                                    }
+                                    if (canreach2)
+                                    {
+                                        canReach = false;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!canReach) continue;
+                       
+                        founditems.Add(deploy);
+                    }
+                }
+            }
+            foreach(Deployable deploy in founditems)
+            {
+                deploy.GetComponent<BaseEntity>().KillMessage();
+            }
+            foreach(DeployableItem deploy in room.defaultDeployables)
+            {
+                UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(deploy.prefabname);
+                if (newPrefab == null)
+                {
+                    return;
+                }
+                BaseEntity entity = GameManager.server.CreateEntity(newPrefab, deploy.Pos(), deploy.Rot());
+                if (entity == null) return;
+                entity.Spawn(true);
+                
+            }
+            room.renter = null;
+            room.checkingTime = null;
+            room.checkoutTime = null;
         }
         void RefreshAdminHotelGUI(BasePlayer player)
         {
