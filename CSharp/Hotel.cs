@@ -222,7 +222,7 @@ namespace Oxide.Plugins
                 this.y = "0";
                 this.z = "0";
                 this.r = "60";
-                this.rr = "20";
+                this.rr = "5";
                 this.rooms = new Dictionary<string, Room>();
                 enabled = false;
             }
@@ -301,6 +301,11 @@ namespace Oxide.Plugins
 
                 rooms.Add(newroom.roomid, newroom);
             }
+        }
+
+        void Unload()
+        {
+            SaveData();
         }
 
         static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
@@ -411,10 +416,33 @@ namespace Oxide.Plugins
             {
                 if (!whitelitedPlayers.Contains(player.userID))
                 {
-                    ResetRoom(codelock);
+                    HotelData hotel = null;
+                    Room room = null;
+                    BaseEntity door = codelock.GetParentEntity();
+                    if (!FindHotelAndRoomByPos(door.transform.position, out hotel, out room))
+                    {
+                        SendReply(player, door.transform.position.ToString() + " was not found as a room from a hotel, WTF?");
+                        Debug.LogWarning(door.transform.position.ToString() + " was not found as a room from a hotel, WTF?");
+                        return false;
+                    }
+                    if (!CanRentRoom(player, hotel)) return false;
+                    ResetRoom(codelock, hotel, room);
+                    NewRoomOwner(codelock, player, hotel, room);
                 }
             }
             return null;
+        }
+        bool CanRentRoom(BasePlayer player, HotelData hotel)
+        {
+            foreach(KeyValuePair<string, Room> pair in hotel.rooms)
+            {
+                if(pair.Value.renter == player.userID.ToString())
+                {
+                    SendReply(player, "You already have a room in this hotel!");
+                    return false;
+                }
+            }
+            return true;
         }
         bool FindHotelAndRoomByPos(Vector3 position, out HotelData hoteldata, out Room roomdata)
         {
@@ -438,38 +466,61 @@ namespace Oxide.Plugins
             return false;
 
         }
-        void ResetRoom( CodeLock codelock )
+        void NewRoomOwner( CodeLock codelock, BasePlayer player, HotelData hotel, Room room )
         {
             BaseEntity door = codelock.GetParentEntity();
             Vector3 block = door.transform.position;
-            HotelData hotel = null;
-            Room room = null;
-            if(!FindHotelAndRoomByPos(block, out hotel, out room))
+
+            EmptyDeployablesRoom(block, Convert.ToSingle(hotel.rr));
+
+            foreach (DeployableItem deploy in room.defaultDeployables)
             {
-                Debug.LogWarning(block.ToString() + " was not found as a room from a hotel, WTF?");
-                return;
+                UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(deploy.prefabname);
+                if (newPrefab == null)
+                {
+                    return;
+                }
+                BaseEntity entity = GameManager.server.CreateEntity(newPrefab, deploy.Pos(), deploy.Rot());
+                if (entity == null) return;
+                entity.SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver);
+                entity.Spawn(true);
+
             }
+            List<ulong> whitelist = new List<ulong>();
+            whitelist.Add(player.userID);
+            fieldWhiteList.SetValue(codelock, whitelist);
+            room.renter = player.userID.ToString();
+            room.checkingTime = LogTime().ToString();
+
+            //room.checkoutTime = null;
+
+            codelock.SetFlag(BaseEntity.Flags.Locked, true);
+            codelock.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+
+        }
+        void EmptyDeployablesRoom( Vector3 doorpos, float radius )
+        {
             var founditems = new List<Deployable>();
-            foreach (Collider col in UnityEngine.Physics.OverlapSphere(block, Convert.ToSingle(hotel.rr), deployableColl))
+            foreach (Collider col in UnityEngine.Physics.OverlapSphere(doorpos, radius, deployableColl))
             {
                 Deployable deploy = col.GetComponentInParent<Deployable>();
                 if (deploy != null)
                 {
-                   
+
                     if (!founditems.Contains(deploy))
                     {
                         bool canReach = true;
-                        foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (block + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, block) - 0.2f, constructionColl))
+                        foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (doorpos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, doorpos) - 0.2f, constructionColl))
                         {
                             canReach = false;
                             break;
                         }
                         if (!canReach) continue;
-                        foreach (Collider col2 in UnityEngine.Physics.OverlapSphere(block, Convert.ToSingle(hotel.rr), constructionColl))
+                        foreach (Collider col2 in UnityEngine.Physics.OverlapSphere(doorpos, radius, constructionColl))
                         {
                             if (col2.GetComponentInParent<Door>() != null)
                             {
-                                if (col2.transform.position != block)
+                                if (col2.transform.position != doorpos)
                                 {
                                     bool canreach2 = true;
                                     foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (col2.transform.position + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, col2.transform.position) - 0.2f, constructionColl))
@@ -484,18 +535,25 @@ namespace Oxide.Plugins
                                 }
                             }
                         }
-                        
+
                         if (!canReach) continue;
-                       
                         founditems.Add(deploy);
                     }
                 }
             }
-            foreach(Deployable deploy in founditems)
+            foreach (Deployable deploy in founditems)
             {
-                deploy.GetComponent<BaseEntity>().KillMessage();
+                if (!(deploy.GetComponentInParent<BaseEntity>().isDestroyed))
+                    deploy.GetComponent<BaseEntity>().KillMessage();
             }
-            foreach(DeployableItem deploy in room.defaultDeployables)
+        }
+        void ResetRoom( CodeLock codelock, HotelData hotel, Room room )
+        {
+            BaseEntity door = codelock.GetParentEntity();
+            Vector3 block = door.transform.position;
+
+            EmptyDeployablesRoom(block, Convert.ToSingle(hotel.rr));
+            foreach (DeployableItem deploy in room.defaultDeployables)
             {
                 UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(deploy.prefabname);
                 if (newPrefab == null)
@@ -505,8 +563,8 @@ namespace Oxide.Plugins
                 BaseEntity entity = GameManager.server.CreateEntity(newPrefab, deploy.Pos(), deploy.Rot());
                 if (entity == null) return;
                 entity.Spawn(true);
-                
             }
+            fieldWhiteList.SetValue(codelock, new List<ulong>());
             room.renter = null;
             room.checkingTime = null;
             room.checkoutTime = null;
@@ -666,6 +724,7 @@ namespace Oxide.Plugins
                 SendReply(player, "==== Available options ====");
                 SendReply(player, "/hotel location => sets the center hotel location where you stand");
                 SendReply(player, "/hotel radius XX => sets the radius of the hotel (the entire structure of the hotel needs to be covered by the zone");
+                SendReply(player, "/hotel roomradius XX => sets the radius of the rooms");
                 SendReply(player, "/hotel rooms => refreshs the rooms (detects new rooms, deletes rooms if they don't exist anymore, if rooms are in use they won't get taken in count)");
             }
             else
@@ -683,13 +742,28 @@ namespace Oxide.Plugins
 
                         SendReply(player, string.Format("Location set to {0}", player.transform.position.ToString()));
                         break;
+                    case "roomradius":
+                        if (args.Length == 1)
+                        {
+                            SendReply(player, "/hotel roomradius XX");
+                            return;
+                        }
+                        int rad3 = 5;
+                        int.TryParse(args[1], out rad3);
+                        if (rad3 < 1) rad3 = 5;
 
+                        (EditHotel[player.userID.ToString()]).rr = rad3.ToString();
+
+                        SendReply(player, string.Format("RoomRadius set to {0}", args[1]));
+                        break;
                     case "rooms":
                         SendReply(player, "Rooms Refreshing ...");
                         (EditHotel[player.userID.ToString()]).RefreshRooms();
                         SendReply(player, "Rooms Refreshed");
                         break;
+                    case "reset":
 
+                        break;
                     case "radius":
                         if (args.Length == 1)
                         {
@@ -741,6 +815,44 @@ namespace Oxide.Plugins
             SendReply(player, string.Format(MessageHotelEditEditing, EditHotel[player.userID.ToString()].hotelname));
 
             RefreshAdminHotelGUI(player);
+        }
+
+        [ChatCommand("hotel_remove")]
+        void cmdChatHotelRemove(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            if (EditHotel.ContainsKey(player.userID.ToString())) { SendReply(player, MessageAlreadyEditing); return; }
+            if (args.Length == 0) { SendReply(player, MessageHotelEditHelp); return; }
+
+            string hname = args[0];
+            HotelData targethotel = null;
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                if (hotel.hotelname.ToLower() == hname.ToLower())
+                {
+                    hotel.Deactivate();
+                    targethotel = hotel;
+                    break;
+                }
+            }
+            if(targethotel == null) { SendReply(player, string.Format(MessageErrorEditDoesntExist, args[0])); return; }
+
+            storedData.Hotels.Remove(targethotel);
+            SaveData();
+            SendReply(player, string.Format("Hotel Named: {0] was successfully removed", hname));
+
+        }
+
+        [ChatCommand("hotel_reset")]
+        void cmdChatHotelReset(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            if (EditHotel.ContainsKey(player.userID.ToString())) { SendReply(player, MessageAlreadyEditing); return; }
+
+            storedData.Hotels = new HashSet<HotelData>();
+            SaveData();
+            SendReply(player, "Hotels were all deleted");
+
         }
 
         [ChatCommand("hotel_new")]
