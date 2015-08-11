@@ -34,6 +34,7 @@ namespace Oxide.Plugins
         public static Vector3 Vector3UP = new Vector3(0f, 0.1f, 0f);
         public FieldInfo fieldWhiteList;
 
+
         ////////////////////////////////////////////////////////////
         // Config Management
         ////////////////////////////////////////////////////////////
@@ -46,8 +47,10 @@ namespace Oxide.Plugins
         static string MessageErrorAlreadyExist = "{0} is already the name of a hotel";
         static string MessageErrorNotAllowed = "You are not allowed to use this command";
         static string MessageErrorEditDoesntExist = "The hotel \"{0}\" doesn't exist";
-
+        static string MessageMaintenance = "This Hotel is under maintenance by the admin, you may not open this door at the moment";
+        static string MessageErrorUnavaibleRoom = "This room is unavaible, seems like it wasn't set correctly";
         static string MessageHotelNewCreated = "You've created a new Hotel named: {0}. Now say /hotel to continue configuring your hotel.";
+        static string MessageErrorNotAllowedToEnter = "You are not allowed to enter this room, it's already been used my someone else";
 
         static string GUIBoardAdmin = "Hotel Name: {name} \nHotel Location: {loc} \nHotel Radius: {hrad} \nRooms Radius: {rrad} \nRooms: {rnum} \nOccupied: {onum}";
         static string xmin = "0.7";
@@ -303,63 +306,139 @@ namespace Oxide.Plugins
             }
         }
 
+        ////////////////////////////////////////////////////////////
+        // Random Methods
+        ////////////////////////////////////////////////////////////
+
+        static double LogTime() { return DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
+
+        static void CloseDoor(Door door)
+        {
+            door.SetFlag(BaseEntity.Flags.Open, false);
+            door.SendNetworkUpdateImmediate(true);
+        }
+        static void OpenDoor(Door door)
+        {
+            door.SetFlag(BaseEntity.Flags.Open, true);
+            door.SendNetworkUpdateImmediate(true);
+        }
+        static void LockLock(CodeLock codelock)
+        {
+            codelock.SetFlag(BaseEntity.Flags.Locked, true);
+            codelock.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+        }
+
+        ////////////////////////////////////////////////////////////
+        // Oxide Hooks
+        ////////////////////////////////////////////////////////////
+
         void Unload()
         {
             SaveData();
         }
 
-        static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
+        void Loaded()
+        {
+            adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
+            fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            LoadData();
+        }
+
+        object CanUseDoor(BasePlayer player, CodeLock codelock)
+        {
+            BaseEntity parententity = codelock.GetParentEntity();
+            if (parententity == null) return null;
+            if (parententity.HasFlag(BaseEntity.Flags.Open)) return null;
+
+            string zonename = string.Empty;
+            HotelData targethotel = null;
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                //Check if the player is inside a hotel
+                // Is this the best way to do it?
+                // Might need to actually make a list of all codelocks that are used inside a hotel instead of this ...
+                object isplayerinzone = ZoneManager.Call("isPlayerInZone", hotel.hotelname, player);
+                if (isplayerinzone is bool && (bool)isplayerinzone) targethotel = hotel;
+            }
+            if (targethotel == null) return null;
+
+            if (!targethotel.enabled)
+            {
+                SendReply(player, MessageMaintenance);
+                return false;
+            }
+
+            Room room = FindRoomByDoorAndHotel(targethotel, parententity);
+            if(room == null)
+            {
+                SendReply(player, MessageErrorUnavaibleRoom);
+                return false;
+            }
+
+            if(room.renter == null)
+            {
+                if (!CanRentRoom(player, targethotel)) return false;
+                ResetRoom(codelock, targethotel, room);
+                NewRoomOwner(codelock, player, targethotel, room);
+            }
+            
+            if(room.renter != player.userID.ToString())
+            {
+                SendReply(player, MessageErrorNotAllowedToEnter);
+                LockLock(codelock);
+                return false;
+            }
+
+            return true;
+        }
+
+       
+
+        ////////////////////////////////////////////////////////////
+        // Room Management Functions
+        ////////////////////////////////////////////////////////////
+
+        static List<Vector3> FindRoomsFromPosition( Vector3 position, float radius )
         {
             List<Vector3> listLocks = new List<Vector3>();
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(position, radius, constructionColl))
             {
                 Door door = col.GetComponentInParent<Door>();
-                if (door != null)
-                {
-                    if (door.HasSlot(BaseEntity.Slot.Lock))
-                    {
-                        door.SetFlag(BaseEntity.Flags.Open, false);
-                        door.SendNetworkUpdateImmediate(true);
-                        listLocks.Add(door.transform.position);
-                    }
-                }
+                if (door == null) continue;
+                if (!door.HasSlot(BaseEntity.Slot.Lock)) continue;
+
+                CloseDoor(door);
+                listLocks.Add(door.transform.position);
             }
-           
-            Dictionary<Deployable, string> deployables = new Dictionary<Deployable, string>();
+            return listLocks;
+        } 
+
+        static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
+        {
+            List<Vector3> listLocks = FindRoomsFromPosition(position, radius);
+
+            Hash<Deployable, string> deployables = new Hash<Deployable, string>();
             Dictionary<string, Room> tempRooms = new Dictionary<string, Room>();
 
-            foreach (Vector3 block in listLocks )
+            foreach (Vector3 pos in listLocks )
 			{
-                Room newRoom = new Room(block);
+                Room newRoom = new Room(pos);
                 newRoom.defaultDeployables = new List<DeployableItem>();
-                var founditems = new List<Deployable>();
-                foreach (Collider col in UnityEngine.Physics.OverlapSphere(block, roomradius, deployableColl))
-                {
-                    
-                    Deployable deploy = col.GetComponentInParent<Deployable>();
-                    if (deploy != null)
-                    {
-                        if (!founditems.Contains(deploy))
-                        {
-                            founditems.Add(deploy);
-                            bool canReach = true;
-                            foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (block + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, block) - 0.2f, constructionColl ))
-							{
-                                canReach = false;
-                                break;
-                            }
-                            if (!canReach) continue;
+                List<Deployable> founditems = new List<Deployable>();
 
-                            if (deployables.ContainsKey(deploy))
-                            {
-                                deployables[deploy] = "0";
-                            }
-                            else
-                            {
-                                deployables.Add(deploy, newRoom.roomid);
-                            }
-                        }
-                    }
+                foreach (Collider col in UnityEngine.Physics.OverlapSphere(pos, roomradius, deployableColl))
+                {
+                    Deployable deploy = col.GetComponentInParent<Deployable>();
+                    if (deploy == null) continue;
+                    if (founditems.Contains(deploy)) continue;
+                    founditems.Add(deploy);
+
+                    bool canReach = true;
+                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (pos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, pos) - 0.2f, constructionColl)) { canReach = false; break; }
+                    if (!canReach) continue;
+
+                    if (deployables[deploy] != null) deployables[deploy] = "0";
+                    else deployables[deploy] = newRoom.roomid;
                 }
                 tempRooms.Add(newRoom.roomid, newRoom);
             }
@@ -371,70 +450,18 @@ namespace Oxide.Plugins
                     tempRooms[pair.Value].defaultDeployables.Add(newDeployItem);
                 }
             }
-
             return tempRooms;
         }
 
-        static double LogTime() { return DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
-
-        void Loaded()
+        static Room FindRoomByDoorAndHotel(HotelData hotel, BaseEntity door)
         {
-            adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
-            fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            LoadData();
+            string roomid = string.Format("{0}:{1}:{2}", Math.Ceiling(door.transform.position.x).ToString(), Math.Ceiling(door.transform.position.y).ToString(), Math.Ceiling(door.transform.position.z).ToString());
+            if (!hotel.rooms.ContainsKey(roomid)) return null;
+
+            return hotel.rooms[roomid];
         }
 
-        object CanUseDoor( BasePlayer player, CodeLock codelock )
-        {
-            BaseEntity parententity = codelock.GetParentEntity();
-            if (parententity == null) return null;
-            if (parententity.HasFlag(BaseEntity.Flags.Open)) return null;
-            string zonename = string.Empty;
-            HotelData targethotel = null;
-            foreach ( HotelData hotel in storedData.Hotels )
-            {
-                object isplayerinzone = ZoneManager.Call("isPlayerInZone", hotel.hotelname, player);
-                if (isplayerinzone is bool && (bool)isplayerinzone)
-                {
-                    targethotel = hotel;
-                }
-            }
-            if (targethotel == null) return null;
-            if( !targethotel.enabled )
-            {
-                SendReply(player, "This Hotel is under maintenance by the admin, you may not open this door at the moment");
-                return false;
-            }
-            List<ulong> whitelitedPlayers = fieldWhiteList.GetValue(codelock) as List<ulong>;
-            
 
-            if (codelock.IsLocked())
-            {
-                
-                if (whitelitedPlayers.Contains(player.userID)) return true;
-                else return false;
-            }
-            else
-            {
-               
-                if (!whitelitedPlayers.Contains(player.userID))
-                {
-                    HotelData hotel = null;
-                    Room room = null;
-                    BaseEntity door = codelock.GetParentEntity();
-                    if (!FindHotelAndRoomByPos(door.transform.position, out hotel, out room))
-                    {
-                        SendReply(player, door.transform.position.ToString() + " was not found as a room from a hotel, WTF?");
-                        Debug.LogWarning(door.transform.position.ToString() + " was not found as a room from a hotel, WTF?");
-                        return false;
-                    }
-                    if (!CanRentRoom(player, hotel)) return false;
-                    ResetRoom(codelock, hotel, room);
-                    NewRoomOwner(codelock, player, hotel, room);
-                }
-            }
-            return null;
-        }
         bool CanRentRoom(BasePlayer player, HotelData hotel)
         {
             foreach(KeyValuePair<string, Room> pair in hotel.rooms)
