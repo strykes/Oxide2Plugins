@@ -406,6 +406,8 @@ namespace Oxide.Plugins
                 return false;
             }
             List<ulong> whitelitedPlayers = fieldWhiteList.GetValue(codelock) as List<ulong>;
+            
+
             if (codelock.IsLocked())
             {
                 
@@ -414,6 +416,7 @@ namespace Oxide.Plugins
             }
             else
             {
+               
                 if (!whitelitedPlayers.Contains(player.userID))
                 {
                     HotelData hotel = null;
@@ -465,6 +468,41 @@ namespace Oxide.Plugins
             }
             return false;
 
+        }
+        CodeLock FindCodeLockByRoomID( string roomid )
+        {
+            string[] rpos = roomid.Split(':');
+            if (rpos.Length != 3)
+                return null;
+            return FindCodeLockByPos(new Vector3(Convert.ToSingle(rpos[0]), Convert.ToSingle(rpos[1]), Convert.ToSingle(rpos[2])));
+        }
+        CodeLock FindCodeLockByPos( Vector3 pos )
+        {
+            CodeLock findcode = null;
+            foreach (Collider col in UnityEngine.Physics.OverlapSphere(pos, 2f, constructionColl))
+            {
+               
+                if (col.GetComponentInParent<Door>() != null)
+                {
+                    if (col.GetComponentInParent<Door>().HasSlot(BaseEntity.Slot.Lock))
+                    {
+                        BaseEntity slotentity = col.GetComponentInParent<Door>().GetSlot(BaseEntity.Slot.Lock);
+                        if (slotentity == null) continue;
+                        if (slotentity.GetComponent<CodeLock>() != null)
+                        {
+                            if(findcode != null)
+                            {
+                                if(Vector3.Distance(pos, findcode.GetParentEntity().transform.position ) < Vector3.Distance(pos, col.transform.position))
+                                {
+                                    continue;
+                                }
+                            }
+                            findcode = slotentity.GetComponent<CodeLock>();
+                        }
+                    }
+                }
+            }
+            return findcode;
         }
         void NewRoomOwner( CodeLock codelock, BasePlayer player, HotelData hotel, Room room )
         {
@@ -564,7 +602,10 @@ namespace Oxide.Plugins
                 if (entity == null) return;
                 entity.Spawn(true);
             }
+            Debug.Log( door.transform.position.ToString() + " " + ((List<ulong>)fieldWhiteList.GetValue(codelock)).Count.ToString());
             fieldWhiteList.SetValue(codelock, new List<ulong>());
+            codelock.SetFlag(BaseEntity.Flags.Locked, false);
+            codelock.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
             room.renter = null;
             room.checkingTime = null;
             room.checkoutTime = null;
@@ -762,7 +803,13 @@ namespace Oxide.Plugins
                         SendReply(player, "Rooms Refreshed");
                         break;
                     case "reset":
-
+                        foreach( KeyValuePair<string,Room> pair in (EditHotel[player.userID.ToString()]).rooms )
+                        {
+                            CodeLock codelock = FindCodeLockByRoomID(pair.Key);
+                            if (codelock == null) continue;
+                            Debug.Log(pair.Value.roomid + " " + codelock.GetParentEntity().transform.position.ToString());
+                            ResetRoom(codelock, (EditHotel[player.userID.ToString()]), pair.Value);
+                        }
                         break;
                     case "radius":
                         if (args.Length == 1)
@@ -806,10 +853,26 @@ namespace Oxide.Plugins
                 if (hotel.hotelname.ToLower() == hname.ToLower())
                 {
                     hotel.Deactivate();
+                    if (hotel.x != null && hotel.r != null)
+                    {
+                        foreach (Collider col in UnityEngine.Physics.OverlapSphere(hotel.Pos(), Convert.ToSingle(hotel.r), constructionColl))
+                        {
+                            Door door = col.GetComponentInParent<Door>();
+                            if (door != null)
+                            {
+                                if (door.HasSlot(BaseEntity.Slot.Lock))
+                                {
+                                    door.SetFlag(BaseEntity.Flags.Open, false);
+                                    door.SendNetworkUpdateImmediate(true);
+                                }
+                            }
+                        }
+                    }
                     EditHotel.Add(player.userID.ToString(), hotel);
                     break;
                 }
             }
+
             if (!EditHotel.ContainsKey(player.userID.ToString())) { SendReply(player, string.Format(MessageErrorEditDoesntExist, args[0])); return; }
 
             SendReply(player, string.Format(MessageHotelEditEditing, EditHotel[player.userID.ToString()].hotelname));
