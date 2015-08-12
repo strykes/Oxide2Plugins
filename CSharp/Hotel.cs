@@ -24,6 +24,7 @@ namespace Oxide.Plugins
 
         static int deployableColl = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
         static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Construction Trigger" });
+        Oxide.Plugins.Timer hotelTimer;
 
         ////////////////////////////////////////////////////////////
         // cached Fields
@@ -53,6 +54,7 @@ namespace Oxide.Plugins
         static string MessageErrorNotAllowedToEnter = "You are not allowed to enter this room, it's already been used my someone else";
 
         static string GUIBoardAdmin = "                             <color=green>HOTEL MANAGER</color> \n\nHotel Name:      {name} \n\nHotel Location: {loc} \nHotel Radius:     {hrad} \n\nRooms Radius:   {rrad} \nRooms:                {rnum} \n<color=red>Occupied:            {onum}</color>";
+        static string GUIBoardPlayer = "                             <color=green>{name}</color> \n\nRooms:                <color=green>{fnum}</color>/{rnum} \nYour Room:      Joined: {jdate}. You will automatically check-out on {ldate}.";
         static string xmin = "0.7";
         static string xmax = "1.0";
         static string ymin = "0.6";
@@ -180,6 +182,7 @@ namespace Oxide.Plugins
             public string checkingTime;
             public string checkoutTime;
 
+            double intcheckoutTime;
             Vector3 pos;
 
             public Room()
@@ -199,6 +202,13 @@ namespace Oxide.Plugins
                 if (pos == default(Vector3))
                     pos = new Vector3(float.Parse(x), float.Parse(y), float.Parse(z));
                 return pos;
+            }
+
+            public double CheckOutTime()
+            {
+                if (intcheckoutTime == default(double))
+                    intcheckoutTime = Convert.ToDouble(checkoutTime);
+                return intcheckoutTime;
             }
         }
 
@@ -344,12 +354,14 @@ namespace Oxide.Plugins
         void Unload()
         {
             SaveData();
+            hotelTimer.Destroy();
         }
 
         void Loaded()
         {
             adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
             fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            hotelTimer = timer.Repeat(60f, 0, () => CheckTimeOutRooms());
             LoadData();
         }
 
@@ -407,7 +419,21 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // Room Management Functions
         ////////////////////////////////////////////////////////////
-
+        void CheckTimeOutRooms()
+        {
+            double currenttime = LogTime();
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                if (!hotel.enabled) continue;
+                foreach(KeyValuePair<string,Room> pair in hotel.rooms)
+                {
+                    if (pair.Value.CheckOutTime() == 0.0) continue;
+                    if (pair.Value.CheckOutTime() > currenttime) continue;
+                    
+                    ResetRoom(hotel, pair.Value);
+                }
+            }
+        }
         static List<Vector3> FindRoomsFromPosition( Vector3 position, float radius )
         {
             List<Vector3> listLocks = new List<Vector3>();
@@ -562,10 +588,12 @@ namespace Oxide.Plugins
             room.renter = player.userID.ToString();
             room.checkingTime = LogTime().ToString();
 
-            // NEED TO SET A CHECKOUT TIME!!
-            //room.checkoutTime = null;
+            room.checkoutTime = (LogTime() + double.Parse(RentRoomDuration)).ToString();
 
             LockLock(codelock);
+            OpenDoor(door as Door);
+
+            SendReply(player, string.Format("You now have access this room. You are allowed to keep this room for {0} seconds", RentRoomDuration));
         }
         void EmptyDeployablesRoom( Vector3 doorpos, float radius )
         {
@@ -599,6 +627,12 @@ namespace Oxide.Plugins
                     deploy.GetComponent<BaseEntity>().KillMessage();
             }
         }
+        void ResetRoom( HotelData hotel, Room room)
+        {
+            CodeLock codelock = FindCodeLockByPos(room.Pos());
+            if (codelock == null) return;
+            ResetRoom(codelock, hotel, room);
+        }
         void ResetRoom( CodeLock codelock, HotelData hotel, Room room )
         {
             BaseEntity door = codelock.GetParentEntity();
@@ -610,6 +644,7 @@ namespace Oxide.Plugins
             fieldWhiteList.SetValue(codelock, new List<ulong>());
 
             UnlockLock(codelock);
+            CloseDoor(door as Door);
 
             room.renter = null;
             room.checkingTime = null;
@@ -805,7 +840,6 @@ namespace Oxide.Plugins
                         {
                             CodeLock codelock = FindCodeLockByRoomID(pair.Key);
                             if (codelock == null) continue;
-                            Debug.Log(pair.Value.roomid + " " + codelock.GetParentEntity().transform.position.ToString());
                             ResetRoom(codelock, (EditHotel[player.userID.ToString()]), pair.Value);
                         }
                         break;
