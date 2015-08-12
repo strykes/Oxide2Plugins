@@ -173,6 +173,7 @@ namespace Oxide.Plugins
 
             int zoneMask;
             HashSet<Collider> buildingblocks = new HashSet<Collider>();
+
             bool lightsOn = false;
 
             void Awake()
@@ -230,6 +231,17 @@ namespace Oxide.Plugins
             { 
                 if (radiationzone != null)
                     GameObject.Destroy(radiationzone);
+
+                foreach (KeyValuePair<BaseCombatEntity, List<Zone>> pair in buildingZones)
+                {
+                    if (pair.Value.Contains(this))
+                        pair.Value.Remove(this);
+                }
+                foreach (KeyValuePair<ResourceDispenser, List<Zone>> pair in resourceZones)
+                {
+                    if (pair.Value.Contains(this))
+                        pair.Value.Remove(this);
+                }
             }
             void CheckLights()
             {
@@ -284,7 +296,6 @@ namespace Oxide.Plugins
                         }
                         else if (basecombat != null)
                         {
-
                             if (buildingZones[basecombat] == null)
                                 buildingZones[basecombat] = new List<Zone>();
                             if (!buildingZones[basecombat].Contains(this))
@@ -753,36 +764,6 @@ namespace Oxide.Plugins
             RefreshZone(ZoneID);
             return true;
         }
-        List<string> ZoneFieldListRaw()
-        {
-        	List<string> zonefieldlist = new List<string>();
-        	foreach (FieldInfo fieldinfo in allZoneFields)
-			{
-				zonefieldlist.Add( fieldinfo.Name );
-			}
-			return zonefieldlist;
-        }
-        Dictionary<string,string> ZoneFieldList(string ZoneID)
-        {
-        	if(zonedefinitions[ZoneID] == null) return null;
-        	Dictionary<string,string> fieldlistzone = new Dictionary<string,string>();
-        	
-        	foreach (FieldInfo fieldinfo in allZoneFields)
-			{
-				var value = fieldinfo.GetValue(zonedefinitions[ZoneID]);
-				switch (fieldinfo.Name)
-				{
-					case "Location":
-						value = ((ZoneLocation)value).String();
-						break;
-					default:
-						if (value == null) value = "false";
-						break;
-				}
-				fieldlistzone.Add( fieldinfo.Name, value.ToString() );
-			}
-			return fieldlistzone;
-        }
         List<BasePlayer> GetPlayersInZone(string ZoneID)
         {
             List<BasePlayer> baseplayers = new List<BasePlayer>();
@@ -953,6 +934,7 @@ namespace Oxide.Plugins
         }
         static void OnEnterZone(Zone zone, BasePlayer player)
         {
+            Debug.Log("enter");
             if (playerZones[player] == null) playerZones[player] = new List<Zone>();
             if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
             
@@ -962,6 +944,7 @@ namespace Oxide.Plugins
         }
         static void OnExitZone(Zone zone, BasePlayer player)
         {
+            Debug.Log("leave");
             if (playerZones[player].Contains(zone)) playerZones[player].Remove(zone);
             if (zone.info.leave_message != null) SendMessage(player, zone.info.leave_message);
             if (zone.keepInList.Contains(player)) AttractPlayer(zone, player);
