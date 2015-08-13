@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.1.0", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.1.1", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -131,25 +131,30 @@ namespace Oxide.Plugins
             EventZoneConfig.Add("nocorpse", true);
             EventZoneConfig.Add("nowounded", true);
 
-            object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
-            if (zonefieldlist == null)
+            timer.Once(1f, () =>
             {
-                Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Deathmatch");
-                return;
-            }
-            foreach (string fielditem in (List<string>)zonefieldlist)
-            {
-                if (fielditem != "Location" && fielditem != "ID" && fielditem != "name")
+                object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
+                if (zonefieldlist == null)
                 {
-                    if (!EventZoneConfig.ContainsKey(fielditem))
-                        EventZoneConfig.Add(fielditem, false);
+                    Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Deathmatch");
+                    return;
+                }
+                foreach (string fielditem in (List<string>)zonefieldlist)
+                {
+                    if (fielditem != "Location" && fielditem != "ID" && fielditem != "name")
+                    {
+                        if (!EventZoneConfig.ContainsKey(fielditem))
+                            EventZoneConfig.Add(fielditem, false);
 
-                    if (Config["Zone Settings - " + fielditem] is bool)
-                        EventZoneConfig[fielditem] = (bool)Config["Zone Settings - " + fielditem];
-                    else
-                        Config["Zone Settings - " + fielditem] = EventZoneConfig[fielditem];
+                        if (Config["Zone Settings - " + fielditem] is bool)
+                            EventZoneConfig[fielditem] = (bool)Config["Zone Settings - " + fielditem];
+                        else
+                            Config["Zone Settings - " + fielditem] = EventZoneConfig[fielditem];
+                    }
                 }
             }
+            );
+
         }
         private void LoadVariables()
         {
