@@ -157,16 +157,30 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         // Some Static methods that can be called from the EventPlayer Class /////////////////
         //////////////////////////////////////////////////////////////////////////////////////
+        static void PutToSleep(BasePlayer player)
+        {
+            if (!player.IsSleeping())
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.Sleeping, true);
+                if (!BasePlayer.sleepingPlayerList.Contains(player))
+                {
+                    BasePlayer.sleepingPlayerList.Add(player);
+                }
+                player.CancelInvoke("InventoryUpdate");
+                player.inventory.crafting.CancelAll(true);
+            }
+        }
+        
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
-            player.StartSleeping();
+            PutToSleep(player);
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
 
             player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
             player.UpdateNetworkGroup();
-            player.UpdatePlayerCollider(true, false);
+
             player.SendNetworkUpdateImmediate(false);
             player.ClientRPCPlayer(null, player, "StartLoading");
             player.SendFullSnapshot();
