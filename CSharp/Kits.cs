@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.1.0")]
+    [Info("Kits", "Reneb", "2.1.1")]
     class Kits : RustPlugin
     {
         //////////////////////////////////////////////////////////////////////////////////////////
@@ -49,19 +49,27 @@ namespace Oxide.Plugins
         static string kitsreset = "All kits data from players were deleted";
         static string MessageCooldownTimer = "You must wait {0}s before using this kit again";
 
-        static string guiminXcfg = "0.2";
-        static string guimaxXcfg = "0.8";
-        static string guimaxYcfg = "0.8";
-        static string guiYheightcfg = "0.05";
+        static string guiKitminXcfg = "0.5";
+        static string guiKitmaxXcfg = "0.8";
+        static string guiKitmaxYcfg = "0.8";
+        static string guiKitYheightcfg = "0.05";
+        static string guiMsgminXcfg = "0.2";
+        static string guiMsgmaxXcfg = "0.5";
+        static string guiMsgminYcfg = "0.2";
+        static string guiMsgmaxYcfg = "0.8";
 
-        static double guiminX = 0.2;
-        static double guimaxX = 0.8;
-        static double guimaxY = 0.8;
-        static double guiYheight = 0.05;
-
+        static double guiKitminX = 0.5;
+        static double guiKitmaxX = 0.8;
+        static double guiKitmaxY = 0.8;
+        static double guiKitYheight = 0.05;
+        static double guiMsgminX = 0.2;
+        static double guiMsgmaxX = 0.5;
+        static double guiMsgminY = 0.2;
+        static double guiMsgmaxY = 0.8;
+         
         static int retreiveType = 0;
         static Dictionary<string, object> npcKitList = GetDefaultNpcKit();
-
+        static Dictionary<string, object> npcMessageList = GetDefaultNpcMessage();
         private Core.Configuration.DynamicConfigFile KitsConfig;
         private Core.Configuration.DynamicConfigFile KitsData;
         private bool Changed;
@@ -87,12 +95,18 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages: kitsreset", ref kitsreset);
             CheckCfg<string>("Messages: Kit in Cooldown", ref MessageCooldownTimer);
 
-            CheckCfg<string>("GUI: min x", ref guiminXcfg);
-            CheckCfg<string>("GUI: max x", ref guimaxXcfg);
-            CheckCfg<string>("GUI: max y", ref guimaxYcfg);
-            CheckCfg<string>("GUI: y height", ref guiYheightcfg);
+            CheckCfg<string>("GUI Kit: min x", ref guiKitminXcfg);
+            CheckCfg<string>("GUI Kit: max x", ref guiKitmaxXcfg);
+            CheckCfg<string>("GUI Kit: max y", ref guiKitmaxYcfg);
+            CheckCfg<string>("GUI Kit: y height", ref guiKitYheightcfg);
+
+            CheckCfg<string>("GUI Message: min x", ref guiMsgminXcfg);
+            CheckCfg<string>("GUI Message: max x", ref guiMsgmaxXcfg);
+            CheckCfg<string>("GUI Message: min y", ref guiMsgminYcfg);
+            CheckCfg<string>("GUI Message: max y", ref guiMsgmaxYcfg);
 
             CheckCfg<Dictionary<string, object>>("NPC Kits", ref npcKitList);
+            CheckCfg<Dictionary<string, object>>("NPC Messages", ref npcMessageList);
 
             SaveConfig();
 
@@ -134,10 +148,16 @@ namespace Oxide.Plugins
             }
             InitializeKits();
 
-            guiminX = Convert.ToDouble(guiminXcfg);
-            guimaxX = Convert.ToDouble(guimaxXcfg);
-            guimaxY = Convert.ToDouble(guimaxYcfg);
-            guiYheight = Convert.ToDouble(guiYheightcfg);
+            guiKitminX = Convert.ToDouble(guiKitminXcfg);
+            guiKitmaxX = Convert.ToDouble(guiKitmaxXcfg);
+            guiKitmaxY = Convert.ToDouble(guiKitmaxYcfg);
+            guiKitYheight = Convert.ToDouble(guiKitYheightcfg);
+
+            guiMsgminX = Convert.ToDouble(guiMsgminXcfg);
+            guiMsgmaxX = Convert.ToDouble(guiMsgmaxXcfg);
+            guiMsgminY = Convert.ToDouble(guiMsgminYcfg);
+            guiMsgmaxY = Convert.ToDouble(guiMsgmaxYcfg);
+
         }
         void OnServerInitialized()
         {
@@ -210,7 +230,14 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////////
         ///// NPC Related
         //////////////////////////////////////////////////////////////////////////////////////////
+        static Dictionary<string, object> GetDefaultNpcMessage()
+        {
+            var newobject = new Dictionary<string, object>();
+            newobject.Add("123456","Welcome on this server, Here is a list of free kits that you can get <color=red>only once each</color>\n\n                      <color=green>Enjoy your stay</color>");
+            newobject.Add("999999", "<color=red>Only VIPs are allowed to get kits from me</color>");
 
+            return newobject;
+        }
         static Dictionary<string, object> GetDefaultNpcKit()
         {
             var newobject = new Dictionary<string, object>();
@@ -616,7 +643,6 @@ namespace Oxide.Plugins
                 
                 if (!npcKitList.ContainsKey(userId)) continue;
 
-                Debug.Log(kitname);
                 if (!((List<object>)npcKitList[userId]).Contains(kitname)) continue;
                 
                 /// NEED TO ADD A WALL COLLIDER CHECK TO MAKE SURE ITS NOT THROUGH WALL
@@ -640,7 +666,8 @@ namespace Oxide.Plugins
             else
             {
                 Dictionary<string, object> kitdata = (KitsConfig[kitname]) as Dictionary<string, object>;
-                if ((bool)kitdata["npconly"])
+               
+                if ((bool)kitdata.ContainsKey("npconly"))
                 {
                     SendTheReply(player, "You are not allowed to redeem this kit here, you must be next to the NPC");
                     return;
@@ -768,7 +795,24 @@ namespace Oxide.Plugins
                                     ""anchormax"": ""1 1""
                                 }
                             ]
-                        }
+                        },
+                        {
+                            ""parent"": ""KitOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{msg}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""{xmin} {ymin}"",
+                                    ""anchormax"": ""{xmax} {ymax}""
+                                }
+                            ]
+                        },
                     ]
                     ";
         string buttonjson = @"[
@@ -820,7 +864,8 @@ namespace Oxide.Plugins
         {
             DestroyAllGUI(player);
             int guipos = 0;
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+            var coverlay = npcMessageList.ContainsKey(npcId) ? overlayjson.Replace("{msg}", npcMessageList[npcId].ToString()).Replace("{xmin}", guiMsgminX.ToString()).Replace("{xmax}", guiMsgmaxX.ToString()).Replace("{ymin}", guiMsgminY.ToString()).Replace("{ymax}", guiMsgmaxY.ToString()) : overlayjson.Replace("{msg}", string.Empty);
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", coverlay);
             string reason = string.Empty;
             string localmsg = string.Empty;
             foreach (object kitname in kitsList)
@@ -829,12 +874,12 @@ namespace Oxide.Plugins
                 string color = CheckIfCanRedeem(player, kitnamestring, out reason) ? "0 0.6 0 0.2" : "1 0 0 0.2";
                 var kitdata = KitsConfig[kitnamestring] as Dictionary<string,object>;
                 string msg = kitnamestring + " - " + (kitdata["description"] as string);
-                localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'", kitnamestring, npcId)).Replace("{msg}", msg).Replace("{color}", color).Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guimaxY - (guipos + 1) * guiYheight).ToString()).Replace("{ymax}", (guimaxY - guipos * guiYheight).ToString());
+                localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'", kitnamestring, npcId)).Replace("{msg}", msg).Replace("{color}", color).Replace("{xmin}", guiKitminX.ToString()).Replace("{xmax}", guiKitmaxX.ToString()).Replace("{ymin}", (guiKitmaxY - (guipos + 1) * guiKitYheight).ToString()).Replace("{ymax}", (guiKitmaxY - guipos * guiKitYheight).ToString());
                 CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", localmsg);
                 guipos++;
             }
            
-            localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guimaxY - (guipos + 1) * guiYheight).ToString()).Replace("{ymax}", (guimaxY - guipos * guiYheight).ToString());
+            localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiKitminX.ToString()).Replace("{xmax}", guiKitmaxX.ToString()).Replace("{ymin}", (guiKitmaxY - (guipos + 1) * guiKitYheight).ToString()).Replace("{ymax}", (guiKitmaxY - guipos * guiKitYheight).ToString());
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", localmsg);
             player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", new object[] { " " });
         }
