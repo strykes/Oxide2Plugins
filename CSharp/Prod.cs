@@ -1,15 +1,13 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
-using System.Data;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Prod", "Reneb", 2.1, ResourceId = 928)]
+    [Info("Prod", "Reneb", "2.1.3", ResourceId = 683)]
     class Prod : RustPlugin
     {
 
@@ -25,30 +23,24 @@ namespace Oxide.Plugins
         private string boxNeedsCode;
 
         private FieldInfo serverinput;
-        private object deadplayers;
-        private Oxide.Core.Libraries.Plugins pluginsfullib;
-        private FieldInfo pluginslib;
         private FieldInfo codelockwhitelist;
         private Vector3 eyesAdjust;
         private bool Changed;
-        Core.Configuration.DynamicConfigFile deadPlayersData;
+
+        [PluginReference]
+        Plugin DeadPlayersList;
+
+        [PluginReference]
+        Plugin BuildingOwners;
 
         void Loaded()
         {
             LoadVariables();
             eyesAdjust = new Vector3(0f, 1.5f, 0f);
-            pluginslib = typeof(OxideMod).GetField("libplugins", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             codelockwhitelist = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         }
-        void OnServerInitialized()
-        {
-            pluginsfullib = (Oxide.Core.Libraries.Plugins)pluginslib.GetValue(Interface.GetMod());
-            object findplugin = pluginsfullib.Find("deadPlayerList");
-            if (findplugin == null)
-                return;
-            deadplayers = (Oxide.Core.Plugins.Plugin)findplugin;
-        }
+
         private object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
@@ -67,6 +59,7 @@ namespace Oxide.Plugins
             }
             return value;
         }
+
         private void LoadVariables()
         {
             prodAuth = Convert.ToInt32(GetConfig("Prod", "authLevel", 1));
@@ -78,30 +71,32 @@ namespace Oxide.Plugins
             noBlockOwnerfound = Convert.ToString(GetConfig("Messages", "noBlockOwnerfound", "No owner found for this building block"));
             noCodeAccess = Convert.ToString(GetConfig("Messages", "noCodeAccess", "No players has access to this Lock"));
             codeLockList = Convert.ToString(GetConfig("Messages", "codeLockList", "CodeLock whitelist:"));
-            boxNeedsCode = Convert.ToString(GetConfig("Messages", "boxNeedsCode", "Can't find owners of a box without a Code Lock"));
+            boxNeedsCode = Convert.ToString(GetConfig("Messages", "boxNeedsCode", "Can't find owners of an item without a Code Lock"));
             if (Changed)
             {
                 SaveConfig();
                 Changed = false;
             }
         }
-        void LoadDefaultConfig()
+
+        protected override void LoadDefaultConfig()
         {
             Puts("Prod: Creating a new config file");
             Config.Clear();
             LoadVariables();
         }
-        private bool hasAccess(BasePlayer player)
-       {
-           if(player.net.connection.authLevel < prodAuth)
-               return false;
-           return true;
 
-       }
+        private bool hasAccess(BasePlayer player)
+        {
+            if (player.net.connection.authLevel < prodAuth)
+                return false;
+            return true;
+        }
+
         [ChatCommand("prod")]
         void cmdChatProd(BasePlayer player, string command, string[] args)
         {
-            if(!(hasAccess(player)))
+            if (!(hasAccess(player)))
             {
                 SendReply(player, noAccess);
                 return;
@@ -116,15 +111,15 @@ namespace Oxide.Plugins
             }
             if (target as BuildingBlock)
             {
-                GetBuildingblockOwner(player,(BuildingBlock)target);
+                GetBuildingblockOwner(player, (BuildingBlock)target);
             }
             else if (target as BuildingPrivlidge)
             {
                 GetToolCupboardUsers(player, (BuildingPrivlidge)target);
             }
-            else if (target as DeployedItem)
+            else if (target as SleepingBag)
             {
-                GetDeployedItemOwner(player, (DeployedItem)target);
+                GetDeployedItemOwner(player, (SleepingBag)target);
             }
             else
             {
@@ -154,69 +149,45 @@ namespace Oxide.Plugins
             }
             SendReply(player, boxNeedsCode);
         }
-        private void GetDeployedItemOwner(BasePlayer player, DeployedItem ditem)
+        private void GetDeployedItemOwner(BasePlayer player, SleepingBag ditem)
         {
-            if (ditem.item != null && ditem.item.info != null)
-                SendReply(player, string.Format("{0} deployer: {1} - {2}", ditem.item.info.displayname.ToString(), ditem.deployerUserName.ToString(), ditem.deployerUserID.ToString()));
-            else
-                SendReply(player, string.Format("Item Deployer: {0} - {1}", ditem.deployerUserName.ToString(), ditem.deployerUserID.ToString()));
+            SendReply(player, string.Format("Sleeping Bag '{0}': {1} - {2}", ditem.niceName.ToString(), FindPlayerName(ditem.deployerUserID), ditem.deployerUserID.ToString()));
         }
         private object FindOwnerBlock(BuildingBlock block)
         {
-            object returnhook = Interface.GetMod().CallHook("FindBlockData", new object[] { block });
+            object returnhook = BuildingOwners?.Call("FindBlockData", block);
+
             if (returnhook != null)
             {
                 if (!(returnhook is bool))
                 {
                     ulong ownerid = Convert.ToUInt64(returnhook);
-                        return ownerid;
+                    return ownerid;
                 }
             }
+            Puts("Prod: To be able to obtain the owner of a building you need to install the BuildingOwner plugin.");
             return false;
+        }
+
+        private string FindPlayerName(ulong userId)
+        {
+            BasePlayer player = BasePlayer.FindByID(userId);
+            if (player)
+                return player.displayName + " (Online)";
+
+            player = BasePlayer.FindSleeping(userId);
+            if (player)
+                return player.displayName + " (Sleeping)";
+
+            string name = DeadPlayersList?.Call("GetPlayerName", userId) as string;
+            if (name != null)
+                return name + " (Dead)";
+
+            return "Unknown player";
         }
         private void SendBasePlayerFind(BasePlayer player, ulong ownerid)
         {
-            BasePlayer targetplayer = BasePlayer.FindByID(ownerid);
-            if (targetplayer != null)
-            {
-                SendReply(player, string.Format("{0} - {1} - Online", targetplayer.displayName.ToString(), ownerid.ToString()));
-                return;
-            }
-            targetplayer = BasePlayer.FindSleeping(ownerid);
-            if (targetplayer != null)
-            {
-                SendReply(player, string.Format("{0} - {1} - Sleeping", targetplayer.displayName.ToString(), ownerid.ToString()));
-                return;
-            }
-            if (deadplayers is Oxide.Core.Plugins.Plugin)
-            {
-                /*object deadplayer = ((Oxide.Core.Plugins.Plugin)deadplayers).CallHook("FindDeadPlayerByID", new object[1] { ownerid.ToString() });
-
-                if (!(deadplayer is bool))
-                {
-                    if (deadplayer != null)
-                    {
-                        Puts(deadplayer.ToString());
-                        Dictionary<string, object> data = deadplayer as Dictionary<string, object>;
-                        foreach (KeyValuePair<string, object> pair in data)
-                        {
-                            Puts(pair.Key.ToString());
-                            //if (pair.Key.ToString() == "displayName")
-                            //{
-                              //  SendReply(player, string.Format("{0} - {1} - Dead", pair.Value.ToString(), ownerid.ToString()));
-                            //}
-                        }
-                    }
-                }*/
-                deadPlayersData = Interface.GetMod().DataFileSystem.GetDatafile("deadPlayerList");
-                if (deadPlayersData[ownerid.ToString()] != null)
-                {
-                    Dictionary<string, object> data = deadPlayersData[ownerid.ToString()] as Dictionary<string, object>;
-                    SendReply(player, string.Format("{0} - {1} - Dead", data["displayName"].ToString(), ownerid.ToString()));
-                    return;
-                }
-            }
-            SendReply(player, string.Format("{0} - {1} - Dead", "Unknown Player", ownerid.ToString()));
+            SendReply(player, string.Format("{0} {1}", FindPlayerName(ownerid), ownerid.ToString()));
         }
         private void GetBuildingblockOwner(BasePlayer player, BuildingBlock block)
         {
@@ -231,7 +202,7 @@ namespace Oxide.Plugins
         }
         private void GetToolCupboardUsers(BasePlayer player, BuildingPrivlidge cupboard)
         {
-            SendReply(player, string.Format("{0} - {1} {2} {3}",Toolcupboard,Math.Round(cupboard.transform.position.x).ToString(),Math.Round(cupboard.transform.position.y).ToString(),Math.Round(cupboard.transform.position.z).ToString()));
+            SendReply(player, string.Format("{0} - {1} {2} {3}", Toolcupboard, Math.Round(cupboard.transform.position.x).ToString(), Math.Round(cupboard.transform.position.y).ToString(), Math.Round(cupboard.transform.position.z).ToString()));
             if (cupboard.authorizedPlayers.Count == 0)
             {
                 SendReply(player, noCupboardPlayers);
@@ -265,12 +236,12 @@ namespace Oxide.Plugins
                         target = hit.collider.GetComponentInParent<BuildingPrivlidge>();
                     }
                 }
-                else if (hit.collider.GetComponentInParent<DeployedItem>() != null)
+                else if (hit.collider.GetComponentInParent<SleepingBag>() != null)
                 {
                     if (hit.distance < distance)
                     {
                         distance = hit.distance;
-                        target = hit.collider.GetComponentInParent<DeployedItem>();
+                        target = hit.collider.GetComponentInParent<SleepingBag>();
                     }
                 }
                 else if (hit.collider.GetComponentInParent<StorageContainer>() != null)
@@ -287,8 +258,8 @@ namespace Oxide.Plugins
 
         void SendHelpText(BasePlayer player)
         {
-            if(hasAccess(player))
-                SendReply(player,helpProd);
+            if (hasAccess(player))
+                SendReply(player, helpProd);
         }
     }
 }
