@@ -21,7 +21,7 @@ namespace Oxide.Plugins
         [PluginReference]
         Plugin Kits;
 
-        [PluginReference]
+        [PluginReference] 
         Plugin ZoneManager;
 
         [PluginReference]
@@ -30,7 +30,7 @@ namespace Oxide.Plugins
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
-        
+
 
         private bool EventOpen;
         private bool EventStarted;
@@ -49,11 +49,11 @@ namespace Oxide.Plugins
 
         private int stackable;
         private int giveamount;
-        
-		
-		public List<Oxide.Plugins.Timer> AutoArenaTimers;
-		public float LastAnnounce;
-		public bool AutoEventLaunched = false;
+
+
+        public List<Oxide.Plugins.Timer> AutoArenaTimers;
+        public float LastAnnounce;
+        public bool AutoEventLaunched = false;
 
         ////////////////////////////////////////////////////////////
         // EventPlayer class to store informations /////////////////
@@ -170,7 +170,7 @@ namespace Oxide.Plugins
                 player.inventory.crafting.CancelAll(true);
             }
         }
-        
+
         static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
             PutToSleep(player);
@@ -190,7 +190,7 @@ namespace Oxide.Plugins
         }
         static string MakeItemName(Item item)
         {
-            return string.Format("{0} {1}", item.info.shortname, item.isBlueprint.ToString());
+            return string.Format("{0} {1}", item.info.shortname, item.IsBlueprint().ToString());
         }
         static void GetItemGood(string itemdata, out bool isBP, out string itemname)
         {
@@ -253,9 +253,9 @@ namespace Oxide.Plugins
         {
             Interface.CallHook("RegisterGame");
             SelectSpawnfile(defaultSpawnfile);
-        }  
+        }
         void Unload()
-        { 
+        {
             EndEvent();
             var objects = GameObject.FindObjectsOfType(typeof(EventPlayer));
             if (objects != null)
@@ -263,7 +263,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-        
+
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -565,13 +565,13 @@ namespace Oxide.Plugins
         private static string MessagesEventStatusClosedEnd = "There is currently no event";
         private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
 
-		private static string MessagesEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
-		private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
+        private static string MessagesEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
+        private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
         private static bool EventAutoEvents = true;
         private static int EventAutoInterval = 600;
         private static int EventAutoAnnounceInterval = 30;
-        private static List<Dictionary<string,object>> EventAutoConfig = CreateDefaultAutoConfig();
-        
+        private static List<Dictionary<string, object>> EventAutoConfig = CreateDefaultAutoConfig();
+
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
         private static string MessageRewardCurrent = "You have {0} tokens";
         private static string MessageRewardHelp = "/reward \"RewardName\" Amount";
@@ -593,11 +593,11 @@ namespace Oxide.Plugins
 
             CheckCfg<string>("Default - Game", ref defaultGame);
             CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
-            
+
             CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
             CheckCfg<int>("AutoEvents - Interval between 2 events", ref EventAutoInterval);
             CheckCfg<int>("AutoEvents - Announce Open Interval", ref EventAutoAnnounceInterval);
-            CheckCfg<List<object>>("AutoEvents - Config", ref EventAutoConfig);
+            CheckCfg<List<Dictionary<string, object>>>("AutoEvents - Config", ref EventAutoConfig);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
@@ -626,10 +626,10 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
             CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
             CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
-            
+
             CheckCfg<string>("Messages - Event - MaxPlayersReached", ref MessagesEventMaxPlayers);
-			CheckCfg<string>("Messages - Event - MinPlayersReached", ref MessagesEventMinPlayers);
-			
+            CheckCfg<string>("Messages - Event - MinPlayersReached", ref MessagesEventMinPlayers);
+
             CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
             CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
             CheckCfg<string>("Messages - Reward - Help", ref MessageRewardHelp);
@@ -640,34 +640,34 @@ namespace Oxide.Plugins
 
             SaveConfig();
         }
-		
-		List<Dictionary<string,object>> CreateDefaultAutoConfig()
-		{
-			var newautoconfiglist = new List< Dictionary<string,object> >();
-			var AutoDM = new Dictionary<string,object>();
-			AutoDM.Add("gametype", "Deathmatch");
-			AutoDM.Add("spawnfile", "deathmatchspawnfile");
-			AutoDM.Add("closeonstart", "false");
-			AutoDM.Add("timetojoin", "30");
-			AutoDM.Add("minplayers", "2");
-			AutoDM.Add("maxplayers", "10");
-			AutoDM.Add("timelimit", "1200");
-			
-			var AutoBF = new Dictionary<string,object>();
-			AutoBF.Add("gametype", "Battlefield");
-			AutoBF.Add("spawnfile", "battlefieldspawnfile");
-			AutoDM.Add("closeonstart", "false");
-			AutoDM.Add("timetojoin", "0");
-			AutoDM.Add("timelimit", null);
-			AutoBF.Add("minplayers", "0");
-			AutoBF.Add("maxplayers", "30");
-			
-			
-			newautoconfiglist.Add( AutoDM );
-			newautoconfiglist.Add( AutoBF );
-			
-			return newautoconfiglist;
-		}
+
+        static List<Dictionary<string, object>> CreateDefaultAutoConfig()
+        {
+            var newautoconfiglist = new List<Dictionary<string, object>>();
+            var AutoDM = new Dictionary<string, object>();
+            AutoDM.Add("gametype", "Deathmatch");
+            AutoDM.Add("spawnfile", "deathmatchspawnfile");
+            AutoDM.Add("closeonstart", "false");
+            AutoDM.Add("timetojoin", "30");
+            AutoDM.Add("minplayers", "2");
+            AutoDM.Add("maxplayers", "10");
+            AutoDM.Add("timelimit", "1200");
+
+            var AutoBF = new Dictionary<string, object>();
+            AutoBF.Add("gametype", "Battlefield");
+            AutoBF.Add("spawnfile", "battlefieldspawnfile");
+            AutoBF.Add("closeonstart", "false");
+            AutoBF.Add("timetojoin", "0");
+            AutoBF.Add("timelimit", null);
+            AutoBF.Add("minplayers", "0");
+            AutoBF.Add("maxplayers", "30");
+
+
+            newautoconfiglist.Add(AutoDM);
+            newautoconfiglist.Add(AutoBF);
+
+            return newautoconfiglist;
+        }
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Some global methods ///////////////////////////////////////////////////////////////
@@ -796,7 +796,7 @@ namespace Oxide.Plugins
             }
             SendReply(player, string.Format(MessageRewardCurrentReward, GetTokens(player.userID.ToString()).ToString()));
         }
-        
+
         void EjectAllPlayers()
         {
             foreach (EventPlayer eventplayer in EventPlayers)
@@ -832,7 +832,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         object OpenEvent()
         {
-            success = Interface.CallHook("CanEventOpen", new object[] { });
+            var success = Interface.CallHook("CanEventOpen", new object[] { });
             if (success is string)
             {
                 return (string)success;
@@ -845,28 +845,28 @@ namespace Oxide.Plugins
         }
         void OnEventOpenPost()
         {
-        	OnEventOpenPostAutoEvent();
+            OnEventOpenPostAutoEvent();
         }
         void OnEventOpenPostAutoEvent()
         {
-        	if(!EventAutoEvents) return null;
-        	
-        	DestroyTimers();
-			AutoArenaTimers.Add( timer.Once( 300f, () => CancelEvent("Not enough players") );
-			AutoArenaTimers.Add( timer.Repeat( 0f, 30f, () => AnnounceEvent() );
+            if (!EventAutoEvents) return;
+
+            DestroyTimers();
+            AutoArenaTimers.Add(timer.Once(300f, () => CancelEvent("Not enough players")));
+            AutoArenaTimers.Add(timer.Repeat(30f, 0, () => AnnounceEvent()));
         }
         object CanEventOpen()
         {
-        	if (EventGameName == null) return MessagesEventNotSet;
+            if (EventGameName == null) return MessagesEventNotSet;
             else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
             else if (EventOpen) return MessagesEventAlreadyOpened;
-            
-        	object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
+
+            object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
             if (success is string)
             {
                 return (string)success;
             }
-            
+
             return null;
         }
         object CloseEvent()
@@ -882,116 +882,120 @@ namespace Oxide.Plugins
         }
         object AutoEventNext()
         {
-        	if( EventAutoConfig.Count == 0 ) {
-        		AutoEventLaunched = false;
-        		return "No Automatic Events Configured";
-        	}
-        	bool successed = false;
-        	for( i = 0; i < EventAutoConfig.Count; i++ )
-        	{
-        		EventAutoNum++;
-        		if(EventAutoNum >= EventAutoConfig.Count) EventAutoNum = 0;
-        		
-        		object success = SelectEvent((EventAutoConfig[EventAutoNum])["gametype"]);
-				if (success is string) { continue; }
-				
-				success = SelectSpawnfile((EventAutoConfig[EventAutoNum])["spawnfile"]);
-				if (success is string) { continue; }
-        		
-        		success = SelectMinplayers( (EventAutoConfig[EventAutoNum])["minplayers"] );
-        		if (success is string) { continue; }
-        		
-        		success = SelectMaxplayers( (EventAutoConfig[EventAutoNum])["maxplayers"] );
-        		if (success is string) { continue; }
-        		
-        		success = Interface.CallHook("CanEventOpen", new object[] { });
-				if (success is string) { continue; }
-				
-        		
-        		successed = true;
-        	}
-        	
-        	if(!successed)
-        	{
-        		return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
-        	}
-        	
-        	AutoArenaTimers.Add( timer.Once( Convert.ToSingle(EventAutoInterval), () => OpenEvent() ));
+            if (EventAutoConfig.Count == 0)
+            {
+                AutoEventLaunched = false;
+                return "No Automatic Events Configured";
+            }
+            bool successed = false;
+            for (int i = 0; i < EventAutoConfig.Count; i++)
+            {
+                EventAutoNum++;
+                if (EventAutoNum >= EventAutoConfig.Count) EventAutoNum = 0;
+
+                object success = SelectEvent((string)(EventAutoConfig[EventAutoNum])["gametype"]);
+                if (success is string) { continue; }
+
+                success = SelectSpawnfile((string)(EventAutoConfig[EventAutoNum])["spawnfile"]);
+                if (success is string) { continue; }
+
+                success = SelectMinplayers((string)(EventAutoConfig[EventAutoNum])["minplayers"]);
+                if (success is string) { continue; }
+
+                success = SelectMaxplayers((string)(EventAutoConfig[EventAutoNum])["maxplayers"]);
+                if (success is string) { continue; }
+
+                success = Interface.CallHook("CanEventOpen", new object[] { });
+                if (success is string) { continue; }
+
+
+                successed = true;
+                
+            }
+
+            if (!successed)
+            {
+                return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
+            }
+
+            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));
+            return null;
         }
         void OnEventStartPost()
         {
-        	OnEventStartPostAutoEvent();
+            OnEventStartPostAutoEvent();
         }
         void OnEventStartPostAutoEvent()
         {
-        	if( !EventAutoEvents ) return;
-        	
-        	DestroyTimers();
-        	AutoArenaTimers.Add( timer.Once( 600f, () => CancelEvent("Time limit reached") );
+            if (!EventAutoEvents) return;
+
+            DestroyTimers();
+            AutoArenaTimers.Add(timer.Once(600f, () => CancelEvent("Time limit reached")));
         }
         void DestroyTimers()
         {
-        	foreach( Oxide.Plugins.Timer eventimer in AutoArenaTimers )
-        	{
-        		eventimer.Destroy();
-        	}
-        	AutoArenaTimers.Clear();
+            foreach (Oxide.Plugins.Timer eventimer in AutoArenaTimers)
+            {
+                eventimer.Destroy();
+            }
+            AutoArenaTimers.Clear();
         }
         void CancelEvent(string reason)
         {
-        	var message = "Event {0} was cancelled for {1}";
-        	object success = Interface.CallHook("OnEventCancel", new object[] { });
+            var message = "Event {0} was cancelled for {1}";
+            object success = Interface.CallHook("OnEventCancel", new object[] { });
             if (success != null)
             {
-            	if(success is string)
-            		message = (string)success;
-            	else 
-            		return;
+                if (success is string)
+                    message = (string)success;
+                else
+                    return;
             }
             BroadcastToChat(string.Format(message, EventGameName));
-        	DestroyTimers();
-        	EndEvent();
+            DestroyTimers();
+            EndEvent();
         }
         void AnnounceEvent()
         {
-        	var message = "Event {0} in now opened, you join it by saying /event_join";
-        	object success = Interface.CallHook("OnEventAnnounce", new object[] { });
+            var message = "Event {0} in now opened, you join it by saying /event_join";
+            object success = Interface.CallHook("OnEventAnnounce", new object[] { });
             if (success is string)
             {
-            	message = (string)success;
+                message = (string)success;
             }
             BroadcastToChat(string.Format(message, EventGameName));
         }
         object LaunchEvent()
         {
-        	// just activate it and take over from where it is currently.
-        	AutoEventLaunched = true;
-        	
-        	if(!EventStarted)
-        	{
-        		if(!EventOpen)
-				{
-					object success = AutoEventNext();
-					if(success is string)
-					{
-						return (string)success;
-					}
-					success = OpenEvent();
-					if(success is string) {
-						return (string)success;
-					}
-				}
-				else
-				{
-					OnEventOpenPostAutoEvent();
-					// start laiunch timer if min players reached
-				}
-        	}
-        	else
-        	{
-        		OnEventStartPostAutoEvent();
-        	}
-         	return null;
+            // just activate it and take over from where it is currently.
+            AutoEventLaunched = true;
+
+            if (!EventStarted)
+            {
+                if (!EventOpen)
+                {
+                    object success = AutoEventNext();
+                    if (success is string)
+                    {
+                        return (string)success;
+                    }
+                    success = OpenEvent();
+                    if (success is string)
+                    {
+                        return (string)success;
+                    }
+                }
+                else
+                {
+                    OnEventOpenPostAutoEvent();
+                    // start laiunch timer if min players reached
+                }
+            }
+            else
+            {
+                OnEventStartPostAutoEvent();
+            }
+            return null;
         }
         object EndEvent()
         {
@@ -1002,7 +1006,7 @@ namespace Oxide.Plugins
             EventOpen = false;
             EventStarted = false;
             EventEnded = true;
-			EventPending = false;
+            EventPending = false;
 
             SendPlayersHome();
             RedeemPlayersInventory();
@@ -1015,7 +1019,7 @@ namespace Oxide.Plugins
         }
         object CanEventStart()
         {
-        	if (EventGameName == null) return MessagesEventNotSet;
+            if (EventGameName == null) return MessagesEventNotSet;
             else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
             else if (EventStarted) return MessagesEventAlreadyStarted;
             return null;
@@ -1031,7 +1035,7 @@ namespace Oxide.Plugins
             BroadcastToChat(string.Format(MessagesEventBegin, EventGameName));
             EventStarted = true;
             EventEnded = false;
-			ResetTimer();
+            DestroyTimers();
             SaveAllInventories();
             SaveAllHomeLocations();
             TeleportAllPlayersToEvent();
@@ -1070,35 +1074,35 @@ namespace Oxide.Plugins
         }
         object CanEventJoin(BasePlayer player)
         {
-        	if(!EventOpen)
-        		return "The Event is currently closed.";
-        	
-        	if( EventMaxPlayers != 0 && EventPlayers.Count >= EventMaxPlayers )
-        	{
-        		return string.Format(MessagesEventMaxPlayers, EventGameName);
-        	}
-        	return null;
+            if (!EventOpen)
+                return "The Event is currently closed.";
+
+            if (EventMaxPlayers != 0 && EventPlayers.Count >= EventMaxPlayers)
+            {
+                return string.Format(MessagesEventMaxPlayers, EventGameName);
+            }
+            return null;
         }
         object OnEventJoinPost(BasePlayer player)
         {
-        	if(!EventAutoEvents) return null;
-        	
-        	if( EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending )
-        	{
-        		float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
-        		BroadcastToChat(string.Format(MessagesAutoEventMinPlayers, EventGameName, timerStart.ToString()));
-        		
-        		EventPending = true;
-        		DestroyTimers();
-        		AutoArenaTimers.Add( timer.Once( timerStart, () => StartEvent() ));
-        	}
-        	return null;
+            if (!EventAutoEvents) return null;
+
+            if (EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending)
+            {
+                float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
+                BroadcastToChat(string.Format(MessagesEventMinPlayers, EventGameName, timerStart.ToString()));
+
+                EventPending = true;
+                DestroyTimers();
+                AutoArenaTimers.Add(timer.Once(timerStart, () => StartEvent()));
+            }
+            return null;
         }
         void OnEventEndPost()
         {
-        	if(!EventAutoEvents) return null;
-        	DestroyTimers();
-        	AutoEventNext();
+            if (!EventAutoEvents) return;
+            DestroyTimers();
+            AutoEventNext();
         }
         object LeaveEvent(BasePlayer player)
         {
@@ -1164,37 +1168,37 @@ namespace Oxide.Plugins
         }
         object SelectMaxplayers(string num)
         {
-        	int mplayer = 0;
-        	if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
-        	if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
-        	
-        	if( !int.TryParse( num, out mplayer ) )
-        	{
-        		return string.Format("{0} is not a number", num);
-        	}
-        	
-        	EventMaxPlayers = mplayer;
-        	
-        	Interface.CallHook("OnPostSelectMaxPlayers", EventMaxPlayers);
-        	
-        	return true;
+            int mplayer = 0;
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+
+            if (!int.TryParse(num, out mplayer))
+            {
+                return string.Format("{0} is not a number", num);
+            }
+
+            EventMaxPlayers = mplayer;
+
+            Interface.CallHook("OnPostSelectMaxPlayers", EventMaxPlayers);
+
+            return true;
         }
         object SelectMinplayers(string num)
         {
-        	int mplayer = 0;
-        	if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
-        	if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
-        	
-        	if( !int.TryParse( num, out mplayer ) )
-        	{
-        		return string.Format("{0} is not a number", num);
-        	}
-        	
-        	EventMinPlayers = mplayer;
-        	
-        	Interface.CallHook("OnPostSelectMinPlayers", EventMinPlayers);
-        	
-        	return true;
+            int mplayer = 0;
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+
+            if (!int.TryParse(num, out mplayer))
+            {
+                return string.Format("{0} is not a number", num);
+            }
+
+            EventMinPlayers = mplayer;
+
+            Interface.CallHook("OnPostSelectMinPlayers", EventMinPlayers);
+
+            return true;
         }
         object SelectNewZone(MonoBehaviour monoplayer, string radius)
         {
@@ -1214,7 +1218,7 @@ namespace Oxide.Plugins
                 EventGames.Add(name);
             Puts(string.Format("Registered event game: {0}", name));
             Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
-            
+
             if (EventGameName == name)
             {
                 object success = SelectEvent(EventGameName);
@@ -1307,12 +1311,6 @@ namespace Oxide.Plugins
                 return true;
             return false;
         }
-		void ResetTimer()
-		{
-			AutoArenaTimer.Destroy();
-			if(!EventAutoEvents) return;
-		
-		}
         //////////////////////////////////////////////////////////////////////////////////////
         // Chat Commands /////////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
@@ -1347,7 +1345,7 @@ namespace Oxide.Plugins
             else message = MessagesEventStatusClosedStarted;
             SendReply(player, string.Format(message, EventGameName));
         }
-        
+
 
         [ChatCommand("reward")]
         void cmdEventReward(BasePlayer player, string command, string[] args)
@@ -1362,7 +1360,7 @@ namespace Oxide.Plugins
                     string color = "green";
                     if (pair.Value.GetCost() > currenttokens)
                         color = "red";
-                    SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString() ));
+                    SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString()));
                 }
                 return;
             }
@@ -1489,7 +1487,7 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return; 
+                return;
             }
             SendReply(arg, string.Format("Minimum Players for {0} is now {1} (this is only usefull for auto events).", arg.Args[0].ToString(), EventSpawnFile.ToString()));
         }
@@ -1506,7 +1504,7 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return; 
+                return;
             }
             SendReply(arg, string.Format("Maximum Players for {0} is now {1}.", arg.Args[0].ToString(), EventSpawnFile.ToString()));
         }
@@ -1523,10 +1521,10 @@ namespace Oxide.Plugins
             if (success is string)
             {
                 SendReply(arg, (string)success);
-                return; 
+                return;
             }
             defaultSpawnfile = arg.Args[0];
-            SaveConfig(); 
+            SaveConfig();
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.zone")]
@@ -1549,7 +1547,7 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
-            
+
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
         }
         [ConsoleCommand("event.reward")]
@@ -1569,27 +1567,27 @@ namespace Oxide.Plugins
             switch (arg.Args[0])
             {
                 case "check":
-                    if(arg.Args.Length < 2)
+                    if (arg.Args.Length < 2)
                     {
                         SendReply(arg, "event.reward check PLAYERNAME/STEAMID");
                         return;
                     }
-                    
+
                     foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
-                    if(!(bool)foundtarget)
+                    if (!(bool)foundtarget)
                     {
                         SendReply(arg, targetid.ToString());
                         return;
                     }
-                    SendReply(arg, string.Format("{0} {1} has {2} tokens",targetid, targetname, GetTokens(targetid).ToString()));
-                break;
+                    SendReply(arg, string.Format("{0} {1} has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
                 case "clear":
                     if (arg.Args.Length < 2)
                     {
                         SendReply(arg, "You must confirm by saying: event.reward clear yes");
                         return;
                     }
-                    if(arg.Args[1] != "yes")
+                    if (arg.Args[1] != "yes")
                     {
                         SendReply(arg, "You must confirm clearing the players token list by added: yes, at the end.");
                         return;
@@ -1603,8 +1601,8 @@ namespace Oxide.Plugins
                         SendReply(arg, "event.reward set PLAYERNAME/STEAMID AMOUNT");
                         return;
                     }
-                    
-                    if(!int.TryParse(arg.Args[2], out amount))
+
+                    if (!int.TryParse(arg.Args[2], out amount))
                     {
                         SendReply(arg, "the amount needs to be a number");
                         return;
@@ -1749,8 +1747,7 @@ namespace Oxide.Plugins
                     storedData.Rewards.Remove(rewards[arg.Args[1]]);
                     rewards[arg.Args[1]] = null;
                     SendReply(arg, "You've successfully removed this reward");
-                 break;
-                
+                    break;
 
             }
         }
