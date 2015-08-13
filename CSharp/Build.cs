@@ -1,171 +1,530 @@
-using System.Collections.Generic;
-using System;
 using System.Reflection;
+using System;
 using System.Data;
+using System.Collections.Generic;
 using UnityEngine;
 using Oxide.Core;
+using Oxide.Core.Plugins;
+using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.24", ResourceId = 715)]
-    class Build : RustPlugin
+    [Info("Event Manager", "Reneb", "1.2.0", ResourceId = 740)]
+    class EventManager : RustPlugin
     {
-        class BuildPlayer : MonoBehaviour
+        ////////////////////////////////////////////////////////////
+        // Setting all fields //////////////////////////////////////
+        ////////////////////////////////////////////////////////////
+        [PluginReference]
+        Plugin Spawns;
+
+        [PluginReference]
+        Plugin Kits;
+
+        [PluginReference] 
+        Plugin ZoneManager;
+
+        [PluginReference]
+        Plugin DeadPlayersList;
+
+        private string EventSpawnFile;
+        private string EventGameName;
+        private string itemname;
+
+
+        private bool EventOpen;
+        private bool EventStarted;
+        private bool EventEnded;
+        private bool EventPending;
+        private int EventMaxPlayers = 0;
+        private int EventMinPlayers = 0;
+        private int EventAutoNum = -1;
+        private bool isBP;
+        private bool Changed;
+
+        private List<string> EventGames;
+        private List<EventPlayer> EventPlayers;
+
+        private ItemDefinition itemdefinition;
+
+        private int stackable;
+        private int giveamount;
+
+
+        public List<Oxide.Plugins.Timer> AutoArenaTimers = new List<Oxide.Plugins.Timer>();
+        public float LastAnnounce;
+        public bool AutoEventLaunched = false;
+
+        public static FieldInfo lastPositionValue;
+
+        ////////////////////////////////////////////////////////////
+        // EventPlayer class to store informations /////////////////
+        ////////////////////////////////////////////////////////////
+        class EventPlayer : MonoBehaviour
         {
             public BasePlayer player;
-            public InputState input;
-            public string currentPrefab;
-            public string currentType;
-            public float currentHealth;
-            public Quaternion currentRotate;
-            public BuildingGrade.Enum currentGrade;
-            public bool ispressed;
-            public float lastTickPress;
-            public float currentHeightAdjustment;
-            public string selection;
+
+            public bool inEvent;
+            public bool savedInventory;
+            public bool savedHome;
+
+            public Dictionary<string, int> Belt;
+            public Dictionary<string, int> Wear;
+            public Dictionary<string, int> Main;
+
+            public Vector3 Home;
 
             void Awake()
             {
-                input = serverinput.GetValue(GetComponent<BasePlayer>()) as InputState;
+                inEvent = true;
+                savedInventory = false;
+                savedHome = false;
                 player = GetComponent<BasePlayer>();
-                enabled = true;
-                ispressed = false;
+                Belt = new Dictionary<string, int>();
+                Wear = new Dictionary<string, int>();
+                Main = new Dictionary<string, int>();
             }
 
-            void Update()
+            public void SaveHome()
             {
-                if (input.WasJustPressed(BUTTON.FIRE_SECONDARY) && !ispressed)
-                {
-                    lastTickPress = Time.realtimeSinceStartup;
-                    ispressed = true;
-                    DoAction(this);
-                }
-                else if (input.IsDown(BUTTON.FIRE_SECONDARY))
-                {
-                    if((Time.realtimeSinceStartup - lastTickPress) > timeForMultiple)
-                    {
-                        DoAction(this);
-                    }
-                }
-                else
-                {
-                    ispressed = false;
-                }
+                if (!savedHome)
+                    Home = player.transform.position;
+                savedHome = true;
+            }
+            public void TeleportHome()
+            {
+                if (!savedHome)
+                    return;
+                ForcePlayerPosition(player, Home);
+                savedHome = false;
             }
 
-            public void LoadMsgGui(string Msg)
+            public void SaveInventory()
             {
-                if(!useGui) return;
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
-                string send = json.Replace("{msg}", Msg);
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
+                if (savedInventory)
+                    return;
+                var containerbelt = player.inventory.containerBelt.itemList;
+                var containermain = player.inventory.containerMain.itemList;
+                var containerwear = player.inventory.containerWear.itemList;
+                string itemname = string.Empty;
+                Belt.Clear();
+                Main.Clear();
+                Wear.Clear();
+
+                foreach (Item item in containerbelt)
+                {
+                    itemname = MakeItemName(item);
+                    if (!(Belt.ContainsKey(itemname)))
+                        Belt.Add(itemname, 0);
+                    Belt[itemname] = Belt[itemname] + item.amount;
+                }
+
+                foreach (Item item in containermain)
+                {
+                    itemname = MakeItemName(item);
+                    if (!(Main.ContainsKey(itemname)))
+                        Main.Add(itemname, 0);
+                    Main[itemname] = Main[itemname] + item.amount;
+                }
+                foreach (Item item in containerwear)
+                {
+                    itemname = MakeItemName(item);
+                    if (!(Wear.ContainsKey(itemname)))
+                        Wear.Add(itemname, 0);
+                    Wear[itemname] = Wear[itemname] + item.amount;
+                }
+                savedInventory = true;
             }
 
-            public void DestroyGui()
+            public void RestoreInventory()
             {
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
+                var containerbelt = player.inventory.containerBelt;
+                var containermain = player.inventory.containerMain;
+                var containerwear = player.inventory.containerWear;
+                foreach (KeyValuePair<string, int> pair in Belt)
+                {
+                    GiveGoodItem(player, pair.Key, pair.Value, containerbelt);
+                }
+                foreach (KeyValuePair<string, int> pair in Main)
+                {
+                    GiveGoodItem(player, pair.Key, pair.Value, containermain);
+                }
+                foreach (KeyValuePair<string, int> pair in Wear)
+                {
+                    GiveGoodItem(player, pair.Key, pair.Value, containerwear);
+                }
+                savedInventory = false;
             }
         }
-
-        enum SocketType
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Some Static methods that can be called from the EventPlayer Class /////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        static void PutToSleep(BasePlayer player)
         {
-            Wall,
-            Floor,
-            Block,
-            FloorTriangle,
-            Support,
-            Door
+            if (!player.IsSleeping())
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.Sleeping, true);
+                if (!BasePlayer.sleepingPlayerList.Contains(player))
+                {
+                    BasePlayer.sleepingPlayerList.Add(player);
+                }
+                player.CancelInvoke("InventoryUpdate");
+                player.inventory.crafting.CancelAll(true);
+            }
         }
 
-        private MethodInfo CreateEntity;
-        private MethodInfo FindPrefab;
-        private static FieldInfo serverinput;
-        private static Dictionary<string, string> deployedToItem;
-        private Dictionary<string, string> nameToBlockPrefab;
-        private static Dictionary<string, SocketType> nameToSockets;
-        private static Dictionary<SocketType, object> TypeToType;
-        private static List<string> resourcesList;
-        private static Dictionary<string, string> animalList;
+        static void ForcePlayerPosition(BasePlayer player, Vector3 destination)
+        {
+            PutToSleep(player);
+            player.transform.position = destination;
+            lastPositionValue.SetValue(player, player.transform.position);
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
+            player.TransformChanged();
 
-        public static string json = @"[
-            {
-                ""name"": ""BuildMsg"",
-                ""parent"": ""Overlay"",
-                ""components"":
-                [
-                    {
-                         ""type"":""UnityEngine.UI.Image"",
-                         ""color"":""0.1 0.1 0.1 0.7"",
-                    },
-                    {
-                        ""type"":""RectTransform"",
-                        ""anchormin"": ""{xmin} {ymin}"",
-                        ""anchormax"": ""{xmax} {ymax}""
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
+            player.UpdateNetworkGroup();
 
-                    }
-                ]
-            },
+            player.SendNetworkUpdateImmediate(false);
+            player.ClientRPCPlayer(null, player, "StartLoading");
+            player.SendFullSnapshot();
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, false);
+            player.ClientRPCPlayer(null, player, "FinishLoading");
+
+        }
+        static string MakeItemName(Item item)
+        {
+            return string.Format("{0} {1}", item.info.shortname, item.IsBlueprint().ToString());
+        }
+        static void GetItemGood(string itemdata, out bool isBP, out string itemname)
+        {
+            if (!(bool.TryParse(itemdata.Substring(itemdata.IndexOf(" ") + 1), out isBP)))
+                isBP = false;
+            itemname = itemdata.Substring(0, itemdata.IndexOf(" "));
+        }
+        static void GiveGoodItem(BasePlayer player, string itemdata, int amount, ItemContainer container)
+        {
+            bool isBP;
+            string itemname;
+            GetItemGood(itemdata, out isBP, out itemname);
+            GiveItem(player, itemname, amount, container, isBP);
+        }
+        static void GiveItem(BasePlayer player, string name, int amount, ItemContainer container, bool isBlueprint)
+        {
+            var itemdefinition = ItemManager.FindItemDefinition(name);
+            if (itemdefinition != null)
             {
-                ""parent"": ""BuildMsg"",
-                ""components"":
-                [
+                int stackable = 1;
+                if (itemdefinition.stackable == null || itemdefinition.stackable < 1) stackable = 1;
+                else stackable = itemdefinition.stackable;
+                for (var i = amount; i > 0; i = i - stackable)
+                {
+                    var giveamount = 0;
+                    if (i >= stackable)
+                        giveamount = stackable;
+                    else
+                        giveamount = i;
+                    if (giveamount > 0)
                     {
-                        ""type"":""UnityEngine.UI.Text"",
-                        ""text"":""{msg}"",
-                        ""fontSize"":15,
-                        ""align"": ""MiddleCenter"",
-                    },
-                    {
-                        ""type"":""RectTransform"",
-                        ""anchormin"": ""0 0.1"",
-                        ""anchormax"": ""1 0.8""
+                        player.inventory.GiveItem(ItemManager.CreateByItemID(itemdefinition.itemid, giveamount, isBlueprint), container);
                     }
-                ]
+                }
             }
-        ]
-        ";
+        }
 
-        /// CACHED VARIABLES
-        ///
 
-        private static Quaternion currentRot;
-        private static Vector3 closestHitpoint;
-        private static object closestEnt;
-        private static Quaternion newRot;
-        private string buildType;
-        private string prefabName;
-        private static int defaultGrade;
-        private static float defaultHealth;
-        private static Vector3 newPos;
-        private static float distance;
-        private static Dictionary<SocketType, object> sourceSockets;
-        private static SocketType targetsocket;
-        private static SocketType sourcesocket;
-        private static Dictionary<Vector3, Quaternion>  newsockets;
-        private static Vector3 VectorUP;
-        private static float heightAdjustment;
-        private static BasePlayer currentplayer;
-        private static Collider currentCollider;
-        private static BaseNetworkable currentBaseNet;
-        private static List<object> houseList;
-        private static List<Vector3> checkFrom;
-        private static BuildingBlock fbuildingblock;
-        private static BuildingBlock buildingblock;
-        private static Item newItem;
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Oxide Hooks ///////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        void Loaded()
+        {
+            Changed = false;
+            EventGames = new List<string>();
+            EventPlayers = new List<EventPlayer>();
+            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            LoadData();
+        }
+        void OnServerInitialized()
+        {
+            EventOpen = false;
+            EventStarted = false;
+            EventEnded = true;
+            EventPending = false;
+            EventGameName = defaultGame;
+            timer.Once(0.1f, () => InitializeZones());
+            timer.Once(0.2f, () => InitializeGames());
+        }
+        void InitializeGames()
+        {
+            Interface.CallHook("RegisterGame");
+            SelectSpawnfile(defaultSpawnfile);
+        }
+        void Unload()
+        {
+            EndEvent();
+            var objects = GameObject.FindObjectsOfType(typeof(EventPlayer));
+            if (objects != null)
+                foreach (var gameObj in objects)
+                    GameObject.Destroy(gameObj);
+            ResetZones();
+        }
 
-        private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
+        void OnPlayerRespawned(BasePlayer player)
+        {
+            if (!(player.GetComponent<EventPlayer>())) return;
+            if (player.GetComponent<EventPlayer>().inEvent)
+            {
+                if (!EventStarted) return;
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
+            }
+            else
+            {
+                RedeemInventory(player);
+                TeleportPlayerHome(player);
+                TryErasePlayer(player);
+            }
+        }
 
-        public static float timeForMultiple;
-        private static int levelRequired;
-        private static bool Changed = false;
+        void OnPlayerAttack(BasePlayer player, HitInfo hitinfo)
+        {
+            if (!EventStarted) return;
+            if (player.GetComponent<EventPlayer>() == null || !(player.GetComponent<EventPlayer>().inEvent))
+            {
+                return;
+            }
+            else if (hitinfo.HitEntity != null)
+            {
+                Interface.CallHook("OnEventPlayerAttack", new object[] { player, hitinfo });
+            }
+            return;
+        }
+        void OnEntityDeath(BaseEntity entity, HitInfo hitinfo)
+        {
+            if (!EventStarted) return;
+            if (!(entity is BasePlayer)) return;
+            if ((entity as BasePlayer).GetComponent<EventPlayer>() == null) return;
+            Interface.CallHook("OnEventPlayerDeath", new object[] { (entity as BasePlayer), hitinfo });
+            return;
+        }
+        void OnPlayerDisconnected(BasePlayer player)
+        {
+            if (player.GetComponent<EventPlayer>() != null)
+            {
+                LeaveEvent(player);
+            }
+        }
+        ////////////////////////////////////////////////////////////
+        // Zone Management
+        ////////////////////////////////////////////////////////////
+        void InitializeZones()
+        {
+            foreach (KeyValuePair<string, EventZone> pair in zonelogs)
+            {
+                InitializeZone(pair.Key);
+            }
+        }
+        void InitializeZone(string name)
+        {
+            if (zonelogs[name] == null) return;
+            ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
+            if (EventGames.Contains(name))
+                Interface.CallHook("OnPostZoneCreate", name);
+        }
+        void ResetZones()
+        {
+            foreach (string game in EventGames)
+            {
+                ZoneManager?.Call("EraseZone", game);
+            }
+        }
+        void UpdateZone(string name, string[] args)
+        {
+            ZoneManager?.Call("CreateOrUpdateZone", name, args);
+        }
+        public class EventZone
+        {
+            public string name;
+            public string x;
+            public string y;
+            public string z;
+            public string radius;
+            Vector3 position;
 
-        private static bool useGui;
-        private string xmin;
-        private string ymin;
-        private string xmax;
-        private string ymax;
+            public EventZone(string name, Vector3 position, float radius)
+            {
+                this.name = name;
+                this.x = position.x.ToString();
+                this.y = position.y.ToString();
+                this.z = position.z.ToString();
+                this.radius = radius.ToString();
+            }
+            public Vector3 GetPosition()
+            {
+                if (position == default(Vector3))
+                    position = new Vector3(float.Parse(this.x), float.Parse(this.y), float.Parse(this.z));
+                return position;
+            }
 
-        private object GetConfig(string menu, string datavalue, object defaultValue)
+        }
+
+        static StoredData storedData;
+        static Hash<string, EventZone> zonelogs = new Hash<string, EventZone>();
+        static Hash<string, Reward> rewards = new Hash<string, Reward>();
+
+        class StoredData
+        {
+            public HashSet<EventZone> ZoneLogs = new HashSet<EventZone>();
+            public Hash<string, string> Tokens = new Hash<string, string>();
+            public HashSet<Reward> Rewards = new HashSet<Reward>();
+
+            public StoredData()
+            {
+            }
+        }
+
+        void OnServerSave()
+        {
+            SaveData();
+        }
+
+        void SaveData()
+        {
+            Interface.GetMod().DataFileSystem.WriteObject("EventManager", storedData);
+        }
+
+        void LoadData()
+        {
+            zonelogs.Clear();
+            try
+            {
+                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("EventManager");
+            }
+            catch
+            {
+                storedData = new StoredData();
+            }
+            foreach (var thelog in storedData.ZoneLogs)
+            {
+                zonelogs[thelog.name] = thelog;
+            }
+            foreach (var thelog in storedData.Rewards)
+            {
+                rewards[thelog.name] = thelog;
+            }
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Tokens Manager
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        Dictionary<string, string> displaynameToShortname = new Dictionary<string, string>();
+
+        private void InitializeTable()
+        {
+            displaynameToShortname.Clear();
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach (ItemDefinition itemdef in ItemsDefinition)
+            {
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
+            }
+        }
+        object GiveReward(BasePlayer player, string rewardname, int amount)
+        {
+            if (rewards[rewardname] == null) return "This reward doesn't exist";
+            amount = amount * (rewards[rewardname]).GetAmount();
+            if (rewards[rewardname].IsKit())
+            {
+                if (Kits == null) return "Kits plugin couldn't be found";
+                if (!(bool)Kits.Call("isKit", rewards[rewardname].item)) return "The kit doesn't exist anymore";
+                for (int i = 1; i < amount; i++)
+                {
+                    Kits.Call("GiveKit", player, rewards[rewardname].item);
+                }
+                return (bool)Kits.Call("GiveKit", player, rewards[rewardname].item);
+            }
+            var definition = ItemManager.FindItemDefinition(rewards[rewardname].item);
+            if (definition == null)
+                return string.Format("Item not found {0}", rewards[rewardname].item);
+            if (definition.stackable > 1)
+                player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, amount, false), player.inventory.containerMain);
+            else
+            {
+                for (int i = 0; i < amount; i++)
+                {
+                    player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, 1, false), player.inventory.containerMain);
+                }
+            }
+            return true;
+        }
+
+        public class Reward
+        {
+            public string name;
+            public string cost;
+            public string kit;
+            public string item;
+            public string amount;
+
+            public Reward()
+            {
+
+            }
+            public Reward(string name, int cost, bool kit, string item, int amount)
+            {
+                this.name = name;
+                this.cost = cost.ToString();
+                this.kit = kit.ToString();
+                this.item = item;
+                this.amount = amount.ToString();
+            }
+            public int GetCost()
+            {
+                return int.Parse(cost);
+            }
+            public int GetAmount()
+            {
+                return int.Parse(amount);
+            }
+            public bool IsKit()
+            {
+                return Convert.ToBoolean(kit);
+            }
+        }
+        void AddTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = (GetTokens(userid) + amount).ToString();
+        }
+
+        int GetTokens(string userid)
+        {
+            if (storedData.Tokens[userid] == null)
+                return 0;
+            return int.Parse(storedData.Tokens[userid]);
+        }
+
+        void RemoveTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = (GetTokens(userid) - amount).ToString();
+        }
+
+        void SetTokens(string userid, int amount)
+        {
+            storedData.Tokens[userid] = amount.ToString();
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Configs Manager ///////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        void LoadDefaultConfig() { }
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+        object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
             if (data == null)
@@ -183,1301 +542,1220 @@ namespace Oxide.Plugins
             }
             return value;
         }
-        private void LoadVariables()
+        private static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
+        private static string MessagesEventNotSet = "An Event game must first be chosen.";
+        private static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
+        private static string MessagesEventAlreadyOpened = "The Event is already open.";
+        private static string MessagesEventAlreadyClosed = "The Event is already closed.";
+        private static string MessagesEventAlreadyStarted = "An Event game has already started.";
+
+
+        private static string MessagesEventOpen = "The Event is now open for : {0} !  Type /event_join to join!";
+        private static string MessagesEventClose = "The Event entrance is now closed!";
+        private static string MessagesEventCancel = "The Event was cancelled!";
+        private static string MessagesEventNoGamePlaying = "An Event game is not underway.";
+        private static string MessagesEventEnd = "Event: {0} is now over!";
+        private static string MessagesEventAlreadyJoined = "You are already in the Event.";
+        private static string MessagesEventJoined = "{0} has joined the Event!  (Total Players: {1})";
+        private static string MessagesEventLeft = "{0} has left the Event! (Total Players: {1})";
+        private static string MessagesEventBegin = "Event: {0} is about to begin!";
+        private static string MessagesEventNotInEvent = "You are not currently in the Event.";
+        private static string MessagesEventNotAnEvent = "This Game {0} isn't registered, did you reload the game after loading Event - Core?";
+        private static string MessagesEventCloseAndEnd = "The Event needs to be closed and ended before using this command.";
+
+
+        private static string MessagesEventStatusOpen = "The Event {0} is currently opened for registration: /event_join";
+        private static string MessagesEventStatusOpenStarted = "The Event {0} has started, but is still opened: /event_join";
+        private static string MessagesEventStatusClosedEnd = "There is currently no event";
+        private static string MessagesEventStatusClosedStarted = "The Event {0} has already started, it's too late to join.";
+
+        private static string MessagesEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
+        private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
+        private static bool EventAutoEvents = true;
+        private static int EventAutoInterval = 600;
+        private static int EventAutoAnnounceInterval = 30;
+        private static List<Dictionary<string, object>> EventAutoConfig = CreateDefaultAutoConfig();
+
+        private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
+        private static string MessageRewardCurrent = "You have {0} tokens";
+        private static string MessageRewardHelp = "/reward \"RewardName\" Amount";
+        private static string MessageRewardItem = "Reward Name: {0} - Cost: <color={4}>{1}</color> - {2} - Amount: {3}";
+        private static string MessageRewardWrong = "This reward doesn't exist";
+        private static string MessageRewardNegative = "The amount to buy can't be 0 or negative.";
+        private static string MessageRewardNotEnoughTokens = "You don't have enough tokens to buy {1} of {0}.";
+
+        private static string noPlayerFound = "No players found";
+        private static string multipleNames = "Multiple players found";
+
+        private static string defaultGame = "Deathmatch";
+        private static string defaultSpawnfile = "deathmatchspawns";
+        private static int eventAuth = 1;
+
+        void Init()
         {
-            timeForMultiple = Convert.ToSingle(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1f));
-            levelRequired = Convert.ToInt32(GetConfig("Config", "authLevel Required (1 moderator, 2 admin)", 2));
+            CheckCfg<int>("Settings - authLevel", ref eventAuth);
 
-            useGui = Convert.ToBoolean(GetConfig("GUI", "activated", true));
-            xmin = Convert.ToString(GetConfig("GUI", "x min", "0.020"));
-            xmax = Convert.ToString(GetConfig("GUI", "x max", "0.980"));
-            ymin = Convert.ToString(GetConfig("GUI", "y min", "0.95"));
-            ymax = Convert.ToString(GetConfig("GUI", "y max", "0.99"));
+            CheckCfg<string>("Default - Game", ref defaultGame);
+            CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
 
-            if (Changed)
+            CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
+            CheckCfg<int>("AutoEvents - Interval between 2 events", ref EventAutoInterval);
+            CheckCfg<int>("AutoEvents - Announce Open Interval", ref EventAutoAnnounceInterval);
+            CheckCfg<List<Dictionary<string, object>>>("AutoEvents - Config", ref EventAutoConfig);
+
+            CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
+            CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
+            CheckCfg<string>("Messages - Event Error - No SpawnFile", ref MessagesEventNoSpawnFile);
+            CheckCfg<string>("Messages - Event Error - Already Opened", ref MessagesEventAlreadyOpened);
+            CheckCfg<string>("Messages - Event Error - Already Closed", ref MessagesEventAlreadyClosed);
+            CheckCfg<string>("Messages - Event Error - No Games Undergoing", ref MessagesEventNoGamePlaying);
+            CheckCfg<string>("Messages - Event Error - Already Joined", ref MessagesEventAlreadyJoined);
+            CheckCfg<string>("Messages - Event Error - Already Started", ref MessagesEventAlreadyStarted);
+            CheckCfg<string>("Messages - Event Error - Not In Event", ref MessagesEventNotInEvent);
+            CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
+            CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
+
+            CheckCfg<string>("Messages - Error - No players found", ref noPlayerFound);
+            CheckCfg<string>("Messages - Error - Multiple players found", ref multipleNames);
+
+            CheckCfg<string>("Messages - Status - Closed & End", ref MessagesEventStatusClosedEnd);
+            CheckCfg<string>("Messages - Status - Closed & Started", ref MessagesEventStatusClosedStarted);
+            CheckCfg<string>("Messages - Status - Open", ref MessagesEventStatusOpen);
+            CheckCfg<string>("Messages - Status - Open & Started", ref MessagesEventStatusOpenStarted);
+
+            CheckCfg<string>("Messages - Event - Opened", ref MessagesEventOpen);
+            CheckCfg<string>("Messages - Event - Closed", ref MessagesEventClose);
+            CheckCfg<string>("Messages - Event - Cancelled", ref MessagesEventCancel);
+            CheckCfg<string>("Messages - Event - End", ref MessagesEventEnd);
+            CheckCfg<string>("Messages - Event - Join", ref MessagesEventJoined);
+            CheckCfg<string>("Messages - Event - Begin", ref MessagesEventBegin);
+            CheckCfg<string>("Messages - Event - Left", ref MessagesEventLeft);
+
+            CheckCfg<string>("Messages - Event - MaxPlayersReached", ref MessagesEventMaxPlayers);
+            CheckCfg<string>("Messages - Event - MinPlayersReached", ref MessagesEventMinPlayers);
+
+            CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
+            CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
+            CheckCfg<string>("Messages - Reward - Help", ref MessageRewardHelp);
+            CheckCfg<string>("Messages - Reward - Reward Description", ref MessageRewardItem);
+            CheckCfg<string>("Messages - Reward - Doesnt Exist", ref MessageRewardWrong);
+            CheckCfg<string>("Messages - Reward - Negative Amount", ref MessageRewardNegative);
+            CheckCfg<string>("Messages - Reward - Not Enough Tokens", ref MessageRewardNotEnoughTokens);
+
+            SaveConfig();
+        }
+
+        static List<Dictionary<string, object>> CreateDefaultAutoConfig()
+        {
+            var newautoconfiglist = new List<Dictionary<string, object>>();
+            var AutoDM = new Dictionary<string, object>();
+            AutoDM.Add("gametype", "Deathmatch");
+            AutoDM.Add("spawnfile", "deathmatchspawnfile");
+            AutoDM.Add("closeonstart", "false");
+            AutoDM.Add("timetojoin", "30");
+            AutoDM.Add("minplayers", "1");
+            AutoDM.Add("maxplayers", "10");
+            AutoDM.Add("timelimit", "1200");
+
+            var AutoBF = new Dictionary<string, object>();
+            AutoBF.Add("gametype", "Battlefield");
+            AutoBF.Add("spawnfile", "battlefieldspawnfile");
+            AutoBF.Add("closeonstart", "false");
+            AutoBF.Add("timetojoin", "0");
+            AutoBF.Add("timelimit", null);
+            AutoBF.Add("minplayers", "0");
+            AutoBF.Add("maxplayers", "30");
+
+
+            newautoconfiglist.Add(AutoDM);
+            newautoconfiglist.Add(AutoBF);
+
+            return newautoconfiglist;
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Some global methods ///////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        // hasAccess /////////////////////////////////////////////////////////////////////////
+        bool hasAccess(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection != null)
             {
-                SaveConfig();
-                Changed = false;
-            }
-        }
-        protected override void LoadDefaultConfig()
-        {
-            Puts("Build: Creating a new config file");
-            Config.Clear();
-            LoadVariables();
-        }
-
-        /////////////////////////////////////////////////////
-        ///  OXIDE HOOKS
-        /////////////////////////////////////////////////////
-
-        /////////////////////////////////////////////////////
-        ///  Loaded()
-        ///  When the plugin is loaded by Oxide
-        /////////////////////////////////////////////////////
-
-        void Loaded()
-        {
-            serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            deployedToItem = new Dictionary<string, string>();
-            LoadVariables();
-            nameToBlockPrefab = new Dictionary<string, string>();
-            VectorUP = new Vector3(0f, 1f, 0f);
-            if (!permission.PermissionExists("builder")) permission.RegisterPermission("builder", this);
-            json = json.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  Unload()
-        ///  When the plugin is unloaded by Oxide
-        /////////////////////////////////////////////////////
-        void Unload()
-        {
-            var objects = GameObject.FindObjectsOfType(typeof(BuildPlayer));
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  Loaded()
-        ///  When the server has been initialized and all plugins loaded
-        /////////////////////////////////////////////////////
-        void OnServerInitialized()
-        {
-            InitializeBlocks();
-            InitializeSockets();
-            InitializeDeployables();
-            InitializeResources();
-            InitializeAnimals();
-        }
-
-        /////////////////////////////////////////////////////
-        /// Get all animals in an easy list to convert from shortname to full prefabname
-        /////////////////////////////////////////////////////
-        void InitializeAnimals()
-        {
-            animalList = new Dictionary<string, string>();
-            foreach (GameManifest.PooledString str in GameManifest.Get().pooledStrings)
-            {
-                if (str.str.Contains("autospawn/animals"))
+                if (arg.connection.authLevel < 1)
                 {
-                    var animalPrefab = str.str.Substring(41);
-                    animalList.Add(animalPrefab.Remove(animalPrefab.Length - 7), str.str);
+                    SendReply(arg, MessagesPermissionsNotAllowed);
+                    return false;
                 }
             }
-        }
-
-        /////////////////////////////////////////////////////
-        /// Get all resources in an easy list to convert from ID to full prefabname
-        /////////////////////////////////////////////////////
-        void InitializeResources()
-        {
-            resourcesList = new List<string>();
-            foreach (GameManifest.PooledString str in GameManifest.Get().pooledStrings)
-            {
-                if (str.str.Contains("assets/"))
-                {
-                    GameObject gmobj = FileSystem.LoadPrefab(str.str);
-                    if (gmobj == null) continue;
-
-                    if (gmobj.GetComponent<BaseEntity>())
-                    {
-                        resourcesList.Add(str.str);
-                    }
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        /// Get all deployables in an easy list to convert from shortname to fullname
-        /////////////////////////////////////////////////////
-        void InitializeDeployables()
-        {
-            var allItemsDef = UnityEngine.Resources.FindObjectsOfTypeAll<ItemDefinition>();
-            foreach (ItemDefinition itemDef in allItemsDef)
-            {
-                if (itemDef.GetComponent<ItemModDeployable>() != null)
-                {
-                    deployedToItem.Add(itemDef.displayName.english.ToString().ToLower(), itemDef.shortname.ToString());
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        /// Create New sockets that wont match Rusts, this is exaustive
-        /// But at least we can add new sockets later on
-        /////////////////////////////////////////////////////
-        void InitializeSockets()
-        {
-            // PrefabName to SocketType
-            nameToSockets = new Dictionary<string, SocketType>();
-
-            // Get all possible sockets from the SocketType
-            TypeToType = new Dictionary<SocketType, object>();
-
-            // Sockets that can connect on a Floor / Foundation type
-            var FloorType = new Dictionary<SocketType, object>();
-
-            // Floor to Floor sockets
-            var FloortoFloor = new Dictionary<Vector3, Quaternion>();
-            FloortoFloor.Add(new Vector3(0f, 0f, -3f), new Quaternion(0f, 1f, 0f, 0f));
-
-            //FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoFloor.Add(new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
-            //FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-            FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Floor to FloorTriangle sockets
-            var FloortoFT = new Dictionary<Vector3, Quaternion>();
-            FloortoFT.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
-            FloortoFT.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoFT.Add(new Vector3(0f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoFT.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-
-            // Floor to Wall sockets
-            var FloortoWall = new Dictionary<Vector3, Quaternion>();
-            FloortoWall.Add(new Vector3(0f, 0f, 1.5f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f,1f, 0f, 0f));
-            FloortoWall.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f,1f));
-
-            // Floor to Support (Pillar) sockets
-            var FloortoSupport = new Dictionary<Vector3, Quaternion>();
-            FloortoSupport.Add(new Vector3(1.5f, 0f, 1.5f), new Quaternion(0f, 0f,0f, 1f));
-            FloortoSupport.Add(new Vector3(-1.5f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoSupport.Add(new Vector3(1.5f, 0f, -1.5f), new Quaternion(0f, 0.0f, 0f, 1f));
-            FloortoSupport.Add(new Vector3(-1.5f, 0f, -1.5f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Floor to Blocks sockets
-            var FloorToBlock = new Dictionary<Vector3, Quaternion>();
-            FloorToBlock.Add(new Vector3(0f, 0.1f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-
-            // Adding all informations from the Floor type into the main table
-            FloorType.Add(SocketType.Block, FloorToBlock);
-            FloorType.Add(SocketType.Support, FloortoSupport);
-            FloorType.Add(SocketType.Wall, FloortoWall);
-            FloorType.Add(SocketType.Floor, FloortoFloor);
-            FloorType.Add(SocketType.FloorTriangle, FloortoFT);
-            TypeToType.Add(SocketType.Floor, FloorType);
-
-            // Sockets that can connect on a Wall type
-            var WallType = new Dictionary<SocketType, object>();
-
-            // Wall to Wall sockets
-            var WallToWall = new Dictionary<Vector3, Quaternion>();
-            WallToWall.Add(new Vector3(0f, 0f, -3f), new Quaternion(0f, 1f, 0f, 0f));
-            WallToWall.Add(new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Wall to Wall Floor sockets
-            var WallToFloor = new Dictionary<Vector3, Quaternion>();
-            WallToFloor.Add(new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
-            WallToFloor.Add(new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-
-            // Wall to Door sockets
-            var WallToDoor = new Dictionary<Vector3, Quaternion>();
-            WallToDoor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-
-
-            // Adding all informations from the Wall type into the main table
-            // Note that you can't add blocks or supports on a wall
-            WallType.Add(SocketType.Floor, WallToFloor);
-            WallType.Add(SocketType.Wall, WallToWall);
-            WallType.Add(SocketType.Door, WallToDoor);
-            TypeToType.Add(SocketType.Wall, WallType);
-
-            // Sockets that can connect on a Block type
-            var BlockType = new Dictionary<SocketType, object>();
-
-            // Block to Block sockets
-            var BlockToBlock = new Dictionary<Vector3, Quaternion>();
-            BlockToBlock.Add(new Vector3(0f, 1.5f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // For safety reasons i didn't put pillars or walls here
-            // If needed it could easily be added
-            BlockType.Add(SocketType.Block, BlockToBlock);
-            TypeToType.Add(SocketType.Block, BlockType);
-
-            // Sockets that can connect on a Floor/Foundation Triangles  type
-            var FloorTriangleType = new Dictionary<SocketType, object>();
-
-
-            var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            //THIS ONE WORKS WELL
-            //FTtoFloor.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, -0.0000001629207f));
-
-            // THOSE TWO HAVE A POSITION PROBLEM BUT THE ROTATIONS ARE GOOD
-            FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
-            //FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
-            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-
-            // Floor Triangles to Floor Triangles type
-            var FTtoFT = new Dictionary<Vector3, Quaternion>();
-            FTtoFT.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f,1f, 0f, 0.0000001629207f));
-            FTtoFT.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
-            FTtoFT.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
-            FloorTriangleType.Add(SocketType.FloorTriangle, FTtoFT);
-
-            // Floor Triangles to Wall type
-            var FTtoWall = new Dictionary<Vector3, Quaternion>();
-            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
-            FTtoWall.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
-            FTtoWall.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
-            FloorTriangleType.Add(SocketType.Wall, FTtoWall);
-
-            // Floor Triangles to Floor type is a big fail, need to work on that still
-           /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
-            FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
-            FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
-            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-            */
-
-            // So at the moment only Floor and Foundation triangles can connect to easy other.
-            TypeToType.Add(SocketType.FloorTriangle, FloorTriangleType);
-
-            nameToSockets.Add("assets/bundled/prefabs/build/foundation.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/foundation.triangle.prefab", SocketType.FloorTriangle);
-            nameToSockets.Add("assets/bundled/prefabs/build/floor.triangle.prefab", SocketType.FloorTriangle);
-            nameToSockets.Add("assets/bundled/prefabs/build/roof.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/floor.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.doorway.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.low.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/pillar.prefab", SocketType.Support);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.slanted.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.stair.lshape.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.stair.ushape.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/door.hinged.prefab", SocketType.Door);
-            // Foundation steps are fucked up, i need to look how this works more
-            //nameToSockets.Add("assets/bundled/prefabs/build/foundation.steps.prefab", SocketType.Floor);
-        }
-
-        /////////////////////////////////////////////////////
-        /// Get all blocknames from shortname to full prefabname
-        /////////////////////////////////////////////////////
-        private FieldInfo socks = typeof(Construction).GetField("allSockets", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-        void InitializeBlocks()
-        {
-            foreach (Construction construction in PrefabAttribute.server.GetAll<Construction>())
-            {
-                //Debug.Log(construction.info.name.english.ToString());
-               /* if (construction.info.name.english.ToString().Contains("Triangle"))
-                    {
-                        Socket_Base[] socketArray = (Socket_Base[])socks.GetValue(construction);
-                    Debug.Log(socketArray.ToString());
-                        foreach (Socket_Base socket in socketArray)
-                        {
-                            //Puts(string.Format("{0} {1} {2} {3}", socket.name, socket.type.ToString(), socket.position.ToString(), socket.rotation.w.ToString()));
-                            Puts(string.Format("{0} - {1} {2} {3} {4} - {5} {6} {7}", socket.socketName, socket.rotation.x.ToString(), socket.rotation.y.ToString(), socket.rotation.z.ToString(), socket.rotation.w.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
-                        }
-                        Puts("================");
-                    }*/
-                nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  GENERAL FUNCTIONS
-        /////////////////////////////////////////////////////
-        /////////////////////////////////////////////////////
-        ///  hasAccess( BasePlayer player )
-        ///  Checks if the player has access to this command
-        /////////////////////////////////////////////////////
-        bool hasAccess(BasePlayer player)
-        {
-            if (player.net.connection.authLevel >= levelRequired) return true;
-            if (permission.UserHasPermission(player.userID.ToString(), "builder")) return true;
-
-            SendReply(player, "You are not allowed to use this command");
-            return false;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  TryGetPlayerView( BasePlayer player, out Quaternion viewAngle )
-        ///  Get the angle on which the player is looking at
-        ///  Notice that this is very usefull for spectating modes as the default player.transform.rotation doesn't work in this case.
-        /////////////////////////////////////////////////////
-        static bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
-        {
-            viewAngle = new Quaternion(0f, 0f, 0f, 0f);
-            var input = serverinput.GetValue(player) as InputState;
-            if (input == null)
-                return false;
-            if (input.current == null)
-                return false;
-
-            viewAngle = Quaternion.Euler(input.current.aimAngles);
             return true;
         }
 
-        /////////////////////////////////////////////////////
-        ///  TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
-        ///  Get the closest entity that the player is looking at
-        /////////////////////////////////////////////////////
-        static bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
+        // Broadcast To The General Chat /////////////////////////////////////////////////////
+        void BroadcastToChat(string msg)
         {
-            Vector3 sourceEye = sourcePos + new Vector3(0f, 1.5f, 0f);
-            UnityEngine.Ray ray = new UnityEngine.Ray(sourceEye, sourceDir * Vector3.forward);
+            Debug.Log(msg);
+            ConsoleSystem.Broadcast("chat.add", new object[] { 0, "<color=orange>Event:</color> " + msg });
+        }
 
-            var hits = UnityEngine.Physics.RaycastAll(ray);
-            float closestdist = 999999f;
-            closestHitpoint = sourcePos;
-            closestEnt = false;
-            foreach (var hit in hits)
+        // Broadcast To Players in Event /////////////////////////////////////////////////////
+        void BroadcastEvent(string msg)
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
             {
-                if (hit.collider.GetComponentInParent<TriggerBase>() == null)
-                {
-                    if (hit.distance < closestdist)
-                    {
-                        closestdist = hit.distance;
-                        closestEnt = hit.collider;
-                        closestHitpoint = hit.point;
-                    }
-                }
+                SendReply(eventplayer.player, msg.QuoteSafe());
             }
-            if (closestEnt is bool)
-                return false;
+        }
+
+        void TeleportAllPlayersToEvent()
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
+            {
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { eventplayer.player });
+            }
+        }
+        void OnEventPlayerSpawn(BasePlayer player)
+        {
+            TeleportPlayerToEvent(player);
+        }
+        void TeleportPlayerToEvent(BasePlayer player)
+        {
+            if (!(player.GetComponent<EventPlayer>())) return;
+            var targetpos = Spawns.Call("GetRandomSpawn", new object[] { EventSpawnFile });
+            if (targetpos is string)
+                return;
+            var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
+            if (newpos is Vector3)
+                targetpos = newpos;
+            ZoneManager?.Call("AddPlayerToZoneKeepinlist", EventGameName, player);
+            ForcePlayerPosition(player, (Vector3)targetpos);
+        }
+
+        void SaveAllInventories()
+        {
+            foreach (EventPlayer player in EventPlayers)
+            {
+                player.SaveInventory();
+            }
+        }
+        void SaveAllHomeLocations()
+        {
+            foreach (EventPlayer player in EventPlayers)
+            {
+                player.SaveHome();
+            }
+        }
+        void SaveInventory(BasePlayer player)
+        {
+            var eventplayer = player.GetComponent<EventPlayer>();
+            if (eventplayer == null) return;
+            eventplayer.SaveInventory();
+        }
+        void SaveHomeLocation(BasePlayer player)
+        {
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
+            if (eventplayer == null) return;
+            eventplayer.SaveHome();
+        }
+        void RedeemInventory(BasePlayer player)
+        {
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
+            if (eventplayer == null) return;
+            if (player.IsDead())
+                return;
+            if (eventplayer.savedInventory)
+            {
+                eventplayer.player.inventory.Strip();
+                eventplayer.RestoreInventory();
+            }
+        }
+        void TeleportPlayerHome(BasePlayer player)
+        {
+            EventPlayer eventplayer = player.GetComponent<EventPlayer>();
+            if (eventplayer == null) return;
+            if (player.IsDead())
+                return;
+            if (eventplayer.savedHome)
+            {
+                eventplayer.TeleportHome();
+            }
+        }
+        void TryErasePlayer(BasePlayer player)
+        {
+            var eventplayer = player.GetComponent<EventPlayer>();
+            if (eventplayer == null) return;
+            if (!(eventplayer.inEvent) && !(eventplayer.savedHome) && !(eventplayer.savedInventory))
+                GameObject.Destroy(eventplayer);
+        }
+        void GivePlayerKit(BasePlayer player, string GiveKit)
+        {
+            Kits.Call("GiveKit", player, GiveKit);
+        }
+        void EjectPlayer(BasePlayer player)
+        {
+            if (player.IsAlive())
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
+                player.CancelInvoke("WoundingEnd");
+                player.health = 50f;
+            }
+            SendReply(player, string.Format(MessageRewardCurrentReward, GetTokens(player.userID.ToString()).ToString()));
+        }
+
+        void EjectAllPlayers()
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
+            {
+                EjectPlayer(eventplayer.player);
+                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, eventplayer.player);
+                eventplayer.inEvent = false;
+            }
+        }
+        void SendPlayersHome()
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
+            {
+                TeleportPlayerHome(eventplayer.player);
+            }
+        }
+        void RedeemPlayersInventory()
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
+            {
+                RedeemInventory(eventplayer.player);
+            }
+        }
+        void TryEraseAllPlayers()
+        {
+            foreach (EventPlayer eventplayer in EventPlayers)
+            {
+                TryErasePlayer(eventplayer.player);
+            }
+        }
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Methods to Change the Arena Status ////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        object OpenEvent()
+        {
+            var success = Interface.CallHook("CanEventOpen", new object[] { });
+            if (success is string)
+            {
+                return (string)success;
+            }
+            EventOpen = true;
+            EventPlayers.Clear();
+            BroadcastToChat(string.Format(MessagesEventOpen, EventGameName));
+            Interface.CallHook("OnEventOpenPost", new object[] { });
             return true;
         }
-
-        /////////////////////////////////////////////////////
-        ///  SpawnDeployable()
-        ///  Function to spawn a deployable
-        /////////////////////////////////////////////////////
-        private static void SpawnDeployable(string prefab, Vector3 pos, Quaternion angles, BasePlayer player)
+        void OnEventOpenPost()
         {
-            newItem = ItemManager.CreateByName(prefab, 1);
-            if (newItem == null)
-            {
-                return;
-            }
-            if (newItem.info.GetComponent<ItemModDeployable>() == null)
-            {
-                return;
-            }
-            var deployable = newItem.info.GetComponent<ItemModDeployable>().entityPrefab.Get().GetComponent<Deployable>();
-            if (deployable == null)
-            {
-                return;
-            }
-            var newBaseEntity = GameManager.server.CreateEntity(deployable.gameObject, pos, angles);
-            if (newBaseEntity == null)
-            {
-                return;
-            }
-            newBaseEntity.SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver);
-            newBaseEntity.SendMessage("InitializeItem", newItem, UnityEngine.SendMessageOptions.DontRequireReceiver);
-            newBaseEntity.Spawn(true);
+            OnEventOpenPostAutoEvent();
         }
-
-        /////////////////////////////////////////////////////
-        ///  SpawnStructure()
-        ///  Function to spawn a block structure
-        /////////////////////////////////////////////////////
-        private static void SpawnStructure(string prefabname, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade, float health)
+        void OnEventOpenPostAutoEvent()
         {
-            UnityEngine.GameObject prefab = GameManager.server.FindPrefab(prefabname);
-            if (prefab == null)
+            if (!EventAutoEvents) return;
+
+            DestroyTimers();
+            AutoArenaTimers.Add(timer.Once(300f, () => CancelEvent("Not enough players")));
+            AutoArenaTimers.Add(timer.Repeat(30f, 0, () => AnnounceEvent()));
+        }
+        object CanEventOpen()
+        {
+            if (EventGameName == null) return MessagesEventNotSet;
+            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
+            else if (EventOpen) return MessagesEventAlreadyOpened;
+
+            object success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
+            if (success is string)
             {
-                return;
+                return (string)success;
             }
-            UnityEngine.GameObject build = UnityEngine.Object.Instantiate(prefab);
-            if (build == null) return;
-            BuildingBlock block = build.GetComponent<BuildingBlock>();
-            if (block == null) return;
-            block.transform.position = pos;
-            block.transform.rotation = angles;
-            block.gameObject.SetActive(true);
-            block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
-            block.Spawn(true);
-            block.SetGrade(grade);
-            if(health <= 0f)
-                block.health = block.MaxHealth();
+
+            return null;
+        }
+        object CloseEvent()
+        {
+            if (!EventOpen) return MessagesEventAlreadyClosed;
+            EventOpen = false;
+            Interface.CallHook("OnEventClosePost", new object[] { });
+            if (EventStarted)
+                BroadcastToChat(MessagesEventClose);
             else
-                block.health = health;
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+                BroadcastToChat(MessagesEventCancel);
+            return true;
         }
-
-        /////////////////////////////////////////////////////
-        ///  SpawnDeployable()
-        ///  Function to spawn a resource (tree, barrel, ores)
-        /////////////////////////////////////////////////////
-        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles)
+        object AutoEventNext()
         {
-            UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
-            if (newPrefab == null)
+            if (EventAutoConfig.Count == 0)
             {
-                return;
+                AutoEventLaunched = false;
+                return "No Automatic Events Configured";
             }
+            bool successed = false;
             Debug.Log("yes");
-            BaseEntity entity = GameManager.server.CreateEntity(newPrefab, pos, angles);
-            if (entity == null) return;
-            entity.Spawn(true);
-        }
+            for (int i = 0; i < EventAutoConfig.Count; i++)
+            {
+                EventAutoNum++;
+                if (EventAutoNum >= EventAutoConfig.Count) EventAutoNum = 0;
 
-        private static void SpawnAnimal(string prefab, Vector3 pos, Quaternion angles)
-        {
-            UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
-            if (newPrefab == null)
-            {
-                return;
-            }
-            UnityEngine.GameObject createdPrefab = GameManager.server.CreatePrefab(newPrefab, pos, angles, true);
-            if (createdPrefab == null) return;
-            BaseEntity entity = createdPrefab.GetComponent<BaseEntity>();
-            if(entity == null)
-            {
-                UnityEngine.Object.Destroy(newPrefab);
-                return;
-            }
-            entity.Spawn(true);
-        }
+                object success = SelectEvent((string)(EventAutoConfig[EventAutoNum])["gametype"]);
+                if (success is string) { continue; }
 
-        /////////////////////////////////////////////////////
-        ///  isColliding()
-        ///  Check if you already placed the structure
-        /////////////////////////////////////////////////////
-        private static bool isColliding(string name, Vector3 position, float radius)
-        {
-            UnityEngine.Collider[] colliders = UnityEngine.Physics.OverlapSphere(position, radius);
-            foreach (UnityEngine.Collider collider in colliders)
+                success = SelectSpawnfile((string)(EventAutoConfig[EventAutoNum])["spawnfile"]);
+                if (success is string) { continue; }
+
+                success = SelectMinplayers((string)(EventAutoConfig[EventAutoNum])["minplayers"]);
+                if (success is string) { continue; }
+
+                success = SelectMaxplayers((string)(EventAutoConfig[EventAutoNum])["maxplayers"]);
+                if (success is string) { continue; }
+
+                success = Interface.CallHook("CanEventOpen", new object[] { });
+                if (success is string) { continue; }
+
+
+
+                successed = true;
+                break;
+            }
+            if (!successed)
             {
-                if (collider.GetComponentInParent<BuildingBlock>())
+                return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
+            }
+
+            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));   
+            return null;
+        }
+        void OnEventStartPost()
+        {
+            OnEventStartPostAutoEvent();
+        }
+        void OnEventStartPostAutoEvent()
+        {
+            if (!EventAutoEvents) return;
+
+            DestroyTimers();
+            AutoArenaTimers.Add(timer.Once(600f, () => CancelEvent("Time limit reached")));
+        }
+        void DestroyTimers()
+        {
+            foreach (Oxide.Plugins.Timer eventimer in AutoArenaTimers)
+            {
+                eventimer.Destroy();
+            }
+            AutoArenaTimers.Clear();
+        }
+        void CancelEvent(string reason)
+        {
+            var message = "Event {0} was cancelled for {1}";
+            object success = Interface.CallHook("OnEventCancel", new object[] { });
+            if (success != null)
+            {
+                if (success is string)
+                    message = (string)success;
+                else
+                    return;
+            }
+            BroadcastToChat(string.Format(message, EventGameName));
+            DestroyTimers();
+            EndEvent();
+        }
+        void AnnounceEvent()
+        {
+            var message = "Event {0} in now opened, you join it by saying /event_join";
+            object success = Interface.CallHook("OnEventAnnounce", new object[] { });
+            if (success is string)
+            {
+                message = (string)success;
+            }
+            BroadcastToChat(string.Format(message, EventGameName));
+        }
+        object LaunchEvent()
+        {
+            // just activate it and take over from where it is currently.
+            AutoEventLaunched = true;
+
+            if (!EventStarted)
+            {
+                if (!EventOpen)
                 {
-                    if (collider.GetComponentInParent<BuildingBlock>().blockDefinition.fullName == name)
-                            if (Vector3.Distance(collider.transform.position, position) < 0.6f)
-                                return true;
-                }
-            }
-            return false;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  SetGrade(BuildingBlock block, BuildingGrade.Enum level)
-        ///  Change grade level of a block
-        /////////////////////////////////////////////////////
-        private static void SetGrade(BuildingBlock block, BuildingGrade.Enum level)
-        {
-            block.SetGrade(level);
-            block.health = block.MaxHealth();
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  SetHealth(BuildingBlock block)
-        ///  Set max health for a block
-        /////////////////////////////////////////////////////
-        private static void SetHealth(BuildingBlock block)
-        {
-            block.health = block.MaxHealth();
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoAction(BuildPlayer buildplayer)
-        ///  Called from the BuildPlayer, will handle all different building types
-        /////////////////////////////////////////////////////
-        private static void DoAction(BuildPlayer buildplayer)
-        {
-            currentplayer = buildplayer.player;
-            if (!TryGetPlayerView(currentplayer, out currentRot))
-            {
-                return;
-            }
-            if (!TryGetClosestRayPoint(currentplayer.transform.position, currentRot, out closestEnt, out closestHitpoint))
-            {
-                return;
-            }
-            currentCollider = closestEnt as Collider;
-            if (currentCollider == null)
-            {
-                return;
-            }
-            switch (buildplayer.currentType)
-            {
-                case "building":
-                    DoBuild(buildplayer, currentplayer, currentCollider);
-                break;
-                case "buildup":
-                DoBuildUp(buildplayer, currentplayer, currentCollider);
-                break;
-                case "deploy":
-                DoDeploy(buildplayer, currentplayer, currentCollider);
-                break;
-                case "plant":
-                case "animal":
-                DoPlant(buildplayer, currentplayer, currentCollider);
-                break;
-                case "grade":
-                DoGrade(buildplayer, currentplayer, currentCollider);
-                break;
-                case "heal":
-                DoHeal(buildplayer, currentplayer, currentCollider);
-                break;
-                case "erase":
-                DoErase(buildplayer, currentplayer, currentCollider);
-                break;
-                case "rotate":
-                    DoRotation(buildplayer, currentplayer, currentCollider);
-                break;
-                case "spawning":
-                DoSpawn(buildplayer, currentplayer, currentCollider);
-                break;
-                default:
-                return;
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoErase(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Erase function
-        /////////////////////////////////////////////////////
-        private static void DoErase(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            currentBaseNet = baseentity.GetComponentInParent<BaseNetworkable>();
-            if (currentBaseNet == null)
-                return;
-            currentBaseNet.Kill(BaseNetworkable.DestroyMode.Gib);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoPlant(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Spawn Trees, Barrels, Animals, Resources
-        /////////////////////////////////////////////////////
-        private static void DoPlant(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnAnimal(buildplayer.currentPrefab, newPos, newRot);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoDeploy(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Deploy Deployables
-        /////////////////////////////////////////////////////
-        private static void DoDeploy(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnDeployable(buildplayer.currentPrefab, newPos, newRot, currentplayer);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoGrade(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Set building grade
-        /////////////////////////////////////////////////////
-        private static void DoGrade(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            SetGrade(fbuildingblock, buildplayer.currentGrade);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(fbuildingblock);
-            checkFrom.Add(fbuildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    object success = AutoEventNext();
+                    if (success is string)
                     {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
-                        {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            SetGrade(fbuildingblock, buildplayer.currentGrade);
-                        }
+                        return (string)success;
                     }
-                }
-            }
-        }
-
-        static void DoRotation(BuildingBlock block, Quaternion defaultRotation)
-        {
-            if (block.blockDefinition == null) return;
-            UnityEngine.Transform transform = block.transform;
-            if (defaultRotation == defaultQuaternion)
-                transform.localRotation *= Quaternion.Euler(block.blockDefinition.rotationAmount);
-            else
-                transform.localRotation *= defaultRotation;
-            block.ClientRPC(null, "UpdateConditionalModels", new object[0]);
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-        }
-
-        private static void DoRotation(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (buildingblock == null)
-            {
-                return;
-            }
-            DoRotation(buildingblock, buildplayer.currentRotate);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(buildingblock);
-            checkFrom.Add(buildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    success = OpenEvent();
+                    if (success is string)
                     {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
-                        {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            DoRotation(fbuildingblock, buildplayer.currentRotate);
-                        }
+                        return (string)success;
                     }
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoHeal(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Set max health to building
-        /////////////////////////////////////////////////////
-        private static void DoHeal(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (buildingblock == null)
-            {
-                return;
-            }
-            SetHealth(buildingblock);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(buildingblock);
-            checkFrom.Add(buildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
-                    {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
-                        {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            SetHealth(fbuildingblock);
-                        }
-                    }
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoSpawn(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Raw spawning building elements, no AI here
-        /////////////////////////////////////////////////////
-        private static void DoSpawn(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoBuildUp(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Raw buildup, you can build anything on top of each other, exept the position, there is no AI
-        /////////////////////////////////////////////////////
-        private static void DoBuildUp(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            newPos = fbuildingblock.transform.position + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = fbuildingblock.transform.rotation;
-            if (isColliding(buildplayer.currentPrefab, newPos, 1f))
-            {
-                return;
-            }
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoBuild(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Fully AIed Build :) see the InitializeSockets for more informations
-        /////////////////////////////////////////////////////
-        private static void DoBuild(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            distance = 999999f;
-            Vector3 newPos = new Vector3(0f, 0f, 0f);
-            newRot = new Quaternion(0f, 0f, 0f, 0f);
-            ///  Checks if this building has a socket hooked to it self
-            ///  If not ... well it won't be able to be built via AI
-            if (nameToSockets.ContainsKey(fbuildingblock.blockDefinition.fullName))
-            {
-                sourcesocket = (SocketType)nameToSockets[fbuildingblock.blockDefinition.fullName];
-                // Gets all Sockets that can be connected to the source building
-                if (TypeToType.ContainsKey(sourcesocket))
-                {
-                    sourceSockets = TypeToType[sourcesocket] as Dictionary<SocketType, object>;
-                    targetsocket = (SocketType)nameToSockets[buildplayer.currentPrefab];
-                    // Checks if the newly built structure can be connected to the source building
-                    if (sourceSockets.ContainsKey(targetsocket))
-                    {
-                        newsockets = sourceSockets[targetsocket] as Dictionary<Vector3, Quaternion>;
-                        // Get all the sockets that can be hooked to the source building via the new structure element
-                        foreach (KeyValuePair<Vector3, Quaternion> pair in newsockets)
-                        {
-                            var currentrelativepos = (fbuildingblock.transform.rotation * pair.Key) + fbuildingblock.transform.position;
-                            if (Vector3.Distance(currentrelativepos, closestHitpoint) < distance)
-                            {
-                                // Get the socket that is the closest to where the player is aiming at
-                                distance = Vector3.Distance(currentrelativepos, closestHitpoint);
-                                newPos = currentrelativepos + (VectorUP * buildplayer.currentHeightAdjustment);
-                                newRot = (fbuildingblock.transform.rotation * pair.Value);
-                            }
-                        }
-                    }
-                }
-            }
-            if (newPos.x == 0f)
-                return;
-            // Checks if the element has already been built to prevent multiple structure elements on one spot
-            if (isColliding(buildplayer.currentPrefab,newPos, 1f))
-                return;
-
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  TryGetBuildingPlans(string arg, out string buildType, out string prefabName)
-        ///  Checks if the argument of every commands are valid or not
-        /////////////////////////////////////////////////////
-        bool TryGetBuildingPlans(string arg, out string buildType, out string prefabName)
-        {
-            prefabName = "";
-            buildType = "";
-            int intbuilding = 0;
-            if (nameToBlockPrefab.ContainsKey(arg))
-            {
-                prefabName = nameToBlockPrefab[arg];
-                buildType = "building";
-                return true;
-            }
-            else if (deployedToItem.ContainsKey(arg.ToLower()))
-            {
-                prefabName = deployedToItem[arg.ToLower()];
-                buildType = "deploy";
-                return true;
-            }
-            else if (deployedToItem.ContainsValue(arg.ToLower()))
-            {
-                prefabName = arg.ToLower();
-                buildType = "deploy";
-                return true;
-            }
-            else if (animalList.ContainsKey(arg.ToLower()))
-            {
-                prefabName = animalList[arg.ToLower()];
-                buildType = "animal";
-                return true;
-            }
-            else if (int.TryParse(arg, out intbuilding))
-            {
-                if (intbuilding <= resourcesList.Count )
-                {
-                    prefabName = resourcesList[intbuilding];
-                    buildType = "plant";
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  GetGrade(int lvl)
-        ///  Convert grade number written by the players into the BuildingGrade.Enum used by rust
-        /////////////////////////////////////////////////////
-        BuildingGrade.Enum GetGrade(int lvl)
-        {
-            if (lvl == 0)
-                return BuildingGrade.Enum.Twigs;
-            else if (lvl == 1)
-                return BuildingGrade.Enum.Wood;
-            else if (lvl == 2)
-                return BuildingGrade.Enum.Stone;
-            else if (lvl == 3)
-                return BuildingGrade.Enum.Metal;
-            return BuildingGrade.Enum.TopTier;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  hasNoArguments(BasePlayer player, string[] args)
-        ///  Action when no arguments were written in the commands
-        /////////////////////////////////////////////////////
-        bool hasNoArguments(BasePlayer player, string[] args)
-        {
-            if (args == null || args.Length == 0)
-            {
-                if (player.GetComponent<BuildPlayer>())
-                {
-                    player.GetComponent<BuildPlayer>().DestroyGui();
-                    UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
-                    SendReply(player, "Build Tool Deactivated");
                 }
                 else
-                    SendReply(player, "For more informations say: /buildhelp");
-                return true;
+                {
+                    OnEventOpenPostAutoEvent();
+                    // start laiunch timer if min players reached
+                }
             }
+            else
+            {
+                OnEventStartPostAutoEvent();
+            }
+            return null;
+        }
+        object EndEvent()
+        {
+            if (EventEnded) return MessagesEventNoGamePlaying;
+
+            Interface.CallHook("OnEventEndPre", new object[] { });
+            BroadcastToChat(string.Format(MessagesEventEnd, EventGameName));
+            EventOpen = false;
+            EventStarted = false;
+            EventEnded = true;
+            EventPending = false;
+
+            SendPlayersHome();
+            RedeemPlayersInventory();
+            TryEraseAllPlayers();
+            EjectAllPlayers();
+
+            EventPlayers.Clear();
+            Interface.CallHook("OnEventEndPost", new object[] { });
+            return true;
+        }
+        object CanEventStart()
+        {
+            if (EventGameName == null) return MessagesEventNotSet;
+            else if (EventSpawnFile == null) return MessagesEventNoSpawnFile;
+            else if (EventStarted) return MessagesEventAlreadyStarted;
+            return null;
+        }
+        object StartEvent()
+        {
+            object success = Interface.CallHook("CanEventStart", new object[] { });
+            if (success is string)
+            {
+                return (string)success;
+            }
+            Interface.CallHook("OnEventStartPre", new object[] { });
+            BroadcastToChat(string.Format(MessagesEventBegin, EventGameName));
+            EventStarted = true;
+            EventEnded = false;
+            DestroyTimers();
+            SaveAllInventories();
+            SaveAllHomeLocations();
+            TeleportAllPlayersToEvent();
+            Interface.CallHook("OnEventStartPost", new object[] { });
+            return true;
+        }
+        object JoinEvent(BasePlayer player)
+        {
+            if (player.GetComponent<EventPlayer>())
+            {
+                if (EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+                    return MessagesEventAlreadyJoined;
+            }
+
+            object success = Interface.CallHook("CanEventJoin", new object[] { player });
+            if (success is string)
+            {
+                return (string)success;
+            }
+
+            EventPlayer event_player = player.GetComponent<EventPlayer>();
+            if (event_player == null) event_player = player.gameObject.AddComponent<EventPlayer>();
+
+            event_player.enabled = true;
+            EventPlayers.Add(event_player);
+
+            if (EventStarted)
+            {
+                SaveHomeLocation(player);
+                SaveInventory(player);
+                Interface.CallHook("OnEventPlayerSpawn", new object[] { player });
+            }
+            BroadcastToChat(string.Format(MessagesEventJoined, player.displayName.ToString(), EventPlayers.Count.ToString()));
+            Interface.CallHook("OnEventJoinPost", new object[] { player });
+            return true;
+        }
+        object CanEventJoin(BasePlayer player)
+        {
+            if (!EventOpen)
+                return "The Event is currently closed.";
+
+            if (EventMaxPlayers != 0 && EventPlayers.Count >= EventMaxPlayers)
+            {
+                return string.Format(MessagesEventMaxPlayers, EventGameName);
+            }
+            return null;
+        }
+        object OnEventJoinPost(BasePlayer player)
+        {
+            if (!EventAutoEvents) return null;
+            if (EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending)
+            {
+                float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
+                BroadcastToChat(string.Format(MessagesEventMinPlayers, EventGameName, timerStart.ToString()));
+
+                EventPending = true;
+                DestroyTimers();
+                AutoArenaTimers.Add(timer.Once(timerStart, () => StartEvent()));
+            }
+            return null;
+        }
+        void OnEventEndPost()
+        {
+            if (!EventAutoEvents) return;
+            DestroyTimers();
+            AutoEventNext();
+        }
+        object LeaveEvent(BasePlayer player)
+        {
+            if (player.GetComponent<EventPlayer>() == null)
+            {
+                return "You are not currently in the Event.";
+            }
+            if (!EventPlayers.Contains(player.GetComponent<EventPlayer>()))
+            {
+                return "You are not currently in the Event.";
+            }
+
+            player.GetComponent<EventPlayer>().inEvent = false;
+            if (!EventEnded || !EventStarted)
+            {
+                BroadcastToChat(string.Format(MessagesEventLeft, player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
+            }
+            ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
+            if (EventStarted)
+            {
+                player.inventory.Strip();
+                RedeemInventory(player);
+                TeleportPlayerHome(player);
+                EventPlayers.Remove(player.GetComponent<EventPlayer>());
+                EjectPlayer(player);
+                TryErasePlayer(player);
+                Interface.CallHook("OnEventLeavePost", new object[] { player });
+            }
+            else
+            {
+                EventPlayers.Remove(player.GetComponent<EventPlayer>());
+                GameObject.Destroy(player.GetComponent<EventPlayer>());
+            }
+            return true;
+        }
+
+        object SelectEvent(string name)
+        {
+            if (!(EventGames.Contains(name))) return string.Format(MessagesEventNotAnEvent, name);
+            if (EventStarted || EventOpen) return MessagesEventCloseAndEnd;
+            EventGameName = name;
+            Interface.CallHook("OnSelectEventGamePost", new object[] { name });
+            return true;
+        }
+        object SelectSpawnfile(string name)
+        {
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+            
+            object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
+            if (success == null)
+            {
+                return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+            }
+
+            EventSpawnFile = name;
+            success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
+
+            if (success is string)
+            {
+                EventSpawnFile = null;
+                return (string)success;
+            }
+
+            return true;
+        }
+        object SelectMaxplayers(string num)
+        {
+            int mplayer = 0;
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+
+            if (!int.TryParse(num, out mplayer))
+            {
+                return string.Format("{0} is not a number", num);
+            }
+
+            EventMaxPlayers = mplayer;
+
+            Interface.CallHook("OnPostSelectMaxPlayers", EventMaxPlayers);
+
+            return true;
+        }
+        object SelectMinplayers(string num)
+        {
+            int mplayer = 0;
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+
+            if (!int.TryParse(num, out mplayer))
+            {
+                return string.Format("{0} is not a number", num);
+            }
+
+            EventMinPlayers = mplayer;
+
+            Interface.CallHook("OnPostSelectMinPlayers", EventMinPlayers);
+
+            return true;
+        }
+        object SelectNewZone(MonoBehaviour monoplayer, string radius)
+        {
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+            if (EventStarted || EventOpen) return MessagesEventCloseAndEnd;
+            Interface.CallHook("OnSelectEventZone", new object[] { monoplayer, radius });
+            if (zonelogs[EventGameName] != null) storedData.ZoneLogs.Remove(zonelogs[EventGameName]);
+            zonelogs[EventGameName] = new EventZone(EventGameName, monoplayer.transform.position, Convert.ToSingle(radius));
+            storedData.ZoneLogs.Add(zonelogs[EventGameName]);
+            InitializeZone(EventGameName);
+            return true;
+        }
+        object RegisterEventGame(string name)
+        {
+            if (!(EventGames.Contains(name)))
+                EventGames.Add(name);
+            Puts(string.Format("Registered event game: {0}", name));
+            Interface.CallHook("OnSelectEventGamePost", new object[] { EventGameName });
+
+            if (EventGameName == name)
+            {
+                object success = SelectEvent(EventGameName);
+                if (success is string)
+                {
+                    Puts((string)success);
+                }
+            }
+            if (zonelogs[name] != null)
+                timer.Once(0.5f, () => InitializeZone(name));
+            return true;
+        }
+
+        object canRedeemKit(BasePlayer player)
+        {
+            if (!EventStarted) return null;
+            EventPlayer eplayer = player.GetComponent<EventPlayer>();
+            if (eplayer == null) return null;
             return false;
         }
 
-        /////////////////////////////////////////////////////
-        ///  GetBuildPlayer(BasePlayer player)
-        ///  Create or Get the BuildPlayer from a player, where all informations of current action is stored
-        /////////////////////////////////////////////////////
-        BuildPlayer GetBuildPlayer(BasePlayer player)
+        Dictionary<string, string> deadPlayers = new Dictionary<string, string>();
+        bool FindPlayer(string name, out string targetid, out string targetname)
         {
-            if (player.GetComponent<BuildPlayer>() == null)
-                return player.gameObject.AddComponent<BuildPlayer>();
-            else
-                return player.GetComponent<BuildPlayer>();
-        }
-
-        /////////////////////////////////////////////////////
-        ///  CHAT COMMANDS
-        /////////////////////////////////////////////////////
-        [ChatCommand("build")]
-        void cmdChatBuild(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
+            ulong userid;
+            targetid = string.Empty;
+            targetname = string.Empty;
+            if (name.Length == 17 && ulong.TryParse(name, out userid))
             {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
+                targetid = name;
+                return true;
             }
-            if (buildType != "building")
+
+            foreach (BasePlayer player in Resources.FindObjectsOfTypeAll(typeof(BasePlayer)))
             {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 0f;
-
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
-            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool AIBuild: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("spawn")]
-        void cmdChatSpawn(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            if (buildType == "building") buildType = "spawning";
-            else
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 0f;
-
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
-            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool RawSpawning: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("deploy")]
-        void cmdChatDeploy(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp deployables");
-                return;
-            }
-            if (buildType != "deploy")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp deployables");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Deploying: {0} - Height Adjustment: {1}", buildplayer.currentPrefab, buildplayer.currentHeightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("erase")]
-        void cmdChatErase(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-            if (buildplayer.currentType != null && buildplayer.currentType == "erase")
-            {
-                player.GetComponent<BuildPlayer>().DestroyGui();
-                UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
-                SendReply(player, "Building Tool: Remove Deactivated");
-            }
-            else
-            {
-                buildplayer.currentType = "erase";
-                SendReply(player, "Building Tool: Remove Activated");
-
-                var msg = "Building Tool: Remove Activated";
-                buildplayer.LoadMsgGui(msg);
-                SendReply(player, msg);
-
-            }
-        }
-
-        [ChatCommand("plant")]
-        void cmdChatPlant(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp resources");
-                return;
-            }
-            if (buildType != "plant")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp resources");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Planting: {0} - HeightAdjustment: {1}", prefabName, buildplayer.currentHeightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("animal")]
-        void cmdChatAnimal(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp animals");
-                return;
-            }
-            if (buildType != "animal")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp animals");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Spawning Animals: {0} - HeightAdjustment: {1}", prefabName, heightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildup")]
-        void cmdChatBuildup(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            if (buildType != "building")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildType = "buildup";
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 3f;
-
-            if(args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if(args.Length > 2) int.TryParse(args[2],out defaultGrade);
-            if(args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool BuildUP: {0} - Height: {1} - Grade: {2} - Health: {3}", args[0], buildplayer.currentHeightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildgrade")]
-        void cmdChatBuilGrade(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-            defaultGrade = 0;
-            buildplayer.selection = "select";
-            buildplayer.currentType = "grade";
-            int.TryParse(args[0], out defaultGrade);
-            if (args.Length > 1)
-                if (args[1] == "all")
-                    buildplayer.selection = "all";
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-
-            var msg = string.Format("Building Tool SetGrade: {0} - for {1}", buildplayer.currentGrade.ToString(), buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildheal")]
-        void cmdChatBuilHeal(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildplayer.currentType = "heal";
-            buildplayer.selection = "select";
-            if (args.Length > 0)
-                if (args[0] == "all")
-                    buildplayer.selection = "all";
-
-            var msg = string.Format("Building Tool Heal for: {0}", buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildrotate")]
-        void cmdChatBuilRotate(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildplayer.currentType = "rotate";
-            buildplayer.selection = "select";
-            float rotate = 0f;
-
-            if (args.Length > 0) float.TryParse(args[0], out rotate);
-            if (args.Length > 1)
-                if (args[1] == "all")
-                    buildplayer.selection = "all";
-            buildplayer.currentRotate = Quaternion.Euler(0f, rotate, 0f);
-
-            var msg = string.Format("Building Tool Rotation for: {0}", buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildhelp")]
-        void cmdChatBuildhelp(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (args == null || args.Length == 0)
-            {
-                SendReply(player, "======== Buildings ========");
-                SendReply(player, "/buildhelp buildings");
-                SendReply(player, "/buildhelp grades");
-                SendReply(player, "/buildhelp heal");
-                SendReply(player, "======== Deployables ========");
-                SendReply(player, "/buildhelp deployables");
-                SendReply(player, "======== Resources (Trees, Ores, Barrels) ========");
-                SendReply(player, "/buildhelp resources");
-                SendReply(player, "======== Animals ========");
-                SendReply(player, "/buildhelp animals");
-                SendReply(player, "======== Erase ========");
-                SendReply(player, "/buildhelp erase");
-                return;
-            }
-            if (args[0].ToLower() == "buildings")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/build StructureName Optional:HeightAdjust(can be negative, 0 default) Optional:Grade Optional:Health");
-                SendReply(player, "/buildup StructureName Optional:HeightAdjust(can be negative, 3 default) Optional:Grave Optional:Health");
-                SendReply(player, "/buildrotate");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/build foundation => build a Twigs Foundation");
-                SendReply(player, "/build foundation 0 2 => build a Stone Foundation");
-                SendReply(player, "/build wall 0 3 1 => build a Metal Wall with 1 health");
-                SendReply(player, "======== List ========");
-                SendReply(player, "/build foundation - /build foundation.triangle - /build foundation.steps(not avaible)");
-                SendReply(player, "/build block.halfheight - /build block.halfheight.slanted (stairs)");
-                SendReply(player, "/build wall - /build wall.low - /build wall.doorway - /build wall.window");
-                SendReply(player, "/build floor - /build floor.triangle - /build roof");
-            }
-            else if (args[0].ToLower() == "grades")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/buildgrade GradeLevel Optional:all => default is only the selected block");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/buildgrade 0 => set grade 0 for the select block");
-                SendReply(player, "/buildgrade 2 all => set grade 2 (Stone) for the entire building");
-            }
-            else if (args[0].ToLower() == "heal")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/buildheal Optional:all => default is only the selected block");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/buildheal all => will heal your entire structure");
-            }
-            else if (args[0].ToLower() == "deployables")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/deploy \"Deployable Name\" Optional:HeightAdjust(can be negative, 0 default)");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/deploy \"Tool Cupboard\" => build a Tool Cupboard");
-            }
-            else if (args[0].ToLower() == "resources")
-            {
-                int i = 0;
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/plant \"Resource ID\"");
-                SendReply(player, "Please check in your console to see the full list");
-                SendEchoConsole(player.net.connection, "======== Plant List ========");
-                foreach (string resource in resourcesList)
+                if (player.displayName == name)
                 {
-                    SendEchoConsole(player.net.connection, string.Format("{0} - {1}", i.ToString(), resource));
-                    i++;
+                    targetid = player.userID.ToString();
+                    targetname = player.displayName;
+                    return true;
+                }
+                if (player.displayName.Contains(name))
+                {
+                    if (targetid == string.Empty)
+                    {
+                        targetid = player.userID.ToString();
+                        targetname = player.displayName;
+                    }
+                    else
+                    {
+                        targetid = multipleNames;
+                    }
                 }
             }
-            else if (args[0].ToLower() == "animals")
+            if (targetid == multipleNames)
+                return false;
+            if (targetid != string.Empty)
+                return true;
+            targetid = noPlayerFound;
+            if (DeadPlayersList == null)
+                return false;
+            deadPlayers = DeadPlayersList.Call("GetPlayerList", null) as Dictionary<string, string>;
+            if (deadPlayers == null)
+                return false;
+
+            foreach (KeyValuePair<string, string> pair in deadPlayers)
             {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/animal \"Name\"");
-                SendReply(player, "======== List ========");
-                foreach (KeyValuePair<string, string> pair in animalList)
+                if (pair.Value == name)
                 {
-                    SendReply(player, string.Format("{0}", pair.Key));
+                    targetid = pair.Key;
+                    targetname = pair.Value;
+                    return true;
+                }
+                if (pair.Value.Contains(name))
+                {
+                    if (targetid == noPlayerFound)
+                    {
+                        targetid = pair.Key;
+                        targetname = pair.Value;
+                    }
+                    else
+                    {
+                        targetid = multipleNames;
+                    }
                 }
             }
-            else if (args[0].ToLower() == "erase")
+            if (targetid == multipleNames)
+                return false;
+            if (targetid != noPlayerFound)
+                return true;
+            return false;
+        }
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Chat Commands /////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        [ChatCommand("event_leave")]
+        void cmdEventLeave(BasePlayer player, string command, string[] args)
+        {
+            object success = LeaveEvent(player);
+            if (success is string)
             {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/erase => Erase where you are looking at, there is NO all option here to prevent fails :p");
+                SendReply(player, (string)success);
+                return;
+            }
+        }
+        [ChatCommand("event_join")]
+        void cmdEventJoin(BasePlayer player, string command, string[] args)
+        {
+            object success = JoinEvent(player);
+            if (success is string)
+            {
+                SendReply(player, (string)success);
+                return;
             }
         }
 
-        void SendEchoConsole(Network.Connection cn, string msg)
+        [ChatCommand("event")]
+        void cmdEvent(BasePlayer player, string command, string[] args)
         {
-            if(Network.Net.sv.IsConnected())
+            string message = string.Empty;
+            if (!EventOpen && !EventStarted) message = MessagesEventStatusClosedEnd;
+            else if (EventOpen && !EventStarted) message = MessagesEventStatusOpen;
+            else if (EventOpen && EventStarted) message = MessagesEventStatusOpenStarted;
+            else message = MessagesEventStatusClosedStarted;
+            SendReply(player, string.Format(message, EventGameName));
+        }
+
+
+        [ChatCommand("reward")]
+        void cmdEventReward(BasePlayer player, string command, string[] args)
+        {
+            int currenttokens = GetTokens(player.userID.ToString());
+            if (args.Length == 0)
             {
-                Network.Net.sv.write.Start();
-                Network.Net.sv.write.PacketID(Network.Message.Type.ConsoleMessage);
-                Network.Net.sv.write.String(msg);
-                Network.Net.sv.write.Send(new Network.SendInfo(cn));
+                SendReply(player, string.Format(MessageRewardCurrent, currenttokens.ToString()));
+                SendReply(player, MessageRewardHelp);
+                foreach (KeyValuePair<string, Reward> pair in rewards)
+                {
+                    string color = "green";
+                    if (pair.Value.GetCost() > currenttokens)
+                        color = "red";
+                    SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString()));
+                }
+                return;
+            }
+            if (rewards[args[0]] == null)
+            {
+                SendReply(player, MessageRewardWrong);
+                return;
+            }
+            int amount = 1;
+            if (args.Length > 1) int.TryParse(args[1], out amount);
+            if (amount < 1)
+            {
+                SendReply(player, MessageRewardNegative);
+                return;
+            }
+            if (rewards[args[0]].GetCost() * amount > currenttokens)
+            {
+                SendReply(player, string.Format(MessageRewardNotEnoughTokens, args[0], amount.ToString()));
+                return;
+            }
+            var success = GiveReward(player, args[0], amount);
+            if (success is string)
+            {
+                SendReply(player, success.ToString());
+                return;
+            }
+            if (success is bool && (bool)success)
+                RemoveTokens(player.userID.ToString(), rewards[args[0]].GetCost() * amount);
+
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Console Commands //////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        [ConsoleCommand("event.launch")]
+        void ccmdEventLaunch(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = LaunchEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" is now launched.", EventGameName));
+        }
+        [ConsoleCommand("event.open")]
+        void ccmdEventOpen(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = OpenEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" is now opened.", EventGameName));
+        }
+        [ConsoleCommand("event.start")]
+        void ccmdEventStart(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = StartEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" is now started.", EventGameName));
+        }
+        [ConsoleCommand("event.close")]
+        void ccmdEventClose(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = CloseEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" is now closed for entries.", EventGameName));
+        }
+        [ConsoleCommand("event.end")]
+        void ccmdEventEnd(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            object success = EndEvent();
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Event \"{0}\" has ended.", EventGameName));
+        }
+        [ConsoleCommand("event.game")]
+        void ccmdEventGame(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.game \"Game Name\"");
+                return;
+            }
+            object success = SelectEvent((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            defaultGame = EventGameName;
+            SaveConfig();
+            SendReply(arg, string.Format("{0} is now the next Event game.", arg.Args[0].ToString()));
+        }
+        [ConsoleCommand("event.minplayers")]
+        void ccmdEventminPlayers(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.minplayers XX");
+                return;
+            }
+            object success = SelectMinplayers((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Minimum Players for {0} is now {1} (this is only usefull for auto events).", arg.Args[0].ToString(), EventSpawnFile.ToString()));
+        }
+        [ConsoleCommand("event.maxplayers")]
+        void ccmdEventMaxPlayers(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.maxplayers XX");
+                return;
+            }
+            object success = SelectMaxplayers((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("Maximum Players for {0} is now {1}.", arg.Args[0].ToString(), EventSpawnFile.ToString()));
+        }
+        [ConsoleCommand("event.spawnfile")]
+        void ccmdEventSpawnfile(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.spawnfile \"filename\"");
+                return;
+            }
+            object success = SelectSpawnfile((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            defaultSpawnfile = arg.Args[0];
+            SaveConfig();
+            SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
+        }
+        [ConsoleCommand("event.zone")]
+        void ccmdEventZone(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.connection == null)
+            {
+                SendReply(arg, "To set the zone position & radius you must be connected");
+                return;
+            }
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.zone RADIUS");
+                return;
+            }
+            object success = SelectNewZone(arg.connection.player, arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+
+            SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
+        }
+        [ConsoleCommand("event.reward")]
+        void ccmdEventReward(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "Reward Related: event.reward add/list/remove");
+                SendReply(arg, "Players Related: event.reward set/clear/give/take/check");
+                return;
+            }
+            string targetid = string.Empty;
+            string targetname = string.Empty;
+            int amount = 0;
+            bool foundtarget;
+            switch (arg.Args[0])
+            {
+                case "check":
+                    if (arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "event.reward check PLAYERNAME/STEAMID");
+                        return;
+                    }
+
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    SendReply(arg, string.Format("{0} {1} has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "clear":
+                    if (arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "You must confirm by saying: event.reward clear yes");
+                        return;
+                    }
+                    if (arg.Args[1] != "yes")
+                    {
+                        SendReply(arg, "You must confirm clearing the players token list by added: yes, at the end.");
+                        return;
+                    }
+                    storedData.Tokens.Clear();
+                    SendReply(arg, "Cleared all player tokens!!!!!");
+                    break;
+                case "set":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward set PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    SetTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "give":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward give PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    AddTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "take":
+                    if (arg.Args.Length < 3)
+                    {
+                        SendReply(arg, "event.reward take PLAYERNAME/STEAMID AMOUNT");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[2], out amount))
+                    {
+                        SendReply(arg, "the amount needs to be a number");
+                        return;
+                    }
+                    foundtarget = FindPlayer(arg.Args[1], out targetid, out targetname);
+                    if (!(bool)foundtarget)
+                    {
+                        SendReply(arg, targetid.ToString());
+                        return;
+                    }
+                    RemoveTokens(targetid, amount);
+                    SendReply(arg, string.Format("{0} {1} now has {2} tokens", targetid, targetname, GetTokens(targetid).ToString()));
+                    break;
+                case "add":
+                    if (arg.Args.Length < 5)
+                    {
+                        SendReply(arg, "event.reward add NAME COST ITEM/KIT AMOUNT");
+                        return;
+                    }
+                    string rewardname = arg.Args[1];
+                    int cost = 0;
+                    if (!int.TryParse(arg.Args[2], out cost))
+                    {
+                        SendReply(arg, "The cost needs to be a number");
+                        return;
+                    }
+                    if (cost < 1)
+                    {
+                        SendReply(arg, "The cost needs to be higher then 0");
+                        return;
+                    }
+
+                    if (!int.TryParse(arg.Args[4], out amount))
+                    {
+                        SendReply(arg, "The amount needs to be a number");
+                        return;
+                    }
+                    if (amount < 1)
+                    {
+                        SendReply(arg, "The amount needs to be higher then 0");
+                        return;
+                    }
+
+                    bool kit = false;
+                    string itemname = arg.Args[3].ToLower();
+                    if (displaynameToShortname.ContainsKey(itemname))
+                        itemname = displaynameToShortname[itemname];
+                    var definition = ItemManager.FindItemDefinition(itemname);
+                    if (definition == null)
+                    {
+                        kit = true;
+                        if (Kits == null)
+                        {
+                            SendReply(arg, "This item doesn't exist and it seems like you don't have the kits plugin");
+                            return;
+                        }
+                        var iskit = Kits.Call("isKit", itemname);
+                        if (!(iskit is bool))
+                        {
+                            SendReply(arg, "Seems like you have an out dated Kits plugin");
+                            return;
+                        }
+                        if (!(bool)iskit)
+                        {
+                            SendReply(arg, "This item doesn't exist and no kits match this name neither.");
+                            return;
+                        }
+                    }
+                    Reward reward = new Reward(rewardname, cost, kit, itemname, amount);
+                    if (rewards[reward.name] != null) storedData.Rewards.Remove(rewards[reward.name]);
+                    rewards[reward.name] = reward;
+                    storedData.Rewards.Add(rewards[reward.name]);
+                    SaveData();
+                    SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", reward.name, reward.cost, (Convert.ToBoolean(reward.kit) ? "Kit " : string.Empty) + reward.item, reward.amount));
+                    break;
+
+                case "list":
+                    if (rewards.Count == 0)
+                    {
+                        SendReply(arg, "You dont have any rewards set yet.");
+                        return;
+                    }
+                    foreach (KeyValuePair<string, Reward> pair in rewards)
+                    {
+                        SendReply(arg, string.Format("Reward Name: {0} - Cost: {1} - Name: {2} - Amount: {3}", pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit " : string.Empty) + pair.Value.item, pair.Value.amount));
+                    }
+                    break;
+
+                case "remove":
+                    if (arg.Args.Length < 2)
+                    {
+                        SendReply(arg, "event.reward remove REWARDNAME");
+                        return;
+                    }
+                    if (rewards[arg.Args[1]] == null)
+                    {
+                        SendReply(arg, "This reward doesn't exist");
+                        return;
+                    }
+                    storedData.Rewards.Remove(rewards[arg.Args[1]]);
+                    rewards[arg.Args[1]] = null;
+                    SendReply(arg, "You've successfully removed this reward");
+                    break;
+
             }
         }
     }
