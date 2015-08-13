@@ -51,12 +51,12 @@ namespace Oxide.Plugins
 
         static string guiminXcfg = "0.2";
         static string guimaxXcfg = "0.8";
-        static string guiminYcfg = "0.2";
+        static string guimaxYcfg = "0.8";
         static string guiYheightcfg = "0.05";
 
         static double guiminX = 0.2;
         static double guimaxX = 0.8;
-        static double guiminY = 0.2;
+        static double guimaxY = 0.8;
         static double guiYheight = 0.05;
 
         static int retreiveType = 0;
@@ -89,7 +89,7 @@ namespace Oxide.Plugins
 
             CheckCfg<string>("GUI: min x", ref guiminXcfg);
             CheckCfg<string>("GUI: max x", ref guimaxXcfg);
-            CheckCfg<string>("GUI: min y", ref guiminYcfg);
+            CheckCfg<string>("GUI: max y", ref guimaxYcfg);
             CheckCfg<string>("GUI: y height", ref guiYheightcfg);
 
             CheckCfg<Dictionary<string, object>>("NPC Kits", ref npcKitList);
@@ -136,7 +136,7 @@ namespace Oxide.Plugins
 
             guiminX = Convert.ToDouble(guiminXcfg);
             guimaxX = Convert.ToDouble(guimaxXcfg);
-            guiminY = Convert.ToDouble(guiminYcfg);
+            guimaxY = Convert.ToDouble(guimaxYcfg);
             guiYheight = Convert.ToDouble(guiYheightcfg);
         }
         void OnServerInitialized()
@@ -613,9 +613,12 @@ namespace Oxide.Plugins
                 if (cachedPlayer == null) continue;
                 if (player == cachedPlayer) continue;
                 string userId = cachedPlayer.userID.ToString();
+                
                 if (!npcKitList.ContainsKey(userId)) continue;
-                if (!((List<object>)npcKitList[userId]).Contains(kitname)) continue;
 
+                Debug.Log(kitname);
+                if (!((List<object>)npcKitList[userId]).Contains(kitname)) continue;
+                
                 /// NEED TO ADD A WALL COLLIDER CHECK TO MAKE SURE ITS NOT THROUGH WALL
                 return true;
             }
@@ -757,7 +760,7 @@ namespace Oxide.Plugins
                             [
                                 {
                                      ""type"":""UnityEngine.UI.Image"",
-                                     ""color"":""0.1 0.1 0.1 0.7"",
+                                     ""color"":""0.1 0.1 0.1 1"",
                                 },
                                 {
                                     ""type"":""RectTransform"",
@@ -769,36 +772,20 @@ namespace Oxide.Plugins
                     ]
                     ";
         string buttonjson = @"[
-                        { 
-							""name"": ""KitOverlay"",
-                            ""parent"": ""Overlay"",
-                            ""components"":
-                            [
-                                {
-                                     ""type"":""UnityEngine.UI.Image"",
-                                     ""color"":""0.1 0.1 0.1 0.7"",
-                                },
-                                {
-                                    ""type"":""RectTransform"",
-                                    ""anchormin"": ""0 0"",
-                                    ""anchormax"": ""1 1""
-                                }
-                            ]
-                        },
         				{
                             ""parent"": ""KitOverlay"",
                             ""components"":
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Text"",
-                                    ""text"":""testtesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttesttest"",
+                                    ""text"":""{msg}"",
                                     ""fontSize"":15,
                                     ""align"": ""MiddleCenter"",
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0 0"",
-                                    ""anchormax"": ""1 1""
+                                    ""anchormin"": ""{xmin} {ymin}"",
+                                    ""anchormax"": ""{xmax} {ymax}""
                                 }
                             ]
                         },
@@ -809,7 +796,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""KitOverlay"",
-                                    ""command"":""kit.gui '{guimsg}'"",
+                                    ""command"":""kit.gui {guimsg}"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -828,40 +815,28 @@ namespace Oxide.Plugins
         void DestroyAllGUI(BasePlayer player)
         {
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay");
-            playerGUI.Remove(player.userID.ToString());
-            /*if( playerGUI.ContainsKey(player.userID.ToString()) )
-        	{
-        		foreach( string guiname in playerGUI[player.userID.ToString()] )
-        		{
-        			CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", guiname);
-        		}
-        		playerGUI.Remove(player.userID.ToString());
-        	}*/
         }
         void RefreshKitPanel(BasePlayer player, List<object> kitsList, string npcId = "0")
         {
             DestroyAllGUI(player);
-            playerGUI.Add(player.userID.ToString(), new List<string>());
-            Debug.Log(overlayjson.ToString());
             int guipos = 0;
-            //CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
-            //playerGUI[player.userID.ToString()].Add("KitOverlay");
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
             string reason = string.Empty;
             string localmsg = string.Empty;
-            /*foreach (object kitname in kitsList)
+            foreach (object kitname in kitsList)
             {
                 string kitnamestring = kitname.ToString();
                 string color = CheckIfCanRedeem(player, kitnamestring, out reason) ? "0 0.6 0 0.2" : "1 0 0 0.2";
                 var kitdata = KitsConfig[kitnamestring] as Dictionary<string,object>;
                 string msg = kitnamestring + " - " + (kitdata["description"] as string);
-                localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'", kitnamestring, npcId)).Replace("{msg}", msg).Replace("{color}", color).Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guiminY + guipos * guiYheight).ToString()).Replace("{ymax}", (guiminY + (guipos + 1) * guiYheight).ToString());
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+                localmsg = buttonjson.Replace("{guimsg}", string.Format("'{0}' '{1}'", kitnamestring, npcId)).Replace("{msg}", msg).Replace("{color}", color).Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guimaxY - (guipos + 1) * guiYheight).ToString()).Replace("{ymax}", (guimaxY - guipos * guiYheight).ToString());
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", localmsg);
                 guipos++;
-            }*/
+            }
            
-            localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guiminY + guipos * guiYheight).ToString()).Replace("{ymax}", (guiminY + (guipos + 1) * guiYheight).ToString());
-            Debug.Log(localmsg.ToString());
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", overlayjson);
+            localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiminX.ToString()).Replace("{xmax}", guimaxX.ToString()).Replace("{ymin}", (guimaxY - (guipos + 1) * guiYheight).ToString()).Replace("{ymax}", (guimaxY - guipos * guiYheight).ToString());
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", localmsg);
+            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", new object[] { " " });
         }
 
         void OnUseNPC(BasePlayer npc, BasePlayer player)
@@ -889,7 +864,8 @@ namespace Oxide.Plugins
                 DestroyAllGUI(player);
                 return;
             }
-            TryGiveKit(player, arg.Args[0], true);
+            string kitname = arg.Args[0].Substring(1, arg.Args[0].Length - 2);
+            TryGiveKit(player, kitname, true);
         }
 
         [ChatCommand("kit")]
