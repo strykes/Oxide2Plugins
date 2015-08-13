@@ -51,9 +51,11 @@ namespace Oxide.Plugins
         private int giveamount;
 
 
-        public List<Oxide.Plugins.Timer> AutoArenaTimers;
+        public List<Oxide.Plugins.Timer> AutoArenaTimers = new List<Oxide.Plugins.Timer>();
         public float LastAnnounce;
         public bool AutoEventLaunched = false;
+
+        public static FieldInfo lastPositionValue;
 
         ////////////////////////////////////////////////////////////
         // EventPlayer class to store informations /////////////////
@@ -175,6 +177,7 @@ namespace Oxide.Plugins
         {
             PutToSleep(player);
             player.transform.position = destination;
+            lastPositionValue.SetValue(player, player.transform.position);
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
 
@@ -237,6 +240,7 @@ namespace Oxide.Plugins
             Changed = false;
             EventGames = new List<string>();
             EventPlayers = new List<EventPlayer>();
+            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             LoadData();
         }
         void OnServerInitialized()
@@ -649,7 +653,7 @@ namespace Oxide.Plugins
             AutoDM.Add("spawnfile", "deathmatchspawnfile");
             AutoDM.Add("closeonstart", "false");
             AutoDM.Add("timetojoin", "30");
-            AutoDM.Add("minplayers", "2");
+            AutoDM.Add("minplayers", "1");
             AutoDM.Add("maxplayers", "10");
             AutoDM.Add("timelimit", "1200");
 
@@ -719,7 +723,7 @@ namespace Oxide.Plugins
             var targetpos = Spawns.Call("GetRandomSpawn", new object[] { EventSpawnFile });
             if (targetpos is string)
                 return;
-            var newpos = Interface.CallHook("EventChooseSpawn", new object[] { player, targetpos });
+            var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = newpos;
             ZoneManager?.Call("AddPlayerToZoneKeepinlist", EventGameName, player);
@@ -888,6 +892,7 @@ namespace Oxide.Plugins
                 return "No Automatic Events Configured";
             }
             bool successed = false;
+            Debug.Log("yes");
             for (int i = 0; i < EventAutoConfig.Count; i++)
             {
                 EventAutoNum++;
@@ -909,16 +914,16 @@ namespace Oxide.Plugins
                 if (success is string) { continue; }
 
 
-                successed = true;
-                
-            }
 
+                successed = true;
+                break;
+            }
             if (!successed)
             {
                 return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
             }
 
-            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));
+            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));   
             return null;
         }
         void OnEventStartPost()
@@ -1086,7 +1091,6 @@ namespace Oxide.Plugins
         object OnEventJoinPost(BasePlayer player)
         {
             if (!EventAutoEvents) return null;
-
             if (EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending)
             {
                 float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
