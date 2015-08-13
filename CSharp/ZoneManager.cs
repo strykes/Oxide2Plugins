@@ -72,6 +72,7 @@ namespace Oxide.Plugins
         public FieldInfo[] allZoneFields;
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
+        public static FieldInfo lastPositionValue;
 
         public Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         /////////////////////////////////////////
@@ -422,6 +423,7 @@ namespace Oxide.Plugins
             playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
             buildingMask = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
             AIMask = UnityEngine.LayerMask.GetMask(new string[] { "AI" });
+            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             /* for(int i = 0; i < 25; i ++)
              {
                  Debug.Log(UnityEngine.LayerMask.LayerToName(i));
@@ -984,6 +986,7 @@ namespace Oxide.Plugins
             
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
+            lastPositionValue.SetValue(player, player.transform.position);
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
@@ -991,6 +994,7 @@ namespace Oxide.Plugins
         {
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius - 1f));
+            lastPositionValue.SetValue(player, player.transform.position);
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
