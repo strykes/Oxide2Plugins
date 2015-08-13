@@ -17,14 +17,14 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         [PluginReference]
         Plugin EventManager;
-		
-		[PluginReference]
+
+        [PluginReference]
         Plugin ZoneManager;
 
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
-        
+
         private string CurrentKit;
         private List<DeathmatchPlayer> DeathmatchPlayers;
 
@@ -104,7 +104,7 @@ namespace Oxide.Plugins
 
         static float EventStartHealth = 100;
 
-		static Dictionary<string,object> EventZoneConfig;
+        static Dictionary<string, object> EventZoneConfig;
 
         static string EventMessageWon = "{0} WON THE DEATHMATCH";
         static string EventMessageNoMorePlayers = "Arena has no more players, auto-closing.";
@@ -113,62 +113,62 @@ namespace Oxide.Plugins
 
         static int TokensAddKill = 1;
         static int TokensAddWon = 5;
-		
 
-		private void LoadZoneConfig()
-		{
-			EventZoneConfig = new Dictionary<string,object>();
-			
-			EventZoneConfig.Add("eject",true);
-			EventZoneConfig.Add("undestr",true);
-			EventZoneConfig.Add("autolights",true);
-			EventZoneConfig.Add("nobuild",true);
-			EventZoneConfig.Add("nodeploy",true);
-			EventZoneConfig.Add("nokits",true);
-			EventZoneConfig.Add("notp",true);
-			EventZoneConfig.Add("killsleepers",true);
-			EventZoneConfig.Add("nosuicide",true);
-			EventZoneConfig.Add("nocorpse",true);
-			EventZoneConfig.Add("nowounded",true);
-			
-			object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
-			if(zonefieldlist == null)
-			{
-				Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Deathmatch");
-				return;
-			}
-			foreach( string fielditem in (List<string>)zonefieldlist )
-			{
-				if( fielditem != "Location" && fielditem != "ID" && fielditem != "name" )
-				{
-					if(!EventZoneConfig.ContainsKey( fielditem ))
-						EventZoneConfig.Add(fielditem, false);
-	
-					if( Config[ "Zone Settings - " + fielditem ] is bool )
-						EventZoneConfig[ fielditem ] = (bool)Config[ "Zone Settings - " + fielditem ];
-					else
-						Config[ "Zone Settings - " + fielditem ] = EventZoneConfig[ fielditem ];
-				}
-			}
-		}
+
+        private void LoadZoneConfig()
+        {
+            EventZoneConfig = new Dictionary<string, object>();
+
+            EventZoneConfig.Add("eject", true);
+            EventZoneConfig.Add("undestr", true);
+            EventZoneConfig.Add("autolights", true);
+            EventZoneConfig.Add("nobuild", true);
+            EventZoneConfig.Add("nodeploy", true);
+            EventZoneConfig.Add("nokits", true);
+            EventZoneConfig.Add("notp", true);
+            EventZoneConfig.Add("killsleepers", true);
+            EventZoneConfig.Add("nosuicide", true);
+            EventZoneConfig.Add("nocorpse", true);
+            EventZoneConfig.Add("nowounded", true);
+
+            object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
+            if (zonefieldlist == null)
+            {
+                Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Deathmatch");
+                return;
+            }
+            foreach (string fielditem in (List<string>)zonefieldlist)
+            {
+                if (fielditem != "Location" && fielditem != "ID" && fielditem != "name")
+                {
+                    if (!EventZoneConfig.ContainsKey(fielditem))
+                        EventZoneConfig.Add(fielditem, false);
+
+                    if (Config["Zone Settings - " + fielditem] is bool)
+                        EventZoneConfig[fielditem] = (bool)Config["Zone Settings - " + fielditem];
+                    else
+                        Config["Zone Settings - " + fielditem] = EventZoneConfig[fielditem];
+                }
+            }
+        }
         private void LoadVariables()
         {
-			
-			LoadZoneConfig();
-			
-			LoadConfigVariables();
-            
+
+            LoadZoneConfig();
+
+            LoadConfigVariables();
+
 
             SaveConfig();
         }
         private void LoadConfigVariables()
         {
-        	CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
+            CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
             CheckCfg<string>("DeathMatch - Event - Name", ref EventName);
             CheckCfg<string>("DeathMatch - Event - SpawnFile", ref EventSpawnFile);
             CheckCfg<int>("DeathMatch - Win - Kills Needed", ref EventWinKills);
             CheckCfgFloat("DeathMatch - Start - Health", ref EventStartHealth);
-            
+
 
             CheckCfg<string>("Messages - Won", ref EventMessageWon);
             CheckCfg<string>("Messages - Empty", ref EventMessageNoMorePlayers);
@@ -177,9 +177,9 @@ namespace Oxide.Plugins
 
             CheckCfg<int>("Tokens - Per Kill", ref TokensAddKill);
             CheckCfg<int>("Tokens - On Win", ref TokensAddWon);
-	
+
             CurrentKit = DefaultKit;
-        
+
         }
         private void CheckCfg<T>(string Key, ref T var)
         {
@@ -214,22 +214,14 @@ namespace Oxide.Plugins
             }
             return value;
         }
-        
-        object GetEventConfig( string configname )
-        {
-        	if( !useThisEvent ) return null;
-        	if(Config[configname] == null) return null;
-        	return Config[configname];
-        }
-        
-        object SetEventConfig( string configname, T var )
-        {
-        	if( !useThisEvent ) return null;
-        	Config[configname] = var;
-        	SaveConfig();
-        	LoadConfigVariables();
-        }
 
+        object GetEventConfig(string configname)
+        {
+            if (!useThisEvent) return null;
+            if (Config[configname] == null) return null;
+            return Config[configname];
+        }
+         
         //////////////////////////////////////////////////////////////////////////////////////
         // Beginning Of Event Manager Hooks //////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
@@ -251,7 +243,7 @@ namespace Oxide.Plugins
                 player.inventory.Strip();
                 EventManager.Call("GivePlayerKit", new object[] { player, CurrentKit });
                 player.health = EventStartHealth;
-            } 
+            }
         }
         object OnSelectSpawnFile(string name)
         {
@@ -273,15 +265,15 @@ namespace Oxide.Plugins
         {
             if (name == EventName)
             {
-            	string[] sendstring = new string[EventZoneConfig.Count*2];
-            	int i = 0;
-            	foreach( KeyValuePair<string, object> pair in EventZoneConfig )
-            	{
-            		sendstring[i] = pair.Key;
-            		i++;
-            		sendstring[i] = pair.Value.ToString();
-            		i++;
-            	} 
+                string[] sendstring = new string[EventZoneConfig.Count * 2];
+                int i = 0;
+                foreach (KeyValuePair<string, object> pair in EventZoneConfig)
+                {
+                    sendstring[i] = pair.Key;
+                    i++;
+                    sendstring[i] = pair.Value.ToString();
+                    i++;
+                }
                 EventManager.Call("UpdateZone", EventName, sendstring);
             }
         }
@@ -425,7 +417,7 @@ namespace Oxide.Plugins
                     Winner(deathmatchplayer.player);
                 }
             }
-        } 
+        }
         void Winner(BasePlayer player)
         {
             var winnerobjectmsg = new object[] { string.Format(EventMessageWon, player.displayName) };
