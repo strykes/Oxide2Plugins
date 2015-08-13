@@ -1151,13 +1151,16 @@ namespace Oxide.Plugins
         {
             if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
             if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+            
             object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
             if (success == null)
             {
                 return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
             }
+
             EventSpawnFile = name;
             success = Spawns.Call("GetSpawnsCount", new object[] { EventSpawnFile });
+
             if (success is string)
             {
                 EventSpawnFile = null;
