@@ -719,7 +719,7 @@ namespace Oxide.Plugins
             var targetpos = Spawns.Call("GetRandomSpawn", new object[] { EventSpawnFile });
             if (targetpos is string)
                 return;
-            var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
+            var newpos = Interface.CallHook("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = newpos;
             ZoneManager?.Call("AddPlayerToZoneKeepinlist", EventGameName, player);
