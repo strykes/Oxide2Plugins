@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.0", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.1", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -326,7 +326,7 @@ namespace Oxide.Plugins
         {
             if (zonelogs[name] == null) return;
             ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
-            if (EventGames.Contains(name))
+            if (EventGames.Contains(name)) 
                 Interface.CallHook("OnPostZoneCreate", name);
         }
         void ResetZones()
@@ -544,6 +544,7 @@ namespace Oxide.Plugins
         }
         private static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
         private static string MessagesEventNotSet = "An Event game must first be chosen.";
+        private static string MessagesErrorSpawnfileIsNull = "The spawnfile can't be set to null";
         private static string MessagesEventNoSpawnFile = "A spawn file must first be loaded.";
         private static string MessagesEventAlreadyOpened = "The Event is already open.";
         private static string MessagesEventAlreadyClosed = "The Event is already closed.";
@@ -606,6 +607,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
             CheckCfg<string>("Messages - Event Error - No SpawnFile", ref MessagesEventNoSpawnFile);
+            CheckCfg<string>("Messages - Event Error - SpawnFile Is Null", ref MessagesErrorSpawnfileIsNull);
             CheckCfg<string>("Messages - Event Error - Already Opened", ref MessagesEventAlreadyOpened);
             CheckCfg<string>("Messages - Event Error - Already Closed", ref MessagesEventAlreadyClosed);
             CheckCfg<string>("Messages - Event Error - No Games Undergoing", ref MessagesEventNoGamePlaying);
@@ -1153,6 +1155,7 @@ namespace Oxide.Plugins
         }
         object SelectSpawnfile(string name)
         {
+            if (name == null) return MessagesErrorSpawnfileIsNull;
             if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
             if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
             
