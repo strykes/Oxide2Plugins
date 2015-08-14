@@ -1,5 +1,3 @@
-// Reference: Oxide.Ext.Rust
-
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -11,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Jail", "Reneb", "2.0.5", ResourceId = 794)]
+    [Info("Jail", "Reneb", "2.0.8")]
     class Jail : RustPlugin
     {
         [PluginReference] Plugin ZoneManager;
@@ -35,6 +33,7 @@ namespace Oxide.Plugins
         public int cachedCount;
         public JailInmate cachedJail;
         public int cachedInterval;
+        public static FieldInfo lastPositionValue;
 
         /////////////////////////////////////////
         // Data Management
@@ -135,6 +134,7 @@ namespace Oxide.Plugins
         {
             LoadData();
             permission.RegisterPermission("canjail", this);
+            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         }
 
         /////////////////////////////////////////
@@ -166,7 +166,7 @@ namespace Oxide.Plugins
             {
                 CheckPlayerExpireTime(player);
                 if (!isInZone(player))
-                    ForcePlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
+                    TeleportPlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
             }
         }
 
@@ -230,10 +230,10 @@ namespace Oxide.Plugins
             if (Spawns == null) { Puts(NoSpawnDatabase); return null; }
             if (spawnfile == null) { Puts(NoSpawnFile); return null; }
             var count = Spawns.Call("GetSpawnsCount", spawnfile);
-
+            
             if (count is bool) return null;
             if (Convert.ToInt32(count) == 0) { Puts(EmptySpawnFile); return null; }
-
+            
             return Spawns.Call("GetRandomSpawn", spawnfile, count);
         }
 
@@ -255,16 +255,48 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         // Random functions
         /////////////////////////////////////////
-        void ForcePlayerPosition(BasePlayer player, Vector3 destination)
+        /*void ForcePlayerPosition(BasePlayer player, Vector3 destination)
         {
             player.transform.position = destination;
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
             player.TransformChanged();
+        }*/
+        static void PutToSleep(BasePlayer player)
+        {
+            if (!player.IsSleeping())
+            {
+                player.SetPlayerFlag(BasePlayer.PlayerFlags.Sleeping, true);
+                if (!BasePlayer.sleepingPlayerList.Contains(player))
+                {
+                    BasePlayer.sleepingPlayerList.Add(player);
+                }
+                player.CancelInvoke("InventoryUpdate");
+                player.inventory.crafting.CancelAll(true);
+            }
         }
 
+        void TeleportPlayerPosition(BasePlayer player, Vector3 destination)
+        {
+            PutToSleep(player);
+
+            player.transform.position = destination;
+            lastPositionValue.SetValue(player, player.transform.position);
+            player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { destination });
+            player.TransformChanged();
+
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, true);
+            player.UpdateNetworkGroup();
+
+            player.SendNetworkUpdateImmediate(false);
+            player.ClientRPCPlayer(null, player, "StartLoading");
+            player.SendFullSnapshot();
+            player.SetPlayerFlag(BasePlayer.PlayerFlags.ReceivingSnapshot, false);
+            player.ClientRPCPlayer(null, player, "FinishLoading");
+        }
+		
         int CurrentTime() { return System.Convert.ToInt32(System.DateTime.UtcNow.Subtract(epoch).TotalSeconds); }
 
-
+        
         private object FindPlayer(string tofind)
         {
             if (tofind.Length == 17)
@@ -338,7 +370,7 @@ namespace Oxide.Plugins
         {
             if (jailinmates[player.userID.ToString()] == null) return;
             ZoneManager.Call("AddPlayerToZoneKeepinlist", "Jail", player);
-            ForcePlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
+            TeleportPlayerPosition(player, jailinmates[player.userID.ToString()].GetJailPosition());
             SendReply(player, YouAreInJail);
         }
 
@@ -362,7 +394,7 @@ namespace Oxide.Plugins
             if (jailinmates[player.userID.ToString()] == null) return;
             cachedJail = jailinmates[player.userID.ToString()];
             ZoneManager.Call("RemovePlayerFromZoneKeepinlist", "Jail", player);
-            ForcePlayerPosition(player, cachedJail.GetFreePosition());
+            TeleportPlayerPosition(player, cachedJail.GetFreePosition());
             SendReply(player, YouAreFree);
         }
 
@@ -457,14 +489,51 @@ namespace Oxide.Plugins
 
             SendReply(player, string.Format("{0} was sent to jail",cachedPlayer.displayName.ToString()));
         }
+		[ConsoleCommand("player.jail")]
+        void cmdConsolePlayerJail(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection != null)
+            {
+                if (arg.connection.authLevel < 1)
+                {
+                    SendReply(arg, "You dont have access to this command");
+                    return;
+                }
+            }
+            if (ZoneManager == null) { SendReply(arg, NoZoneManager); return; }
+            if(Spawns == null) { SendReply(arg, NoSpawnDatabase); return; }
+            if(arg.Args.Length == 0)
+            {
+            	SendReply(arg, "player.jail PLAYER/STEAMID optional:TIME");
+                return;
+            }
+            var targetplayer = FindPlayer(arg.Args[0]);
+            if(targetplayer is string)
+            {
+            	SendReply(arg, targetplayer.ToString());
+                return;
+            }
+            cachedPlayer = (BasePlayer)targetplayer;
+            
+            
+            cachedTime = -1;
+            if (arg.Args.Length > 1) int.TryParse(arg.Args[1], out cachedTime);
+            if (cachedTime != -1) cachedTime += CurrentTime();
+            
+            AddPlayerToJail(cachedPlayer, cachedTime);
+            SendPlayerToJail(cachedPlayer);
 
+            CheckPlayerExpireTime(cachedPlayer);
+
+            SendReply(arg, string.Format("{0} was sent to jail",cachedPlayer.displayName.ToString()));
+        }
         [ChatCommand("free")]
         void cmdChatFree(BasePlayer player, string command, string[] args)
         {
             if (!hasPermission(player)) { SendReply(player, NoPermission); return; }
             if (ZoneManager == null) { SendReply(player, NoZoneManager); return; }
             if (Spawns == null) { SendReply(player, NoSpawnDatabase); return; }
-            if (args.Length == 0) { SendReply(player, "/jail PLAYER option:Time(seconds)"); return; }
+            if (args.Length == 0) { SendReply(player, "/free PLAYER"); return; }
 
             var target = FindPlayer(args[0].ToString());
             if (target is string) { SendReply(player, target.ToString()); return; }
@@ -477,7 +546,39 @@ namespace Oxide.Plugins
 
             SendReply(player, string.Format("{0} was freed from jail", cachedPlayer.displayName.ToString()));
         }
+		[ConsoleCommand("player.free")]
+        void cmdConsolePlayerFree(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection != null)
+            {
+                if (arg.connection.authLevel < 1)
+                {
+                    SendReply(arg, "You dont have access to this command");
+                    return;
+                }
+            }
+            if (ZoneManager == null) { SendReply(arg, NoZoneManager); return; }
+            if(Spawns == null) { SendReply(arg, NoSpawnDatabase); return; }
+            if(arg.Args.Length == 0)
+            {
+            	SendReply(arg, "player.free PLAYER/STEAMID");
+                return;
+            }
+            var targetplayer = FindPlayer(arg.Args[0]);
+            if(targetplayer is string)
+            {
+            	SendReply(arg, targetplayer.ToString());
+                return;
+            }
+            cachedPlayer = (BasePlayer)targetplayer;
+            
+            SendPlayerOutOfJail(cachedPlayer);
+            RemovePlayerFromJail(cachedPlayer);
 
+            CheckPlayerExpireTime(cachedPlayer);
+
+            SendReply(arg, string.Format("{0} was freed from jail", cachedPlayer.displayName.ToString()));
+        }
 
         /////////////////////////////////////////
         // Config handler
