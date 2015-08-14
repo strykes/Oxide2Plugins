@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.1.1", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.1.2", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -141,7 +141,7 @@ namespace Oxide.Plugins
                 }
                 foreach (string fielditem in (List<string>)zonefieldlist)
                 {
-                    if (fielditem != "Location" && fielditem != "ID" && fielditem != "name")
+                    if (fielditem != "Location" && fielditem != "ID" && fielditem != "name" && fielditem != "radius")
                     {
                         if (!EventZoneConfig.ContainsKey(fielditem))
                             EventZoneConfig.Add(fielditem, false);
