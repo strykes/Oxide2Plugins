@@ -9,7 +9,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb & Mughisi & Cryptoc", "2.2.17", ResourceId = 651)]
+    [Info("RemoverTool", "Reneb & Mughisi & Cryptoc", "2.2.18", ResourceId = 651)]
     class RemoverTool : RustPlugin
     {
     	private static DateTime epoch;
@@ -369,6 +369,9 @@ namespace Oxide.Plugins
         {
             if (entity is BasePlayer) return false;
             if (ttype == "admin") return true;
+            object externalPlugins = Interface.CallHook("canRemove", player);
+            if (externalPlugins != null) { SendReply(player,externalPlugins.ToString()); return false; }
+
             if (entity as BuildingBlock)
             {
                 object returnhook = Interface.GetMod().CallHook("FindBlockData", new object[] { entity as BuildingBlock });
