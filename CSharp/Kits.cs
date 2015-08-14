@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.1.2")]
+    [Info("Kits", "Reneb", "2.1.3")]
     class Kits : RustPlugin
     {
         //////////////////////////////////////////////////////////////////////////////////////////
@@ -294,7 +294,6 @@ namespace Oxide.Plugins
         {
             var kitEnum = KitsConfig.GetEnumerator();
             int authlevel = GetSourceLevel(source);
-
             while (kitEnum.MoveNext())
             {
                 int kitlvl = 0;
@@ -307,7 +306,10 @@ namespace Oxide.Plugins
                 if (kitdata.ContainsKey("description"))
                     kitdescription = kitdata["description"].ToString();
                 if (kitdata.ContainsKey("level"))
+                {
+                    kitlvl = (int)kitdata["level"];
                     options = string.Format("{0} - {1}+", options, kitlvl.ToString());
+                }
 
                 foreach (string name in permNames)
                 {
