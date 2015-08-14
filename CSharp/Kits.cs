@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.1.1")]
+    [Info("Kits", "Reneb", "2.1.2")]
     class Kits : RustPlugin
     {
         //////////////////////////////////////////////////////////////////////////////////////////
@@ -655,6 +655,12 @@ namespace Oxide.Plugins
         {
             string reason;
 
+            if (!CheckIfCanRedeem(player, kitname, out reason))
+            {
+                SendTheReply(player, reason);
+                return;
+            }
+
             if (checkForNPC)
             {
                 if (!CheckAroundForNPC(player, kitname))
@@ -673,12 +679,6 @@ namespace Oxide.Plugins
                     return;
                 }
             }
-            if (!CheckIfCanRedeem(player, kitname, out reason))
-            {
-                SendTheReply(player, reason);
-                return;
-            }
-
 
             object wasGiven = GiveKit(player, kitname);
             if ((wasGiven is bool) && !((bool)wasGiven))
