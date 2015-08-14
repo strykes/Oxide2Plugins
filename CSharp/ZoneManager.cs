@@ -8,7 +8,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.27", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.0.29", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
         ////////////////////////////////////////////
@@ -361,6 +361,7 @@ namespace Oxide.Plugins
             public string noplayerloot;
             public string nocorpse;
             public string nosuicide;
+            public string noremove;
             public string killsleepers;
             public string radiation;
             public string enter_message;
@@ -374,6 +375,7 @@ namespace Oxide.Plugins
             public ZoneDefinition(Vector3 position)
             {
                 this.radius = "20";
+                this.noremove = "true";
                 Location = new ZoneLocation(position, this.radius);
             }
 
@@ -699,6 +701,16 @@ namespace Oxide.Plugins
         }
 
         /////////////////////////////////////////
+        // canRemove(BasePlayer player)
+        // Called from Teleportation System (Mughisi) when a player tries to teleport
+        /////////////////////////////////////////
+        object canRemove(BasePlayer player)
+        {
+            if (hasTag(player, "noremove")) { return "You may not use the remover tool in this area"; }
+            return null;
+        }
+
+        /////////////////////////////////////////
         // External calls to this plugin
         /////////////////////////////////////////
 
@@ -713,21 +725,22 @@ namespace Oxide.Plugins
         bool CreateOrUpdateZone(string ZoneID, string[] args, Vector3 position = default(Vector3))
         {
             var zonedef = zonedefinitions[ZoneID];
+           
             if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
             if (zonedef == null)
             {
+                
                 zonedef = new ZoneDefinition();
                 zonedef.ID = ZoneID;
+                
             }
-
             string editvalue;
             for (int i = 0; i < args.Length; i = i + 2)
             {
-
                 cachedField = GetZoneField(args[i]);
                 if (cachedField == null) continue;
 
-                switch (args[i + 1])
+                switch (args[i + 1].ToLower())
                 {
                     case "true":
                     case "1":
@@ -744,14 +757,19 @@ namespace Oxide.Plugins
                         break;
                 }
                 cachedField.SetValue(zonedef, editvalue);
-                if (args[i].ToLower() == "radius") { if (zonedef.Location != null) zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue); }
+                if (args[i].ToLower() == "radius")
+                {
+                    if (zonedef.Location != null)
+                        zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue);
+                }
             }
-
+            
             if (position != default(Vector3)) { zonedef.Location = new ZoneLocation((Vector3)position, (zonedef.radius != null) ? zonedef.radius : "20"); }
 
             zonedefinitions[ZoneID] = zonedef;
             storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
             SaveData();
+
             if (zonedef.Location == null) return false;
             RefreshZone(ZoneID);
             return true;
