@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.0")]
+    [Info("Hotel", "Reneb", "1.0.2", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -36,7 +36,7 @@ namespace Oxide.Plugins
         public static Vector3 Vector3UP = new Vector3(0f, 0.1f, 0f);
         public static Vector3 Vector3UP2 = new Vector3(0f, 1.5f, 0f);
         public FieldInfo fieldWhiteList;
-
+        public static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 0f);
 
         ////////////////////////////////////////////////////////////
         // Config Management
@@ -55,9 +55,14 @@ namespace Oxide.Plugins
         static string MessageHotelNewCreated = "You've created a new Hotel named: {0}. Now say /hotel to continue configuring your hotel.";
         static string MessageErrorNotAllowedToEnter = "You are not allowed to enter this room, it's already been used my someone else";
 
+        static string MessageErrorAlreadyGotRoom = "You already have a room in this hotel!";
+        static string MessageErrorPermissionsNeeded = "You must have the {0} permission to rent a room here";
+        static string MessageRentUnlimited = "You now have access to this room for an unlimited time";
+        static string MessageRentTimeLeft = "You now have access to this room. You are allowed to keep this room for {0}";
+
         static string GUIBoardAdmin = "                             <color=green>HOTEL MANAGER</color> \n\nHotel Name:      {name} \n\nHotel Location: {loc} \nHotel Radius:     {hrad} \n\nRooms Radius:   {rrad} \nRooms:                {rnum} \n<color=red>Occupied:            {onum}</color>";
         static string GUIBoardPlayer = "                             <color=green>{name}</color> \n\nRooms:        <color=green>{fnum}</color>/{rnum} ";
-        static string GUIBoardPlayerRoom = "\n\n                        Your Room\nJoined:         {jdate}\nTimeleft:      {timeleft} seconds.";
+        static string GUIBoardPlayerRoom = "\n\n                        Your Room\nJoined:         {jdate}\nTimeleft:      {timeleft}.";
         static string GUIBoardPlayerMaintenance = "                             <color=green>{name}</color> \n\nHotel is under maintenance. Please wait couple seconds/minutes until the admin is finished.";
         static string xmin = "0.7";
         static string xmax = "1.0";
@@ -75,10 +80,6 @@ namespace Oxide.Plugins
         static bool UseNPCShowPlayerGUI = true;
         static bool OpenDoorShowRoom = false;
         static bool OpenDoorPlayerGUI = true;
-
-        //static string RentRoomAllowedMax = "2";
-        //static string RentRoomAllowedMaxPerHotel = "1";
-        static string RentRoomDuration = "172800";
 
         public static string adminguijson = @"[  
 			{ 
@@ -156,6 +157,60 @@ namespace Oxide.Plugins
 		]
 		";
 
+        protected override void LoadDefaultConfig() { }
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+
+        void Init()
+        {
+            CheckCfg<int>("Configure - Level Required", ref authlevel);
+
+            CheckCfg<string>("AdminMessage - Hotel - New - Help", ref MessageHotelNewHelp);
+            CheckCfg<string>("AdminMessage - Hotel - New - Confirm", ref MessageHotelNewCreated);
+            CheckCfg<string>("AdminMessage - Hotel - Edit - Help", ref MessageHotelEditHelp);
+            CheckCfg<string>("AdminMessage - Hotel - Edit - Confirm", ref MessageHotelEditEditing);
+            CheckCfg<string>("AdminMessage - Hotel - Error - Doesnt Exist", ref MessageErrorEditDoesntExist);
+            CheckCfg<string>("AdminMessage - Hotel - Error - Already Exist", ref MessageErrorAlreadyExist);
+            CheckCfg<string>("AdminMessage - Hotel - Error - Not Allowed", ref MessageErrorNotAllowed);
+            CheckCfg<string>("AdminMessage - Hotel - Error - Already Editing Hotel", ref MessageAlreadyEditing);
+
+            CheckCfg<string>("PlayerMessage - Hotel Maintenance", ref MessageMaintenance);
+            CheckCfg<string>("PlayerMessage - Error - Unavaible Room", ref MessageErrorUnavaibleRoom);
+            CheckCfg<string>("PlayerMessage - Error - Restricted", ref MessageErrorNotAllowedToEnter);
+            CheckCfg<string>("PlayerMessage - Error - Already have a Room", ref MessageErrorAlreadyGotRoom);
+            CheckCfg<string>("PlayerMessage - Error - Need Permissions", ref MessageErrorPermissionsNeeded);
+            CheckCfg<string>("PlayerMessage - Unlimited Access", ref MessageRentUnlimited);
+            CheckCfg<string>("PlayerMessage - Limited Access", ref MessageRentTimeLeft);
+
+            CheckCfg<string>("GUI - Admin - Board Message", ref GUIBoardAdmin);
+            CheckCfg<string>("GUI - Player - Board Message", ref GUIBoardPlayer);
+            CheckCfg<string>("GUI - Player - Room Board Message ", ref GUIBoardPlayerRoom);
+            CheckCfg<string>("GUI - Player - Maintenance Board Message", ref GUIBoardPlayerMaintenance);
+            CheckCfg<string>("GUI - Player - minX", ref pxmin);
+            CheckCfg<string>("GUI - Player - maxX", ref pxmax);
+            CheckCfg<string>("GUI - Player - minY", ref pymin);
+            CheckCfg<string>("GUI - Player - maxY", ref pymax);
+            CheckCfg<int>("GUI - Player - Board Remove Timer", ref pTimeOut);
+            CheckCfg<string>("GUI - Admin - minX", ref xmin);
+            CheckCfg<string>("GUI - Admin - maxX", ref xmax);
+            CheckCfg<string>("GUI - Admin - minY", ref ymin);
+            CheckCfg<string>("GUI - Admin - maxY", ref ymax);
+            CheckCfg<bool>("GUI - Player - Show Board When Entering Hotel Zone", ref EnterZoneShowPlayerGUI);
+            CheckCfg<bool>("GUI - Player - Show Room When Entering Hotel Zone", ref EnterZoneShowRoom);
+            CheckCfg<bool>("GUI - Player - Show Board When Talking To NPC", ref UseNPCShowPlayerGUI);
+            CheckCfg<bool>("GUI - Player - Show Room When Talking To NPC", ref UseNPCShowRoom);
+            CheckCfg<bool>("GUI - Player - Show Board When Opening Room Door", ref OpenDoorPlayerGUI);
+            CheckCfg<bool>("GUI - Player - Show Room When Opening Room Door", ref OpenDoorShowRoom);
+            SaveConfig();
+        }
+
+
         ////////////////////////////////////////////////////////////
         // Data Management
         ////////////////////////////////////////////////////////////
@@ -218,7 +273,7 @@ namespace Oxide.Plugins
             }
             public Quaternion Rot()
             {
-                if (rot == default(Quaternion))
+                if (rot.w == 0f)
                     rot = new Quaternion(float.Parse(rx), float.Parse(ry), float.Parse(rz), float.Parse(rw));
                 return rot;
             }
@@ -274,7 +329,9 @@ namespace Oxide.Plugins
             public string z;
             public string r;
             public string rr;
+            public string rd;
             public string npc;
+            public string p;
 
             public Dictionary<string, Room> rooms;
 
@@ -294,7 +351,9 @@ namespace Oxide.Plugins
                 this.y = "0";
                 this.z = "0";
                 this.r = "60";
-                this.rr = "5";
+                this.rr = "10";
+                this.rd = "86400";
+                this.p = null;
                 this.rooms = new Dictionary<string, Room>();
                 enabled = false;
             }
@@ -402,6 +461,15 @@ namespace Oxide.Plugins
             codelock.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
         }
 
+        void LoadPermissions()
+        {
+            foreach(HotelData hotel in storedData.Hotels)
+            {
+                if (hotel.p == null) continue;
+                if (!permission.PermissionExists(hotel.p)) permission.RegisterPermission(hotel.p, this);
+            }
+        }
+
         ////////////////////////////////////////////////////////////
         // Oxide Hooks
         ////////////////////////////////////////////////////////////
@@ -419,6 +487,11 @@ namespace Oxide.Plugins
             fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             hotelTimer = timer.Repeat(60f, 0, () => CheckTimeOutRooms());
             LoadData();
+        }
+
+        void OnServerInitialized()
+        {
+            LoadPermissions();
         }
 
         object CanUseDoor(BasePlayer player, CodeLock codelock)
@@ -495,30 +568,31 @@ namespace Oxide.Plugins
                 }
             }
         }
-        static List<Vector3> FindRoomsFromPosition( Vector3 position, float radius )
+        static List<Door> FindDoorsFromPosition( Vector3 position, float radius )
         {
-            List<Vector3> listLocks = new List<Vector3>();
+            List<Door> listLocks = new List<Door>();
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(position, radius, constructionColl))
             {
                 Door door = col.GetComponentInParent<Door>();
                 if (door == null) continue;
                 if (!door.HasSlot(BaseEntity.Slot.Lock)) continue;
-
+                if (door.GetSlot(BaseEntity.Slot.Lock) == null) continue;
                 CloseDoor(door);
-                listLocks.Add(door.transform.position);
+                listLocks.Add(door);
             }
             return listLocks;
         } 
 
         static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
         {
-            List<Vector3> listLocks = FindRoomsFromPosition(position, radius);
+            List<Door> listLocks = FindDoorsFromPosition(position, radius);
 
             Hash<Deployable, string> deployables = new Hash<Deployable, string>();
             Dictionary<string, Room> tempRooms = new Dictionary<string, Room>();
 
-            foreach (Vector3 pos in listLocks )
+            foreach (Door door in listLocks )
 			{
+                Vector3 pos = door.transform.position;
                 Room newRoom = new Room(pos);
                 newRoom.defaultDeployables = new List<DeployableItem>();
                 List<Deployable> founditems = new List<Deployable>();
@@ -531,7 +605,15 @@ namespace Oxide.Plugins
                     founditems.Add(deploy);
 
                     bool canReach = true;
-                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (pos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, pos) - 0.2f, constructionColl)) { canReach = false; break; }
+                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (pos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, pos) - 0.2f, constructionColl)) {
+                        if(rayhit.collider.GetComponentInParent<Door>() != null)
+                        {
+                            if (rayhit.collider.GetComponentInParent<Door>() == door)
+                                continue;
+                        }
+                        canReach = false;
+                        break;
+                    }
                     if (!canReach) continue;
 
                     if (deployables[deploy] != null) deployables[deploy] = "0";
@@ -565,7 +647,15 @@ namespace Oxide.Plugins
             {
                 if(pair.Value.renter == player.userID.ToString())
                 {
-                    SendReply(player, "You already have a room in this hotel!");
+                    SendReply(player, MessageErrorAlreadyGotRoom);
+                    return false;
+                }
+            }
+            if(hotel.p != null)
+            {
+                if(!permission.UserHasPermission(player.userID.ToString(), hotel.p))
+                {
+                    SendReply(player, string.Format(MessageErrorPermissionsNeeded, hotel.p));
                     return false;
                 }
             }
@@ -638,7 +728,7 @@ namespace Oxide.Plugins
             BaseEntity door = codelock.GetParentEntity();
             Vector3 block = door.transform.position;
 
-            EmptyDeployablesRoom(block, Convert.ToSingle(hotel.rr));
+            EmptyDeployablesRoom(door, Convert.ToSingle(hotel.rr));
 
             foreach (DeployableItem deploy in room.defaultDeployables) { SpawnDeployable(deploy.prefabname, deploy.Pos(), deploy.Rot(), player); }
 
@@ -649,16 +739,17 @@ namespace Oxide.Plugins
             room.renter = player.userID.ToString();
             room.checkingTime = LogTime().ToString();
 
-            room.checkoutTime = (LogTime() + double.Parse(RentRoomDuration)).ToString();
+            room.checkoutTime = hotel.rd == "0" ? "0" : (LogTime() + double.Parse(hotel.rd)).ToString();
 
             LockLock(codelock);
             OpenDoor(door as Door);
 
-            SendReply(player, string.Format("You now have access this room. You are allowed to keep this room for {0} seconds", RentRoomDuration));
+            SendReply(player, hotel.rd == "0" ? MessageRentUnlimited : string.Format(MessageRentTimeLeft, ConvertSecondsToBetter( hotel.rd )));
         }
-        void EmptyDeployablesRoom( Vector3 doorpos, float radius )
+        void EmptyDeployablesRoom( BaseEntity door, float radius )
         {
             var founditems = new List<Deployable>();
+            Vector3 doorpos = door.transform.position;
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(doorpos, radius, deployableColl))
             {
                 Deployable deploy = col.GetComponentInParent<Deployable>();
@@ -666,7 +757,12 @@ namespace Oxide.Plugins
                 if (founditems.Contains(deploy)) continue;
 
                 bool canReach = true;
-                foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (doorpos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, doorpos) - 0.2f, constructionColl)) { canReach = false; break; }
+                foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (doorpos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, doorpos) - 0.2f, constructionColl)) {
+                    if (rayhit.collider.GetComponentInParent<BaseEntity>() == door)
+                        continue;
+                    canReach = false;
+                    break;
+                }
                 if (!canReach) continue;
 
                 foreach (Collider col2 in UnityEngine.Physics.OverlapSphere(doorpos, radius, constructionColl))
@@ -699,7 +795,7 @@ namespace Oxide.Plugins
             BaseEntity door = codelock.GetParentEntity();
             Vector3 block = door.transform.position;
 
-            EmptyDeployablesRoom(block, Convert.ToSingle(hotel.rr));
+            EmptyDeployablesRoom(door, Convert.ToSingle(hotel.rr));
             foreach (DeployableItem deploy in room.defaultDeployables) { SpawnDeployable(deploy.prefabname, deploy.Pos(), deploy.Rot(), null); }
 
             fieldWhiteList.SetValue(codelock, new List<ulong>());
@@ -776,7 +872,27 @@ namespace Oxide.Plugins
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
             playerguiTimers[player] = timer.Once(pTimeOut, () => RemovePlayerHotelGUI(player));
         }
-
+        string ConvertSecondsToBetter(string seconds)
+        {
+            return ConvertSecondsToBetter(double.Parse(seconds));
+        }
+        string ConvertSecondsToBetter( double seconds )
+        {
+            TimeSpan t = TimeSpan.FromSeconds(seconds);
+            return string.Format("{0:D2}d:{1:D2}h:{2:D2}m:{3:D2}s",
+                t.Days,
+                t.Hours,
+                t.Minutes,
+                t.Seconds);
+        }
+        string ConvertSecondsToDate(string seconds)
+        {
+            return ConvertSecondsToDate(double.Parse(seconds));
+        }
+        string ConvertSecondsToDate( double seconds )
+        {
+            return epoch.AddSeconds(seconds).ToLocalTime().ToString();
+        }
         string CreatePlayerGUIMsg(BasePlayer player, HotelData hotel, string GUIMsg)
         {
             string newguimsg = string.Empty;
@@ -798,7 +914,7 @@ namespace Oxide.Plugins
                         onumint++;
                         if(pair.Value.renter == player.userID.ToString())
                         {
-                            roomgui = GUIBoardPlayerRoom.Replace("{jdate}",pair.Value.checkingTime).Replace("{timeleft}", Math.Ceiling(pair.Value.CheckOutTime() - LogTime()).ToString());
+                            roomgui = GUIBoardPlayerRoom.Replace("{jdate}", ConvertSecondsToDate(pair.Value.checkingTime)).Replace("{timeleft}", pair.Value.CheckOutTime() == 0.0 ? "Unlimited" : ConvertSecondsToBetter(pair.Value.CheckOutTime() - LogTime()));
                         }
                     }
                     else fnumint++;
@@ -911,7 +1027,6 @@ namespace Oxide.Plugins
                 if (hoteldata.hotelname.ToLower() == editedhotel.hotelname.ToLower())
                 {
                     removeHotel = hoteldata;
-                    
                     break;
                 }
             }
@@ -925,6 +1040,7 @@ namespace Oxide.Plugins
             storedData.Hotels.Add(editedhotel);
 
             SaveData();
+            LoadPermissions();
 
             EditHotel.Remove(player.userID.ToString());
 
@@ -975,7 +1091,11 @@ namespace Oxide.Plugins
             {
                 SendReply(player, "==== Available options ====");
                 SendReply(player, "/hotel location => sets the center hotel location where you stand");
+                SendReply(player, "/hotel npc NPCID => sets the NPC that is hooked to this hotel (for UseNPC items)");
+                SendReply(player, "/hotel permission PERMISSIONNAME => sets the oxide permissions that the player needs to rent a room here");
                 SendReply(player, "/hotel radius XX => sets the radius of the hotel (the entire structure of the hotel needs to be covered by the zone");
+                SendReply(player, "/hotel rentduration XX => Sets the duration of a default rent in this hotel. 0 is infinite.");
+                SendReply(player, "/hotel reset => resets the hotel data (all players and rooms but keeps the hotel)");
                 SendReply(player, "/hotel roomradius XX => sets the radius of the rooms");
                 SendReply(player, "/hotel rooms => refreshs the rooms (detects new rooms, deletes rooms if they don't exist anymore, if rooms are in use they won't get taken in count)");
             }
@@ -994,6 +1114,18 @@ namespace Oxide.Plugins
 
                         SendReply(player, string.Format("Location set to {0}", player.transform.position.ToString()));
                         break;
+                    case "rentduration":
+                        if (args.Length == 1)
+                        {
+                            SendReply(player, "/hotel rentduration XX");
+                            return;
+                        }
+                        int rd = 86400;
+                        int.TryParse(args[1], out rd);
+
+                        (EditHotel[player.userID.ToString()]).rd = rd.ToString();
+                        SendReply(player, string.Format("Rent Duration set to {0}", rd == 0 ? "Infinite" : rd.ToString()));
+                        break;
                     case "roomradius":
                         if (args.Length == 1)
                         {
@@ -1008,6 +1140,17 @@ namespace Oxide.Plugins
 
                         SendReply(player, string.Format("RoomRadius set to {0}", args[1]));
                         break;
+                    case "permission":
+                        if (args.Length == 1)
+                        {
+                            SendReply(player, "/hotel permission PERMISSIONNAME => Sets a permission that the player must have to rent in this hotel. put null or false to cancel the permission");
+                            return;
+                        }
+                        string setnewperm = (args[1].ToLower() == "null" || args[1].ToLower() == "false" || args[1].ToLower() == "0") ? null : args[1];
+                        (EditHotel[player.userID.ToString()]).p = setnewperm;
+
+                        SendReply(player, string.Format("Permissions set to {0}", setnewperm == null ? "null" : setnewperm));
+                        break;
                     case "npc":
                         if (args.Length == 1)
                         {
@@ -1019,10 +1162,12 @@ namespace Oxide.Plugins
                         if (npcid < 1) return;
 
                         (EditHotel[player.userID.ToString()]).npc = npcid.ToString();
+                        SendReply(player, string.Format("NPC ID hooked to this hotel: {0}", npcid.ToString()));
                         break;
                     case "rooms":
                         SendReply(player, "Rooms Refreshing ...");
                         (EditHotel[player.userID.ToString()]).RefreshRooms();
+
                         SendReply(player, "Rooms Refreshed");
                         break;
                     case "reset":
@@ -1060,7 +1205,16 @@ namespace Oxide.Plugins
             ShowHotelGrid(player);
             RefreshAdminHotelGUI(player);
         }
-
+        [ChatCommand("hotel_list")]
+        void cmdChatHotelList(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            SendReply(player, "======= Hotel List ======");
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                SendReply(player, string.Format("{0} - {1}", hotel.hotelname, hotel.rooms.Count.ToString()));
+            }
+        }
 
         [ChatCommand("hotel_edit")]
         void cmdChatHotelEdit(BasePlayer player, string command, string[] args)
@@ -1148,7 +1302,6 @@ namespace Oxide.Plugins
             if (args.Length == 0) { SendReply(player, MessageHotelNewHelp); return; }
 
             string hname = args[0];
-            Debug.Log(storedData.Hotels.Count.ToString());
             if (storedData.Hotels.Count > 0)
             {
                 foreach (HotelData hotel in storedData.Hotels)
