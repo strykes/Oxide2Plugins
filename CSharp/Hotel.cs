@@ -463,6 +463,7 @@ namespace Oxide.Plugins
 
         void LoadPermissions()
         {
+            if (!permission.PermissionExists("canhotel")) permission.RegisterPermission("canhotel", this);
             foreach(HotelData hotel in storedData.Hotels)
             {
                 if (hotel.p == null) continue;
@@ -480,7 +481,7 @@ namespace Oxide.Plugins
             hotelTimer.Destroy();
         }
 
-        void Loaded()
+        void of
         {
             adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
             playerguijson = playerguijson.Replace("{pxmin}", pxmin).Replace("{pxmax}", pxmax).Replace("{pymin}", pymin).Replace("{pymax}", pymax);
@@ -788,7 +789,7 @@ namespace Oxide.Plugins
         {
             CodeLock codelock = FindCodeLockByPos(room.Pos());
             if (codelock == null) return;
-            ResetRoom(codelock, hotel, room);
+            I(codelock, hotel, room);
         }
         void ResetRoom( CodeLock codelock, HotelData hotel, Room room )
         {
