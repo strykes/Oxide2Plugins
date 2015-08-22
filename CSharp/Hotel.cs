@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.2", ResourceId = 1298)]
+    [Info("Hotel", "Reneb", "1.0.5", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -36,6 +36,7 @@ namespace Oxide.Plugins
         public static Vector3 Vector3UP = new Vector3(0f, 0.1f, 0f);
         public static Vector3 Vector3UP2 = new Vector3(0f, 1.5f, 0f);
         public FieldInfo fieldWhiteList;
+        public FieldInfo serverinput;
         public static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 0f);
 
         ////////////////////////////////////////////////////////////
@@ -463,7 +464,7 @@ namespace Oxide.Plugins
 
         void LoadPermissions()
         {
-            if (!permission.PermissionExists("canhotel")) permission.RegisterPermission("canhotel", this);
+        	if (!permission.PermissionExists("canhotel")) permission.RegisterPermission("canhotel", this);
             foreach(HotelData hotel in storedData.Hotels)
             {
                 if (hotel.p == null) continue;
@@ -481,11 +482,12 @@ namespace Oxide.Plugins
             hotelTimer.Destroy();
         }
 
-        void of
+        void Loaded()
         {
             adminguijson = adminguijson.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
             playerguijson = playerguijson.Replace("{pxmin}", pxmin).Replace("{pxmax}", pxmax).Replace("{pymin}", pymin).Replace("{pymax}", pymax);
             fieldWhiteList = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             hotelTimer = timer.Repeat(60f, 0, () => CheckTimeOutRooms());
             LoadData();
         }
@@ -497,6 +499,7 @@ namespace Oxide.Plugins
 
         object CanUseDoor(BasePlayer player, CodeLock codelock)
         {
+        	if (codelock == null) return null;
             BaseEntity parententity = codelock.GetParentEntity();
             if (parententity == null) return null;
             if (parententity.HasFlag(BaseEntity.Flags.Open)) return null;
@@ -789,7 +792,7 @@ namespace Oxide.Plugins
         {
             CodeLock codelock = FindCodeLockByPos(room.Pos());
             if (codelock == null) return;
-            I(codelock, hotel, room);
+            ResetRoom(codelock, hotel, room);
         }
         void ResetRoom( CodeLock codelock, HotelData hotel, Room room )
         {
@@ -1292,6 +1295,135 @@ namespace Oxide.Plugins
             storedData.Hotels = new HashSet<HotelData>();
             SaveData();
             SendReply(player, "Hotels were all deleted");
+
+        }
+        
+        
+        BuildingBlock FindBlockFromRay(Vector3 Pos, Vector3 Aim)
+        {
+            var hits = UnityEngine.Physics.RaycastAll(Pos, Aim);
+            float distance = 100000f;
+            object target = null;
+            foreach (var hit in hits)
+            {
+                if (hit.collider.GetComponentInParent<BuildingBlock>() != null)
+                {
+                    if (hit.distance < distance)
+                    {
+                        distance = hit.distance;
+                        target = hit.collider.GetComponentInParent<BuildingBlock>();
+                    }
+                }
+            }
+            return target;
+        }
+        Vector3 RayForDoor( BasePlayer player )
+        {
+        	var input = serverinput.GetValue(player) as InputState;
+            var currentRot = Quaternion.Euler(input.current.aimAngles);
+            BuildingBlock target = FindBlockFromRay(player.transform.position, currentRot * Vector3.forward);
+        	if(target == null) return default(Vector3);
+        	if(target.GetComponent<Door>() == null) return default(Vector3);
+        	return target.transform.position;
+        }
+        [ChatCommand("room")]
+        void cmdChatRoom(BasePlayer player, string command, string[] args)
+        {
+            if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
+            string roomid = string.Empty;
+            int argsnum = 0;
+            if( args.Length > 0 )
+            {
+            	string[] roomloc;
+            	roomloc = args[0].Split(":");
+            	if(roomloc.Length == 3)
+            		roomid = args[0];
+            }
+            if(roomid == string.Empty)
+            {
+            	Vector3 doorpos = RayForDoor( player );
+            	if(doorpos == default(Vector3))
+            	{
+            		SendReply(player, "You must look at the door of the room or put the roomid");
+            		return;
+            	}
+            	roomid = string.Format("{0}:{1}:{2}", Mathf.Ceil(doorpos.transform.position.x).ToString(), Mathf.Ceil(doorpos.transform.position.y).ToString(), Mathf.Ceil(doorpos.transform.position.z).ToString() );
+            }
+            else
+            	argsnum++;
+            if(roomid == string.Empty)
+            {
+            	SendReply(player, "Invalid room.");
+            	return;
+            }
+            HotelData targethotel = null;
+            Room targetroom = null;
+            if( !FindCodeLockByRoomID( roomid, out targethotel, out targetroom ) )
+            {
+            	SendReply(player, "No room was detected.");
+            	return;
+            }
+            if(args.Length - argsnum == 0)
+            {
+            	SendReply(player, string.Format("Room ID is: {0} in hotel: {1}", targetroom.roomid, targethotel.hotelname));
+            	SendReply(player, "Options are:");
+            	SendReply(player, "/room \"optional:roomid\" reset => to reset this room");
+            	SendReply(player, "/room \"optional:roomid\" give NAME/STEAMID => to give a player this room");
+            	SendReply(player, "/room \"optional:roomid\" duration XXXX => to set a new duration time for a player (from the time you set the duration)");
+            	return;
+            }
+            if( !targethotel.enabled  )
+            {
+            	SendReply(player, "This hotel is currently being edited by an admin, you can't manage a room from it");
+            	return;
+            }
+            switch( args[ argsnum ] )
+            {
+            	case "reset":
+            		ResetRoom( targethotel, targetroom );
+            		SendReply(player, string.Format("The room {0} was resetted", targetroom.roomid));
+            	break;
+            	
+            	case "duration":
+            		if(targetroom.renter == null)
+            		{
+            			SendReply(player, string.Format("The room {0} has currently no renter, you can't set a duration for it", targetroom.roomid ));
+            			return;
+            		}
+            		if( args.Length == argsnum + 1 )
+            		{
+            			double timeleft = targetroom.CheckOutTime() - LogTime();
+            			SendReply( player, string.Format("The room {0} renter will expire in {1}", targetroom.roomid, targetroom.CheckOutTime() == 0.0 ? "Unlimited" : ConvertSecondsToBetter(timeleft) ));
+            			return;
+            		}
+            		double newtimeleft;
+            		if( !double.TryParse( args[ argsnum + 1 ], out newtimeleft ) )
+            		{
+            			SendReply(player, "/room \"optional:roomid\" duration NEWTIMELEFT");
+            			return;
+            		}
+            		targetroom.checkoutTime = newtimeleft.ToString();
+            		SendReply(player, string.Format("New timeleft for room ID {0} is {1}", targetroom.roomid, newtimeleft.ToString()));
+            	break;
+            	
+            	case "give":
+            		if(targetroom.renter != null)
+            		{
+            			SendReply(player, string.Format("The room {0} is already rented by {1}, reset the room first to set a new renter", targetroom.roomid, targetroom.renter ));
+            			return;
+            		}
+            		if( args.Length == argsnum + 1 )
+            		{
+            			SendReply(player, "/room \"optional:roomid\" give PLAYER/STEAMID");
+            			return;
+            		}
+            		
+            	break;
+            	
+            	default:
+            		SendReply(player, "This is not a valid option, say /room \"optional:roomid\" to see the options");
+            	break;
+            }
 
         }
 
