@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.5", ResourceId = 1298)]
+    [Info("Hotel", "Reneb", "1.0.6", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -464,8 +464,8 @@ namespace Oxide.Plugins
 
         void LoadPermissions()
         {
-        	if (!permission.PermissionExists("canhotel")) permission.RegisterPermission("canhotel", this);
-            foreach(HotelData hotel in storedData.Hotels)
+            if (!permission.PermissionExists("canhotel")) permission.RegisterPermission("canhotel", this);
+            foreach (HotelData hotel in storedData.Hotels)
             {
                 if (hotel.p == null) continue;
                 if (!permission.PermissionExists(hotel.p)) permission.RegisterPermission(hotel.p, this);
@@ -499,7 +499,7 @@ namespace Oxide.Plugins
 
         object CanUseDoor(BasePlayer player, CodeLock codelock)
         {
-        	if (codelock == null) return null;
+            if (codelock == null) return null;
             BaseEntity parententity = codelock.GetParentEntity();
             if (parententity == null) return null;
             if (parententity.HasFlag(BaseEntity.Flags.Open)) return null;
@@ -516,9 +516,9 @@ namespace Oxide.Plugins
             }
             if (targethotel == null) return null;
 
-            if(OpenDoorPlayerGUI)
+            if (OpenDoorPlayerGUI)
                 RefreshPlayerHotelGUI(player, targethotel);
-            if(OpenDoorShowRoom)
+            if (OpenDoorShowRoom)
                 ShowPlayerRoom(player, targethotel);
 
             if (!targethotel.enabled)
@@ -528,13 +528,13 @@ namespace Oxide.Plugins
             }
 
             Room room = FindRoomByDoorAndHotel(targethotel, parententity);
-            if(room == null)
+            if (room == null)
             {
                 SendReply(player, MessageErrorUnavaibleRoom);
                 return false;
             }
 
-            if(room.renter == null)
+            if (room.renter == null)
             {
                 if (!CanRentRoom(player, targethotel)) return false;
                 ResetRoom(codelock, targethotel, room);
@@ -548,11 +548,11 @@ namespace Oxide.Plugins
                 SendReply(player, MessageErrorNotAllowedToEnter);
                 return false;
             }
-            
+
             return true;
         }
 
-       
+
 
         ////////////////////////////////////////////////////////////
         // Room Management Functions
@@ -563,16 +563,16 @@ namespace Oxide.Plugins
             foreach (HotelData hotel in storedData.Hotels)
             {
                 if (!hotel.enabled) continue;
-                foreach(KeyValuePair<string,Room> pair in hotel.rooms)
+                foreach (KeyValuePair<string, Room> pair in hotel.rooms)
                 {
                     if (pair.Value.CheckOutTime() == 0.0) continue;
                     if (pair.Value.CheckOutTime() > currenttime) continue;
-                    
+
                     ResetRoom(hotel, pair.Value);
                 }
             }
         }
-        static List<Door> FindDoorsFromPosition( Vector3 position, float radius )
+        static List<Door> FindDoorsFromPosition(Vector3 position, float radius)
         {
             List<Door> listLocks = new List<Door>();
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(position, radius, constructionColl))
@@ -585,7 +585,7 @@ namespace Oxide.Plugins
                 listLocks.Add(door);
             }
             return listLocks;
-        } 
+        }
 
         static Dictionary<string, Room> FindAllRooms(Vector3 position, float radius, float roomradius)
         {
@@ -594,8 +594,8 @@ namespace Oxide.Plugins
             Hash<Deployable, string> deployables = new Hash<Deployable, string>();
             Dictionary<string, Room> tempRooms = new Dictionary<string, Room>();
 
-            foreach (Door door in listLocks )
-			{
+            foreach (Door door in listLocks)
+            {
                 Vector3 pos = door.transform.position;
                 Room newRoom = new Room(pos);
                 newRoom.defaultDeployables = new List<DeployableItem>();
@@ -609,8 +609,9 @@ namespace Oxide.Plugins
                     founditems.Add(deploy);
 
                     bool canReach = true;
-                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (pos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, pos) - 0.2f, constructionColl)) {
-                        if(rayhit.collider.GetComponentInParent<Door>() != null)
+                    foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (pos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, pos) - 0.2f, constructionColl))
+                    {
+                        if (rayhit.collider.GetComponentInParent<Door>() != null)
                         {
                             if (rayhit.collider.GetComponentInParent<Door>() == door)
                                 continue;
@@ -647,17 +648,17 @@ namespace Oxide.Plugins
 
         bool CanRentRoom(BasePlayer player, HotelData hotel)
         {
-            foreach(KeyValuePair<string, Room> pair in hotel.rooms)
+            foreach (KeyValuePair<string, Room> pair in hotel.rooms)
             {
-                if(pair.Value.renter == player.userID.ToString())
+                if (pair.Value.renter == player.userID.ToString())
                 {
                     SendReply(player, MessageErrorAlreadyGotRoom);
                     return false;
                 }
             }
-            if(hotel.p != null)
+            if (hotel.p != null)
             {
-                if(!permission.UserHasPermission(player.userID.ToString(), hotel.p))
+                if (!permission.UserHasPermission(player.userID.ToString(), hotel.p))
                 {
                     SendReply(player, string.Format(MessageErrorPermissionsNeeded, hotel.p));
                     return false;
@@ -674,9 +675,9 @@ namespace Oxide.Plugins
             position.z = Mathf.Ceil(position.z);
             foreach (HotelData hotel in storedData.Hotels)
             {
-                foreach(KeyValuePair<string,Room> pair in hotel.rooms)
+                foreach (KeyValuePair<string, Room> pair in hotel.rooms)
                 {
-                    if(pair.Value.Pos() == position)
+                    if (pair.Value.Pos() == position)
                     {
                         hoteldata = hotel;
                         roomdata = pair.Value;
@@ -687,14 +688,14 @@ namespace Oxide.Plugins
             return false;
 
         }
-        CodeLock FindCodeLockByRoomID( string roomid )
+        CodeLock FindCodeLockByRoomID(string roomid)
         {
             string[] rpos = roomid.Split(':');
             if (rpos.Length != 3) return null;
 
             return FindCodeLockByPos(new Vector3(Convert.ToSingle(rpos[0]), Convert.ToSingle(rpos[1]), Convert.ToSingle(rpos[2])));
         }
-        CodeLock FindCodeLockByPos( Vector3 pos )
+        CodeLock FindCodeLockByPos(Vector3 pos)
         {
             CodeLock findcode = null;
             foreach (Collider col in UnityEngine.Physics.OverlapSphere(pos, 2f, constructionColl))
@@ -721,13 +722,13 @@ namespace Oxide.Plugins
             BaseEntity entity = GameManager.server.CreateEntity(newPrefab, pos, rot);
             if (entity == null) return;
 
-            if(player != null)
+            if (player != null)
                 entity.SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver);
 
             entity.Spawn(true);
         }
 
-        void NewRoomOwner( CodeLock codelock, BasePlayer player, HotelData hotel, Room room )
+        void NewRoomOwner(CodeLock codelock, BasePlayer player, HotelData hotel, Room room)
         {
             BaseEntity door = codelock.GetParentEntity();
             Vector3 block = door.transform.position;
@@ -748,9 +749,9 @@ namespace Oxide.Plugins
             LockLock(codelock);
             OpenDoor(door as Door);
 
-            SendReply(player, hotel.rd == "0" ? MessageRentUnlimited : string.Format(MessageRentTimeLeft, ConvertSecondsToBetter( hotel.rd )));
+            SendReply(player, hotel.rd == "0" ? MessageRentUnlimited : string.Format(MessageRentTimeLeft, ConvertSecondsToBetter(hotel.rd)));
         }
-        void EmptyDeployablesRoom( BaseEntity door, float radius )
+        void EmptyDeployablesRoom(BaseEntity door, float radius)
         {
             var founditems = new List<Deployable>();
             Vector3 doorpos = door.transform.position;
@@ -761,7 +762,8 @@ namespace Oxide.Plugins
                 if (founditems.Contains(deploy)) continue;
 
                 bool canReach = true;
-                foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (doorpos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, doorpos) - 0.2f, constructionColl)) {
+                foreach (RaycastHit rayhit in UnityEngine.Physics.RaycastAll(deploy.transform.position + Vector3UP, (doorpos + Vector3UP - deploy.transform.position).normalized, Vector3.Distance(deploy.transform.position, doorpos) - 0.2f, constructionColl))
+                {
                     if (rayhit.collider.GetComponentInParent<BaseEntity>() == door)
                         continue;
                     canReach = false;
@@ -788,13 +790,13 @@ namespace Oxide.Plugins
                     deploy.GetComponent<BaseEntity>().KillMessage();
             }
         }
-        void ResetRoom( HotelData hotel, Room room)
+        void ResetRoom(HotelData hotel, Room room)
         {
             CodeLock codelock = FindCodeLockByPos(room.Pos());
             if (codelock == null) return;
             ResetRoom(codelock, hotel, room);
         }
-        void ResetRoom( CodeLock codelock, HotelData hotel, Room room )
+        void ResetRoom(CodeLock codelock, HotelData hotel, Room room)
         {
             BaseEntity door = codelock.GetParentEntity();
             Vector3 block = door.transform.position;
@@ -815,7 +817,7 @@ namespace Oxide.Plugins
         void OnUseNPC(BasePlayer npc, BasePlayer player)
         {
             string npcid = npc.userID.ToString();
-            foreach(HotelData hotel in storedData.Hotels)
+            foreach (HotelData hotel in storedData.Hotels)
             {
                 if (hotel.npc == null) continue;
                 if (hotel.npc != npcid) continue;
@@ -859,17 +861,17 @@ namespace Oxide.Plugins
             RemovePlayerHotelGUI(player);
             string Msg = string.Empty;
             string send = string.Empty;
-            
+
             if (!hotel.enabled)
             {
-                
+
                 Msg = CreatePlayerGUIMsg(player, hotel, GUIBoardPlayerMaintenance);
                 send = playerguijson.Replace("{msg}", Msg);
 
             }
             else
             {
-                Msg = CreatePlayerGUIMsg(player, hotel, GUIBoardPlayer );
+                Msg = CreatePlayerGUIMsg(player, hotel, GUIBoardPlayer);
                 if (Msg == string.Empty) return;
                 send = playerguijson.Replace("{msg}", Msg);
             }
@@ -880,7 +882,7 @@ namespace Oxide.Plugins
         {
             return ConvertSecondsToBetter(double.Parse(seconds));
         }
-        string ConvertSecondsToBetter( double seconds )
+        string ConvertSecondsToBetter(double seconds)
         {
             TimeSpan t = TimeSpan.FromSeconds(seconds);
             return string.Format("{0:D2}d:{1:D2}h:{2:D2}m:{3:D2}s",
@@ -893,7 +895,7 @@ namespace Oxide.Plugins
         {
             return ConvertSecondsToDate(double.Parse(seconds));
         }
-        string ConvertSecondsToDate( double seconds )
+        string ConvertSecondsToDate(double seconds)
         {
             return epoch.AddSeconds(seconds).ToLocalTime().ToString();
         }
@@ -916,7 +918,7 @@ namespace Oxide.Plugins
                     if (pair.Value.renter != null)
                     {
                         onumint++;
-                        if(pair.Value.renter == player.userID.ToString())
+                        if (pair.Value.renter == player.userID.ToString())
                         {
                             roomgui = GUIBoardPlayerRoom.Replace("{jdate}", ConvertSecondsToDate(pair.Value.checkingTime)).Replace("{timeleft}", pair.Value.CheckOutTime() == 0.0 ? "Unlimited" : ConvertSecondsToBetter(pair.Value.CheckOutTime() - LogTime()));
                         }
@@ -962,7 +964,8 @@ namespace Oxide.Plugins
         }
 
         void RemoveAdminHotelGUI(BasePlayer player) { CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "HotelAdmin"); }
-        void RemovePlayerHotelGUI(BasePlayer player) {
+        void RemovePlayerHotelGUI(BasePlayer player)
+        {
             if (player == null || player.net == null) return;
             if (playerguiTimers[player] != null)
                 playerguiTimers[player].Destroy();
@@ -991,9 +994,9 @@ namespace Oxide.Plugins
         void ShowPlayerRoom(BasePlayer player, HotelData hotel)
         {
             Room foundroom = null;
-            foreach(KeyValuePair<string, Room> pair in hotel.rooms)
+            foreach (KeyValuePair<string, Room> pair in hotel.rooms)
             {
-                if(pair.Value.renter == player.userID.ToString())
+                if (pair.Value.renter == player.userID.ToString())
                 {
                     foundroom = pair.Value;
                     break;
@@ -1071,7 +1074,7 @@ namespace Oxide.Plugins
                     break;
                 }
             }
-            
+
             EditHotel.Remove(player.userID.ToString());
 
             SendReply(player, "Hotel Closed without saving.");
@@ -1175,7 +1178,7 @@ namespace Oxide.Plugins
                         SendReply(player, "Rooms Refreshed");
                         break;
                     case "reset":
-                        foreach( KeyValuePair<string,Room> pair in (EditHotel[player.userID.ToString()]).rooms )
+                        foreach (KeyValuePair<string, Room> pair in (EditHotel[player.userID.ToString()]).rooms)
                         {
                             CodeLock codelock = FindCodeLockByRoomID(pair.Key);
                             if (codelock == null) continue;
@@ -1278,7 +1281,7 @@ namespace Oxide.Plugins
                     break;
                 }
             }
-            if(targethotel == null) { SendReply(player, string.Format(MessageErrorEditDoesntExist, args[0])); return; }
+            if (targethotel == null) { SendReply(player, string.Format(MessageErrorEditDoesntExist, args[0])); return; }
 
             storedData.Hotels.Remove(targethotel);
             SaveData();
@@ -1297,13 +1300,13 @@ namespace Oxide.Plugins
             SendReply(player, "Hotels were all deleted");
 
         }
-        
-        
+
+
         BuildingBlock FindBlockFromRay(Vector3 Pos, Vector3 Aim)
         {
             var hits = UnityEngine.Physics.RaycastAll(Pos, Aim);
             float distance = 100000f;
-            object target = null;
+            BuildingBlock target = null;
             foreach (var hit in hits)
             {
                 if (hit.collider.GetComponentInParent<BuildingBlock>() != null)
@@ -1317,14 +1320,29 @@ namespace Oxide.Plugins
             }
             return target;
         }
-        Vector3 RayForDoor( BasePlayer player )
+        Vector3 RayForDoor(BasePlayer player)
         {
-        	var input = serverinput.GetValue(player) as InputState;
+            var input = serverinput.GetValue(player) as InputState;
             var currentRot = Quaternion.Euler(input.current.aimAngles);
             BuildingBlock target = FindBlockFromRay(player.transform.position, currentRot * Vector3.forward);
-        	if(target == null) return default(Vector3);
-        	if(target.GetComponent<Door>() == null) return default(Vector3);
-        	return target.transform.position;
+            if (target == null) return default(Vector3);
+            if (target.GetComponent<Door>() == null) return default(Vector3);
+            return target.transform.position;
+        }
+        bool FindRoomByID(string roomid, out HotelData targethotel, out Room targetroom)
+        {
+            targethotel = null;
+            targetroom = null;
+            foreach (HotelData hotel in storedData.Hotels)
+            {
+                if(hotel.rooms.ContainsKey(roomid))
+                {
+                    targethotel = hotel;
+                    targetroom = (hotel.rooms)[roomid];
+                    return true;
+                }
+            }
+            return false;
         }
         [ChatCommand("room")]
         void cmdChatRoom(BasePlayer player, string command, string[] args)
@@ -1332,97 +1350,97 @@ namespace Oxide.Plugins
             if (!hasAccess(player)) { SendReply(player, MessageErrorNotAllowed); return; }
             string roomid = string.Empty;
             int argsnum = 0;
-            if( args.Length > 0 )
+            if (args.Length > 0)
             {
-            	string[] roomloc;
-            	roomloc = args[0].Split(":");
-            	if(roomloc.Length == 3)
-            		roomid = args[0];
+                string[] roomloc;
+                roomloc = (args[0]).Split(':');
+                if (roomloc.Length == 3)
+                    roomid = args[0];
             }
-            if(roomid == string.Empty)
+            if (roomid == string.Empty)
             {
-            	Vector3 doorpos = RayForDoor( player );
-            	if(doorpos == default(Vector3))
-            	{
-            		SendReply(player, "You must look at the door of the room or put the roomid");
-            		return;
-            	}
-            	roomid = string.Format("{0}:{1}:{2}", Mathf.Ceil(doorpos.transform.position.x).ToString(), Mathf.Ceil(doorpos.transform.position.y).ToString(), Mathf.Ceil(doorpos.transform.position.z).ToString() );
+                Vector3 doorpos = RayForDoor(player);
+                if (doorpos == default(Vector3))
+                {
+                    SendReply(player, "You must look at the door of the room or put the roomid");
+                    return;
+                }
+                roomid = string.Format("{0}:{1}:{2}", Mathf.Ceil(doorpos.x).ToString(), Mathf.Ceil(doorpos.y).ToString(), Mathf.Ceil(doorpos.z).ToString());
             }
             else
-            	argsnum++;
-            if(roomid == string.Empty)
+                argsnum++;
+            if (roomid == string.Empty)
             {
-            	SendReply(player, "Invalid room.");
-            	return;
+                SendReply(player, "Invalid room.");
+                return;
             }
             HotelData targethotel = null;
             Room targetroom = null;
-            if( !FindCodeLockByRoomID( roomid, out targethotel, out targetroom ) )
+            if (!FindRoomByID(roomid, out targethotel, out targetroom))
             {
-            	SendReply(player, "No room was detected.");
-            	return;
+                SendReply(player, "No room was detected.");
+                return;
             }
-            if(args.Length - argsnum == 0)
+            if (args.Length - argsnum == 0)
             {
-            	SendReply(player, string.Format("Room ID is: {0} in hotel: {1}", targetroom.roomid, targethotel.hotelname));
-            	SendReply(player, "Options are:");
-            	SendReply(player, "/room \"optional:roomid\" reset => to reset this room");
-            	SendReply(player, "/room \"optional:roomid\" give NAME/STEAMID => to give a player this room");
-            	SendReply(player, "/room \"optional:roomid\" duration XXXX => to set a new duration time for a player (from the time you set the duration)");
-            	return;
+                SendReply(player, string.Format("Room ID is: {0} in hotel: {1}", targetroom.roomid, targethotel.hotelname));
+                SendReply(player, "Options are:");
+                SendReply(player, "/room \"optional:roomid\" reset => to reset this room");
+                SendReply(player, "/room \"optional:roomid\" give NAME/STEAMID => to give a player this room");
+                SendReply(player, "/room \"optional:roomid\" duration XXXX => to set a new duration time for a player (from the time you set the duration)");
+                return;
             }
-            if( !targethotel.enabled  )
+            if (!targethotel.enabled)
             {
-            	SendReply(player, "This hotel is currently being edited by an admin, you can't manage a room from it");
-            	return;
+                SendReply(player, "This hotel is currently being edited by an admin, you can't manage a room from it");
+                return;
             }
-            switch( args[ argsnum ] )
+            switch (args[argsnum])
             {
-            	case "reset":
-            		ResetRoom( targethotel, targetroom );
-            		SendReply(player, string.Format("The room {0} was resetted", targetroom.roomid));
-            	break;
-            	
-            	case "duration":
-            		if(targetroom.renter == null)
-            		{
-            			SendReply(player, string.Format("The room {0} has currently no renter, you can't set a duration for it", targetroom.roomid ));
-            			return;
-            		}
-            		if( args.Length == argsnum + 1 )
-            		{
-            			double timeleft = targetroom.CheckOutTime() - LogTime();
-            			SendReply( player, string.Format("The room {0} renter will expire in {1}", targetroom.roomid, targetroom.CheckOutTime() == 0.0 ? "Unlimited" : ConvertSecondsToBetter(timeleft) ));
-            			return;
-            		}
-            		double newtimeleft;
-            		if( !double.TryParse( args[ argsnum + 1 ], out newtimeleft ) )
-            		{
-            			SendReply(player, "/room \"optional:roomid\" duration NEWTIMELEFT");
-            			return;
-            		}
-            		targetroom.checkoutTime = newtimeleft.ToString();
-            		SendReply(player, string.Format("New timeleft for room ID {0} is {1}", targetroom.roomid, newtimeleft.ToString()));
-            	break;
-            	
-            	case "give":
-            		if(targetroom.renter != null)
-            		{
-            			SendReply(player, string.Format("The room {0} is already rented by {1}, reset the room first to set a new renter", targetroom.roomid, targetroom.renter ));
-            			return;
-            		}
-            		if( args.Length == argsnum + 1 )
-            		{
-            			SendReply(player, "/room \"optional:roomid\" give PLAYER/STEAMID");
-            			return;
-            		}
-            		
-            	break;
-            	
-            	default:
-            		SendReply(player, "This is not a valid option, say /room \"optional:roomid\" to see the options");
-            	break;
+                case "reset":
+                    ResetRoom(targethotel, targetroom);
+                    SendReply(player, string.Format("The room {0} was resetted", targetroom.roomid));
+                    break;
+
+                case "duration":
+                    if (targetroom.renter == null)
+                    {
+                        SendReply(player, string.Format("The room {0} has currently no renter, you can't set a duration for it", targetroom.roomid));
+                        return;
+                    }
+                    if (args.Length == argsnum + 1)
+                    {
+                        double timeleft = targetroom.CheckOutTime() - LogTime();
+                        SendReply(player, string.Format("The room {0} renter will expire in {1}", targetroom.roomid, targetroom.CheckOutTime() == 0.0 ? "Unlimited" : ConvertSecondsToBetter(timeleft)));
+                        return;
+                    }
+                    double newtimeleft;
+                    if (!double.TryParse(args[argsnum + 1], out newtimeleft))
+                    {
+                        SendReply(player, "/room \"optional:roomid\" duration NEWTIMELEFT");
+                        return;
+                    }
+                    targetroom.checkoutTime = newtimeleft.ToString();
+                    SendReply(player, string.Format("New timeleft for room ID {0} is {1}", targetroom.roomid, newtimeleft.ToString()));
+                    break;
+
+                case "give":
+                    if (targetroom.renter != null)
+                    {
+                        SendReply(player, string.Format("The room {0} is already rented by {1}, reset the room first to set a new renter", targetroom.roomid, targetroom.renter));
+                        return;
+                    }
+                    if (args.Length == argsnum + 1)
+                    {
+                        SendReply(player, "/room \"optional:roomid\" give PLAYER/STEAMID");
+                        return;
+                    }
+
+                    break;
+
+                default:
+                    SendReply(player, "This is not a valid option, say /room \"optional:roomid\" to see the options");
+                    break;
             }
 
         }
