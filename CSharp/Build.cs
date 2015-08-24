@@ -317,7 +317,7 @@ namespace Oxide.Plugins
             TypeToType = new Dictionary<SocketType, object>();
 
             var BarType = new Dictionary<SocketType, object>();
-            var BarToWindow = new Dictionary<Vector3, Quaternion>();
+            var BarToWall = new Dictionary<Vector3, Quaternion>();
             BarToWall.Add(new Vector3(0f, 0f, -2f), new Quaternion(0f, 1f, 0f, 0f));
             BarType.Add(SocketType.Wall, BarToWall);
             TypeToType.Add(SocketType.Block, BarType);
