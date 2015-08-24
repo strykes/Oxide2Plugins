@@ -1,21 +1,17 @@
-// Reference: RustBuild
-
-using System.Collections.Generic;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
-using System.Data;
-using UnityEngine;
 using Oxide.Core;
 using Oxide.Core.Plugins;
 using Rust;
+using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.14", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.15", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
-
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  Fields
         //////////////////////////////////////////////////////
         private static FieldInfo serverinput;
@@ -39,20 +35,16 @@ namespace Oxide.Plugins
         [PluginReference]
         public static Plugin PathFinding;
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  Cached Fields
         //////////////////////////////////////////////////////
         private Quaternion currentRot;
-
         private Vector3 closestHitpoint;
         private static Vector3 eyesPosition;
-
-
         private static RaycastHit hitinfo;
-
         private object closestEnt;
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class WaypointInfo
         ///  Waypoint information, position & speed
         ///  public => will be saved in the data file
@@ -91,7 +83,7 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class SpawnInfo
         ///  Spawn information, position & rotation
         ///  public => will be saved in the data file
@@ -151,8 +143,7 @@ namespace Oxide.Plugins
             }
         }
 
-
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class HumanTrigger
         /// MonoBehaviour: managed by UnityEngine
         ///  This takes care of all collisions and area management of humanNPCs
@@ -207,7 +198,7 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class HumanLocomotion
         /// MonoBehaviour: managed by UnityEngine
         ///  This takes care of all movements and attacks of HumanNPCs
@@ -370,8 +361,7 @@ namespace Oxide.Plugins
             public void Disable() { this.enabled = false; }
         }
 
-
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class HumanPlayer : MonoBehaviour
         ///  MonoBehaviour: managed by UnityEngine
         /// Takes care of all the sub categories of the HumanNPCs
@@ -397,12 +387,11 @@ namespace Oxide.Plugins
             Effect effectP = new Effect("fx/gestures/guitarpluck", new Vector3(0, 0, 0), Vector3.forward);
             Effect effectS = new Effect("fx/gestures/guitarstrum", new Vector3(0, 0, 0), Vector3.forward);
 
-
-
             void Awake()
             {
                 player = GetComponent<BasePlayer>();
             }
+
             public void SetInfo(HumanNPCInfo info)
             {
                 this.info = info;
@@ -489,9 +478,9 @@ namespace Oxide.Plugins
                     if (locomotion.LastPos == Vector3.zero) locomotion.LastPos = player.transform.position;
                     if (IsInvoking("AllowMove")) { CancelInvoke("AllowMove"); AllowMove(); }
                     locomotion.Invoke("PathFinding", 0);
-
                 }
             }
+
             void OnDestroy()
             {
                 GameObject.Destroy(locomotion);
@@ -499,7 +488,7 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  class HumanNPCInfo
         ///  NPC information that will be saved inside the datafile
         ///  public => will be saved in the data file
@@ -666,6 +655,7 @@ namespace Oxide.Plugins
         {
             SaveData();
         }
+
         void Unload()
         {
             var objects = GameObject.FindObjectsOfType(typeof(HumanPlayer));
@@ -680,10 +670,12 @@ namespace Oxide.Plugins
                 timers.Destroy();
             TimersList.Clear();
         }
+
         void SaveData()
         {
             Interface.GetMod().DataFileSystem.WriteObject("HumanNPC", storedData);
         }
+
         void LoadData()
         {
             humannpcs.Clear();
@@ -699,9 +691,6 @@ namespace Oxide.Plugins
                 humannpcs[thenpc.userid] = thenpc;
         }
 
-
-
-
         public class TuneNote
         {
             public float NoteScale, Delay;
@@ -710,9 +699,6 @@ namespace Oxide.Plugins
             {
             }
         }
-
-
-
 
         static void GetTune(HumanPlayer hp)
         {
@@ -737,12 +723,11 @@ namespace Oxide.Plugins
             hp.tunetoplay = newtune;
         }
 
-
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  Oxide Hooks
         //////////////////////////////////////////////////////
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnServerInitialized()
         ///  called when the server is done being initialized
         //////////////////////////////////////////////////////
@@ -755,8 +740,8 @@ namespace Oxide.Plugins
             emptyDamage = new DamageTypeList();
         }
 
-        ////////////////////////////////////////////////////// 
-        ///  OnServerSave() 
+        //////////////////////////////////////////////////////
+        ///  OnServerSave()
         ///  called when a server performs a save
         //////////////////////////////////////////////////////
         void OnServerSave()
@@ -764,7 +749,7 @@ namespace Oxide.Plugins
             SaveData();
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         /// OnPlayerInput(BasePlayer player, InputState input)
         /// Called when a plugin presses a button
         //////////////////////////////////////////////////////
@@ -779,13 +764,12 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         /// OnEntityTakeDamage(BaseCombatEntity entity, HitInfo hitinfo)
         /// Called when an entity gets attacked (can be anything, building, animal, player ..)
         //////////////////////////////////////////////////////
         void OnEntityTakeDamage(BaseCombatEntity entity, HitInfo hitinfo)
         {
-
             if (entity.GetComponent<HumanPlayer>() != null)
             {
 
@@ -798,7 +782,7 @@ namespace Oxide.Plugins
             }
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         /// OnEntityDeath(BaseEntity entity, HitInfo hitinfo)
         /// Called when an entity gets killed (can be anything, building, animal, player ..)
         //////////////////////////////////////////////////////
@@ -815,7 +799,6 @@ namespace Oxide.Plugins
             }
         }
 
-
         void OnPlayerLoot(PlayerLoot loot, BaseEntity target)
         {
             var userid = GetIDFromLoot(target);
@@ -824,9 +807,11 @@ namespace Oxide.Plugins
                 Interface.CallHook("OnLootNPC", loot, target, userid.ToString());
             }
         }
-        ////////////////////////////////////////////////////// 
+
+        //////////////////////////////////////////////////////
         /// End of Oxide Hooks
         //////////////////////////////////////////////////////
+
         ulong GetIDFromLoot(BaseEntity target)
         {
             if (target is PlayerCorpse) return (target as PlayerCorpse).playerSteamID;
@@ -843,6 +828,7 @@ namespace Oxide.Plugins
             }
             return null;
         }
+
         BasePlayer FindPlayerByID(ulong userid)
         {
             var allBasePlayer = UnityEngine.Resources.FindObjectsOfTypeAll<BasePlayer>();
@@ -852,6 +838,7 @@ namespace Oxide.Plugins
             }
             return null;
         }
+
         static void DoHit(HumanLocomotion loc, BaseCombatEntity target)
         {
             loc.lastHit = Time.realtimeSinceStartup;
@@ -864,6 +851,7 @@ namespace Oxide.Plugins
             var activeitem = loc.npc.player.GetActiveItem();
             PlayAttack(activeitem, loc.npc.player.transform.position, (target.transform.position - loc.npc.player.transform.position).normalized);
         }
+
         static void PlayAttack(Item attackitem, Vector3 source, Vector3 dir)
         {
             if (attackitem != null)
@@ -874,13 +862,14 @@ namespace Oxide.Plugins
                     EffectNetwork.Send(effect);
                 }
             }
-
         }
+
         static void SetViewAngle(BasePlayer player, Quaternion ViewAngles)
         {
             viewangles.SetValue(player, ViewAngles);
             player.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
         }
+
         void RefreshAllNPC()
         {
             List<string> npcspawned = new List<string>();
@@ -897,20 +886,21 @@ namespace Oxide.Plugins
                 if (player.userID < 76560000000000000L && player.userID > 0L)
                     if (!npcspawned.Contains(player.userID.ToString())) { player.KillMessage(); Puts(string.Format("Detected a HumanNPC with no data or disabled, deleting him: {0} {1}", player.userID.ToString(), player.displayName)); }
             }
-
         }
+
         void SpawnOrRefresh( string userid, bool isediting )
         {
             BasePlayer findplayer = FindPlayerByID(Convert.ToUInt64(userid));
-            
+
             if (findplayer == null) SpawnNPC(userid, false);
             else RefreshNPC(findplayer, false);
         }
+
         void SpawnNPC(string userid, bool isediting)
         {
             if (humannpcs[userid] == null) return;
             if (!isediting && humannpcs[userid].enable == "false") return;
-            var newplayer = GameManager.server.CreateEntity("player/player", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
+            var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
             newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
@@ -919,6 +909,7 @@ namespace Oxide.Plugins
             humanplayer.SetInfo(humannpcs[userid]);
             Puts("Spawned NPC: " + userid);
         }
+
         void RefreshNPC(BasePlayer player, bool isediting)
         {
             if (player.GetComponent<HumanPlayer>() != null) GameObject.Destroy(player.GetComponent<HumanPlayer>());
@@ -927,16 +918,19 @@ namespace Oxide.Plugins
             if (humannpcs[player.userID.ToString()].enable == "false" && !isediting) { player.KillMessage(); Puts("NPC was refreshed and Killed because he is disabled: " + player.userID.ToString()); return; }
             Puts("Refreshed NPC: " + player.userID.ToString());
         }
+
         bool hasAccess(BasePlayer player)
         {
             if (player.net.connection.authLevel < 1) { SendReply(player, "You don't have access to this command"); return false; }
             return true;
         }
+
         bool hasNoArguments(BasePlayer player, string[] args, int Number)
         {
             if (args.Length < Number) { SendReply(player, "Not enough Arguments"); return true; }
             return false;
         }
+
         bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
         {
             viewAngle = new Quaternion(0f, 0f, 0f, 0f);
@@ -946,6 +940,7 @@ namespace Oxide.Plugins
             viewAngle = Quaternion.Euler(input.current.aimAngles);
             return true;
         }
+
         bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
         {
             Vector3 sourceEye = sourcePos + new Vector3(0f, 1.5f, 0f);
@@ -967,6 +962,7 @@ namespace Oxide.Plugins
             if (closestEnt is bool) return false;
             return true;
         }
+
         static bool CanSee(BasePlayer source, BaseEntity target)
         {
             if (UnityEngine.Physics.Linecast(source.transform.position + jumpPosition, target.transform.position + jumpPosition, blockshootLayer))
@@ -975,7 +971,6 @@ namespace Oxide.Plugins
         }
         string GetRandomMessage(List<string> messagelist) { return messagelist[GetRandom(0, messagelist.Count)]; }
         int GetRandom(int min, int max) { return UnityEngine.Random.Range(min, max); }
-
 
         List<string> ListFromArgs(string[] args, int from)
         {
@@ -1000,7 +995,7 @@ namespace Oxide.Plugins
             if (player.GetComponent<NPCEditor>() != null) { SendReply(player, "NPC Editor: Already editing an NPC, say /npc_end first"); return; }
             if (!TryGetPlayerView(player, out currentRot)) return;
 
-            var newplayer = GameManager.server.CreateEntity("player/player", player.transform.position, currentRot).ToPlayer();
+            var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", player.transform.position, currentRot).ToPlayer();
             newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
             newplayer.displayName = "NPC";
             newplayer.Spawn(true);
@@ -1031,6 +1026,7 @@ namespace Oxide.Plugins
             storedData.HumanNPCs.Add(humannpcs[newplayer.userID.ToString()]);
             SaveData();
         }
+
         [ChatCommand("npc_edit")]
         void cmdChatNPCEdit(BasePlayer player, string command, string[] args)
         {
@@ -1060,6 +1056,7 @@ namespace Oxide.Plugins
             npceditor.targetNPC = targetnpc;
             SendReply(player, string.Format("NPC Editor: Start Editing {0} - {1}", npceditor.targetNPC.player.displayName, npceditor.targetNPC.player.userID.ToString()));
         }
+
         [ChatCommand("npc_list")]
         void cmdChatNPCList(BasePlayer player, string command, string[] args)
         {
@@ -1310,6 +1307,7 @@ namespace Oxide.Plugins
             GameObject.Destroy(player.GetComponent<NPCEditor>());
             SendReply(player, "NPC Editor: Ended");
         }
+
         [ChatCommand("npc_pathtest")]
         void cmdChatNPCPathTest(BasePlayer player, string command, string[] args)
         {
@@ -1323,11 +1321,11 @@ namespace Oxide.Plugins
             Interface.CallHook("FindAndFollowPath", npceditor.targetNPC.player, npceditor.targetNPC.player.transform.position, closestHitpoint);
             Debug.Log((Time.realtimeSinceStartup - curtime).ToString());
         }
+
         [ChatCommand("npc_remove")]
         void cmdChatNPCRemove(BasePlayer player, string command, string[] args)
         {
             if (!hasAccess(player)) return;
-
 
             HumanPlayer targetnpc;
             ulong userid;
@@ -1353,6 +1351,7 @@ namespace Oxide.Plugins
             RefreshAllNPC();
             SendReply(player, string.Format("NPC {0} Removed", targetid));
         }
+
         [ChatCommand("npc_reset")]
         void cmdChatNPCReset(BasePlayer player, string command, string[] args)
         {
@@ -1373,12 +1372,13 @@ namespace Oxide.Plugins
                 npc.lastMessage = Time.realtimeSinceStartup;
             }
         }
-        ////////////////////////////////////////////////////// 
+
+        //////////////////////////////////////////////////////
         // NPC HOOKS:
         // will call ALL plugins
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         /// OnHitNPC(BasePlayer npc, HitInfo hinfo)
         /// called when an NPC gets hit
         //////////////////////////////////////////////////////
@@ -1392,8 +1392,7 @@ namespace Oxide.Plugins
                         SendMessage(npc.GetComponent<HumanPlayer>(), hinfo.Initiator.ToPlayer(), GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hurt));
         }
 
-
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnUseNPC(BasePlayer npc, BasePlayer player)
         ///  called when a player press USE while looking at the NPC (5m max)
         //////////////////////////////////////////////////////
@@ -1405,7 +1404,7 @@ namespace Oxide.Plugins
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_use));
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnEnterNPC(BasePlayer npc, BasePlayer player)
         ///  called when a player gets close to an NPC (default is in 10m radius)
         //////////////////////////////////////////////////////
@@ -1418,7 +1417,8 @@ namespace Oxide.Plugins
             if (npc.GetComponent<HumanPlayer>().info.message_hello != null && npc.GetComponent<HumanPlayer>().info.message_hello.Count != 0)
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_hello));
         }
-        ////////////////////////////////////////////////////// 
+
+        //////////////////////////////////////////////////////
         ///  OnLeaveNPC(BasePlayer npc, BasePlayer player)
         ///  called when a player gets away from an NPC
         //////////////////////////////////////////////////////
@@ -1428,7 +1428,7 @@ namespace Oxide.Plugins
                 SendMessage(npc.GetComponent<HumanPlayer>(), player, GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_bye));
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnKillNPC(BasePlayer npc, HitInfo hinfo)
         ///  called when an NPC gets killed
         //////////////////////////////////////////////////////
@@ -1440,7 +1440,7 @@ namespace Oxide.Plugins
                         SendMessage(npc.GetComponent<HumanPlayer>(), hinfo.Initiator.ToPlayer(), GetRandomMessage(npc.GetComponent<HumanPlayer>().info.message_kill));
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnNPCPosition(BasePlayer npc, Vector3 pos)
         ///  Called when an npc reachs a position
         //////////////////////////////////////////////////////
@@ -1449,7 +1449,7 @@ namespace Oxide.Plugins
             return;
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnNPCRespawn(BasePlayer npc)
         ///  Called when an NPC respawns
         ///  here it will give an NPC a kit and set the first tool in the belt as the active weapon
@@ -1469,7 +1469,8 @@ namespace Oxide.Plugins
                 npc.inventory.ServerUpdate(0f);
             }
         }
-        ////////////////////////////////////////////////////// 
+
+        //////////////////////////////////////////////////////
         ///  OnNPCStartAttacking(BasePlayer npc, BaseEntity target)
         ///  Called when an NPC start to target someone to attack
         ///  return anything will block the attack
@@ -1478,7 +1479,7 @@ namespace Oxide.Plugins
         {
             return null;
         }
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnNPCStopTarget(BasePlayer npc, BaseEntity target)
         ///  Called when an NPC stops targetting
         ///  no return;
@@ -1488,7 +1489,7 @@ namespace Oxide.Plugins
             return;
         }
 
-        ////////////////////////////////////////////////////// 
+        //////////////////////////////////////////////////////
         ///  OnLootNPC(PlayerLoot loot, BaseEntity target, string npcuserID)
         ///  Called when an NPC gets looted
         ///  no return;
