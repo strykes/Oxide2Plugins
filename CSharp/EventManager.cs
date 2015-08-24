@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.1", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.2", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -267,7 +267,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-
+         
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -572,10 +572,10 @@ namespace Oxide.Plugins
 
         private static string MessagesEventMaxPlayers = "The Event {0} has reached max players. You may not join for the moment";
         private static string MessagesEventMinPlayers = "The Event {0} has reached min players and will start in {1} seconds";
-        private static bool EventAutoEvents = true;
+        private static bool EventAutoEvents = false;
         private static int EventAutoInterval = 600;
         private static int EventAutoAnnounceInterval = 30;
-        private static List<Dictionary<string, object>> EventAutoConfig = CreateDefaultAutoConfig();
+        private static Dictionary<string,object> EventAutoConfig = CreateDefaultAutoConfig();
 
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
         private static string MessageRewardCurrent = "You have {0} tokens";
@@ -599,10 +599,10 @@ namespace Oxide.Plugins
             CheckCfg<string>("Default - Game", ref defaultGame);
             CheckCfg<string>("Default - Spawnfile", ref defaultSpawnfile);
 
-            CheckCfg<bool>("AutoEvents - Activated", ref EventAutoEvents);
+            CheckCfg<bool>("AutoEvents - Activate", ref EventAutoEvents);
             CheckCfg<int>("AutoEvents - Interval between 2 events", ref EventAutoInterval);
             CheckCfg<int>("AutoEvents - Announce Open Interval", ref EventAutoAnnounceInterval);
-            CheckCfg<List<Dictionary<string, object>>>("AutoEvents - Config", ref EventAutoConfig);
+            CheckCfg<Dictionary<string, object>>("AutoEvents - Config", ref EventAutoConfig);
 
             CheckCfg<string>("Messages - Permissions - Not Allowed", ref MessagesPermissionsNotAllowed);
             CheckCfg<string>("Messages - Event Error - Not Set", ref MessagesEventNotSet);
@@ -647,9 +647,9 @@ namespace Oxide.Plugins
             SaveConfig();
         }
 
-        static List<Dictionary<string, object>> CreateDefaultAutoConfig()
+        static Dictionary<string,object> CreateDefaultAutoConfig()
         {
-            var newautoconfiglist = new List<Dictionary<string, object>>();
+            var newautoconfiglist = new Dictionary<string,object>();
             var AutoDM = new Dictionary<string, object>();
             AutoDM.Add("gametype", "Deathmatch");
             AutoDM.Add("spawnfile", "deathmatchspawnfile");
@@ -669,8 +669,8 @@ namespace Oxide.Plugins
             AutoBF.Add("maxplayers", "30");
 
 
-            newautoconfiglist.Add(AutoDM);
-            newautoconfiglist.Add(AutoBF);
+            newautoconfiglist.Add("0",AutoDM);
+            newautoconfiglist.Add("1",AutoBF);
 
             return newautoconfiglist;
         }
@@ -762,7 +762,7 @@ namespace Oxide.Plugins
         {
             EventPlayer eventplayer = player.GetComponent<EventPlayer>();
             if (eventplayer == null) return;
-            if (player.IsDead())
+            if (player.IsDead() || player.health < 1)
                 return;
             if (eventplayer.savedInventory)
             {
@@ -774,7 +774,7 @@ namespace Oxide.Plugins
         {
             EventPlayer eventplayer = player.GetComponent<EventPlayer>();
             if (eventplayer == null) return;
-            if (player.IsDead())
+            if (player.IsDead() || player.health < 1)
                 return;
             if (eventplayer.savedHome)
             {
@@ -855,7 +855,7 @@ namespace Oxide.Plugins
         }
         void OnEventOpenPostAutoEvent()
         {
-            if (!EventAutoEvents) return;
+            if (!AutoEventLaunched) return;
 
             DestroyTimers();
             AutoArenaTimers.Add(timer.Once(300f, () => CancelEvent("Not enough players")));
@@ -894,28 +894,27 @@ namespace Oxide.Plugins
                 return "No Automatic Events Configured";
             }
             bool successed = false;
-            Debug.Log("yes");
             for (int i = 0; i < EventAutoConfig.Count; i++)
             {
                 EventAutoNum++;
                 if (EventAutoNum >= EventAutoConfig.Count) EventAutoNum = 0;
 
-                object success = SelectEvent((string)(EventAutoConfig[EventAutoNum])["gametype"]);
+                var evencfg = EventAutoConfig[EventAutoNum.ToString()] as Dictionary<string, object>;
+
+                object success = SelectEvent((string)evencfg["gametype"]);
                 if (success is string) { continue; }
 
-                success = SelectSpawnfile((string)(EventAutoConfig[EventAutoNum])["spawnfile"]);
+                success = SelectSpawnfile((string)evencfg["spawnfile"]);
                 if (success is string) { continue; }
 
-                success = SelectMinplayers((string)(EventAutoConfig[EventAutoNum])["minplayers"]);
+                success = SelectMinplayers((string)evencfg["minplayers"]);
                 if (success is string) { continue; }
 
-                success = SelectMaxplayers((string)(EventAutoConfig[EventAutoNum])["maxplayers"]);
+                success = SelectMaxplayers((string)evencfg["maxplayers"]);
                 if (success is string) { continue; }
 
                 success = Interface.CallHook("CanEventOpen", new object[] { });
                 if (success is string) { continue; }
-
-
 
                 successed = true;
                 break;
@@ -934,7 +933,7 @@ namespace Oxide.Plugins
         }
         void OnEventStartPostAutoEvent()
         {
-            if (!EventAutoEvents) return;
+            if (!AutoEventLaunched) return;
 
             DestroyTimers();
             AutoArenaTimers.Add(timer.Once(600f, () => CancelEvent("Time limit reached")));
@@ -1092,10 +1091,11 @@ namespace Oxide.Plugins
         }
         object OnEventJoinPost(BasePlayer player)
         {
-            if (!EventAutoEvents) return null;
+            if (!AutoEventLaunched) return null;
             if (EventPlayers.Count >= EventMinPlayers && !EventStarted && EventEnded && !EventPending)
             {
-                float timerStart = EventAutoConfig[EventAutoNum]["timetojoin"] != null ? Convert.ToSingle(EventAutoConfig[EventAutoNum]["timetojoin"]) : 30f;
+                var evencfg = EventAutoConfig[EventAutoNum.ToString()] as Dictionary<string, object>;
+                float timerStart = evencfg["timetojoin"] != null ? Convert.ToSingle(evencfg["timetojoin"]) : 30f;
                 BroadcastToChat(string.Format(MessagesEventMinPlayers, EventGameName, timerStart.ToString()));
 
                 EventPending = true;
@@ -1106,7 +1106,7 @@ namespace Oxide.Plugins
         }
         void OnEventEndPost()
         {
-            if (!EventAutoEvents) return;
+            if (!AutoEventLaunched) return;
             DestroyTimers();
             AutoEventNext();
         }
