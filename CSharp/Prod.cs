@@ -7,7 +7,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Prod", "Reneb", "2.1.3", ResourceId = 683)]
+    [Info("Prod", "Reneb", "2.1.4", ResourceId = 683)]
     class Prod : RustPlugin
     {
 
@@ -21,9 +21,12 @@ namespace Oxide.Plugins
         private string noCodeAccess;
         private string codeLockList;
         private string boxNeedsCode;
+        private string boxCode;
 
         private FieldInfo serverinput;
         private FieldInfo codelockwhitelist;
+        private FieldInfo codenum;
+
         private Vector3 eyesAdjust;
         private bool Changed;
 
@@ -39,6 +42,7 @@ namespace Oxide.Plugins
             eyesAdjust = new Vector3(0f, 1.5f, 0f);
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             codelockwhitelist = typeof(CodeLock).GetField("whitelistPlayers", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            codenum = typeof(CodeLock).GetField("code", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         }
 
         private object GetConfig(string menu, string datavalue, object defaultValue)
@@ -72,6 +76,8 @@ namespace Oxide.Plugins
             noCodeAccess = Convert.ToString(GetConfig("Messages", "noCodeAccess", "No players has access to this Lock"));
             codeLockList = Convert.ToString(GetConfig("Messages", "codeLockList", "CodeLock whitelist:"));
             boxNeedsCode = Convert.ToString(GetConfig("Messages", "boxNeedsCode", "Can't find owners of an item without a Code Lock"));
+            boxCode = Convert.ToString(GetConfig("Messages", "Code", "Code is: {0}"));
+            
             if (Changed)
             {
                 SaveConfig();
@@ -92,7 +98,6 @@ namespace Oxide.Plugins
                 return false;
             return true;
         }
-
         [ChatCommand("prod")]
         void cmdChatProd(BasePlayer player, string command, string[] args)
         {
@@ -109,19 +114,20 @@ namespace Oxide.Plugins
                 SendReply(player, noTargetfound);
                 return;
             }
-            if (target as BuildingBlock)
+            
+            if (target is BuildingBlock)
             {
                 GetBuildingblockOwner(player, (BuildingBlock)target);
             }
-            else if (target as BuildingPrivlidge)
+            else if (target is BuildingPrivlidge)
             {
                 GetToolCupboardUsers(player, (BuildingPrivlidge)target);
             }
-            else if (target as SleepingBag)
+            else if (target is SleepingBag)
             {
                 GetDeployedItemOwner(player, (SleepingBag)target);
             }
-            else
+            else if (target is StorageContainer)
             {
                 GetStorageBoxCode(player, (StorageContainer)target);
             }
@@ -134,6 +140,8 @@ namespace Oxide.Plugins
                 if (thelock as CodeLock)
                 {
                     List<ulong> whitelisted = codelockwhitelist.GetValue(thelock as CodeLock) as List<ulong>;
+                    string codevalue = codenum.GetValue(thelock as CodeLock) as string;
+                    SendReply(player, string.Format(boxCode,codevalue));
                     SendReply(player, codeLockList);
                     if (whitelisted.Count == 0)
                     {
@@ -191,6 +199,34 @@ namespace Oxide.Plugins
         }
         private void GetBuildingblockOwner(BasePlayer player, BuildingBlock block)
         {
+            if(block.GetComponent<Door>() != null)
+            {
+                if(block.HasSlot(BaseEntity.Slot.Lock))
+                {
+                    BaseEntity slotent = block.GetSlot(BaseEntity.Slot.Lock);
+                    if(slotent != null)
+                    {
+                        CodeLock codelock = slotent.GetComponent<CodeLock>();
+                        if(codelock != null)
+                        {
+                            List<ulong> whitelisted = codelockwhitelist.GetValue(codelock) as List<ulong>;
+                            string codevalue = codenum.GetValue(codelock) as string;
+                            SendReply(player, string.Format(boxCode, codevalue));
+                            SendReply(player, codeLockList);
+                            if (whitelisted.Count == 0)
+                            {
+                                SendReply(player, noCodeAccess);
+                                return;
+                            }
+                            foreach (ulong userid in whitelisted)
+                            {
+                                SendBasePlayerFind(player, userid);
+                            }
+                        }
+                    }
+                }
+            }
+
             object findownerblock = FindOwnerBlock(block);
             if (findownerblock is bool)
             {
@@ -211,6 +247,25 @@ namespace Oxide.Plugins
             foreach (ProtoBuf.PlayerNameID pnid in cupboard.authorizedPlayers)
             {
                 SendReply(player, string.Format("{0} - {1}", pnid.username.ToString(), pnid.userid.ToString()));
+            }
+        }
+        private void Dump(Collider col)
+        {
+            Debug.Log(col.ToString() + " " + LayerMask.LayerToName(col.gameObject.layer).ToString());
+            Debug.Log("========= NORMAL ===========");
+            foreach(UnityEngine.Component com in col.GetComponents(typeof(UnityEngine.Component)) )
+            {
+                Debug.Log(com.ToString());
+            }
+            Debug.Log("========= PARENT ===========");
+            foreach (UnityEngine.Component com in col.GetComponentsInParent(typeof(UnityEngine.Component)))
+            {
+                Debug.Log(com.ToString());
+            }
+            Debug.Log("========= CHILDREN ===========");
+            foreach (UnityEngine.Component com in col.GetComponentsInChildren(typeof(UnityEngine.Component)))
+            {
+                Debug.Log(com.ToString());
             }
         }
         private object DoRay(Vector3 Pos, Vector3 Aim)
@@ -250,6 +305,14 @@ namespace Oxide.Plugins
                     {
                         distance = hit.distance;
                         target = hit.collider.GetComponentInParent<StorageContainer>();
+                    }
+                }
+                else
+                {
+                    if (hit.distance < distance)
+                    {
+                        distance = hit.distance;
+                        target = hit.collider;
                     }
                 }
             }
