@@ -7,7 +7,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Prod", "Reneb", "2.1.4", ResourceId = 683)]
+    [Info("Prod", "Reneb", "2.2.0", ResourceId = 683)]
     class Prod : RustPlugin
     {
 
@@ -64,9 +64,11 @@ namespace Oxide.Plugins
             return value;
         }
 
+        private bool isPluginDev;
         private void LoadVariables()
         {
             prodAuth = Convert.ToInt32(GetConfig("Prod", "authLevel", 1));
+            isPluginDev = Convert.ToBoolean(GetConfig("Plugin Dev", "Are you are plugin dev?", false));
             helpProd = Convert.ToString(GetConfig("Messages", "helpProd", "/prod on a building or tool cupboard to know who owns it."));
             noAccess = Convert.ToString(GetConfig("Messages", "noAccess", "You don't have access to this command"));
             noTargetfound = Convert.ToString(GetConfig("Messages", "noTargetfound", "You must look at a tool cupboard or building"));
@@ -275,6 +277,8 @@ namespace Oxide.Plugins
             object target = false;
             foreach (var hit in hits)
             {
+                if (isPluginDev)
+                    Dump(hit.collider);
                 if (hit.collider.GetComponentInParent<BuildingBlock>() != null)
                 {
                     if (hit.distance < distance)
