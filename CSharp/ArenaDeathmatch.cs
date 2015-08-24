@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.1.2", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.1.3", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -26,7 +26,7 @@ namespace Oxide.Plugins
         private bool Changed;
 
         private string CurrentKit;
-        private List<DeathmatchPlayer> DeathmatchPlayers;
+        private List<DeathmatchPlayer> DeathmatchPlayers = new List<DeathmatchPlayer>();
 
         ////////////////////////////////////////////////////////////
         // DeathmatchPlayer class to store informations ////////////
@@ -52,7 +52,6 @@ namespace Oxide.Plugins
         {
             useThisEvent = false;
             EventStarted = false;
-            DeathmatchPlayers = new List<DeathmatchPlayer>();
         }
         void OnServerInitialized()
         {
@@ -351,6 +350,7 @@ namespace Oxide.Plugins
                 {
                     DeathmatchPlayers.Remove(player.GetComponent<DeathmatchPlayer>());
                     GameObject.Destroy(player.GetComponent<DeathmatchPlayer>());
+                    Debug.Log("leavehere");
                     CheckScores();
                 }
             }
@@ -414,14 +414,18 @@ namespace Oxide.Plugins
                 EventManager.Call("EndEvent", emptyobject);
                 return;
             }
+            BasePlayer winner = null;
             foreach (DeathmatchPlayer deathmatchplayer in DeathmatchPlayers)
             {
                 if (deathmatchplayer == null) continue;
                 if (deathmatchplayer.kills >= EventWinKills || DeathmatchPlayers.Count == 1)
                 {
-                    Winner(deathmatchplayer.player);
-                }
+                    winner = deathmatchplayer.player;
+                    break;
+                } 
             }
+            if (winner == null) return;
+            Winner(winner);
         }
         void Winner(BasePlayer player)
         {
