@@ -42,7 +42,7 @@ namespace Oxide.Plugins
                 }
                 else if (input.IsDown(BUTTON.FIRE_SECONDARY))
                 {
-                    if((Time.realtimeSinceStartup - lastTickPress) > timeForMultiple)
+                    if ((Time.realtimeSinceStartup - lastTickPress) > timeForMultiple)
                     {
                         DoAction(this);
                     }
@@ -55,7 +55,7 @@ namespace Oxide.Plugins
 
             public void LoadMsgGui(string Msg)
             {
-                if(!useGui) return;
+                if (!useGui) return;
                 CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
                 string send = json.Replace("{msg}", Msg);
                 CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
@@ -71,6 +71,7 @@ namespace Oxide.Plugins
         {
             Wall,
             Floor,
+            Bar,
             Block,
             FloorTriangle,
             Support,
@@ -140,7 +141,7 @@ namespace Oxide.Plugins
         private static Dictionary<SocketType, object> sourceSockets;
         private static SocketType targetsocket;
         private static SocketType sourcesocket;
-        private static Dictionary<Vector3, Quaternion>  newsockets;
+        private static Dictionary<Vector3, Quaternion> newsockets;
         private static Vector3 VectorUP;
         private static float heightAdjustment;
         private static BasePlayer currentplayer;
@@ -315,6 +316,11 @@ namespace Oxide.Plugins
             // Get all possible sockets from the SocketType
             TypeToType = new Dictionary<SocketType, object>();
 
+            var BarType = new Dictionary<SocketType, object>();
+            var BarToWindow = new Dictionary<Vector3, Quaternion>();
+            BarToWindow.Add(new Vector3(0f, 0f, -2f), new Quaternion(0f, 1f, 0f, 0f));
+            BarType.Add(SocketType.Wall, BarToWindow);
+
             // Sockets that can connect on a Floor / Foundation type
             var FloorType = new Dictionary<SocketType, object>();
 
@@ -338,13 +344,13 @@ namespace Oxide.Plugins
             // Floor to Wall sockets
             var FloortoWall = new Dictionary<Vector3, Quaternion>();
             FloortoWall.Add(new Vector3(0f, 0f, 1.5f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f,1f, 0f, 0f));
+            FloortoWall.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
             FloortoWall.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f,1f));
+            FloortoWall.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
 
             // Floor to Support (Pillar) sockets
             var FloortoSupport = new Dictionary<Vector3, Quaternion>();
-            FloortoSupport.Add(new Vector3(1.5f, 0f, 1.5f), new Quaternion(0f, 0f,0f, 1f));
+            FloortoSupport.Add(new Vector3(1.5f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
             FloortoSupport.Add(new Vector3(-1.5f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
             FloortoSupport.Add(new Vector3(1.5f, 0f, -1.5f), new Quaternion(0f, 0.0f, 0f, 1f));
             FloortoSupport.Add(new Vector3(-1.5f, 0f, -1.5f), new Quaternion(0f, 0f, 0f, 1f));
@@ -413,7 +419,7 @@ namespace Oxide.Plugins
 
             // Floor Triangles to Floor Triangles type
             var FTtoFT = new Dictionary<Vector3, Quaternion>();
-            FTtoFT.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f,1f, 0f, 0.0000001629207f));
+            FTtoFT.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0.0000001629207f));
             FTtoFT.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
             FTtoFT.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
             FloorTriangleType.Add(SocketType.FloorTriangle, FTtoFT);
@@ -426,12 +432,12 @@ namespace Oxide.Plugins
             FloorTriangleType.Add(SocketType.Wall, FTtoWall);
 
             // Floor Triangles to Floor type is a big fail, need to work on that still
-           /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
-            FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
-            FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
-            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-            */
+            /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
+             FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
+             FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
+             FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
+             FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
+             */
 
             // So at the moment only Floor and Foundation triangles can connect to easy other.
             TypeToType.Add(SocketType.FloorTriangle, FloorTriangleType);
@@ -444,6 +450,7 @@ namespace Oxide.Plugins
             nameToSockets.Add("assets/bundled/prefabs/build/wall.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.doorway.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.window.prefab", SocketType.Wall);
+            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.bar.prefab", SocketType.Bar);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.low.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/pillar.prefab", SocketType.Support);
             nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.prefab", SocketType.Block);
@@ -451,6 +458,7 @@ namespace Oxide.Plugins
             nameToSockets.Add("assets/bundled/prefabs/build/block.stair.lshape.prefab", SocketType.Block);
             nameToSockets.Add("assets/bundled/prefabs/build/block.stair.ushape.prefab", SocketType.Block);
             nameToSockets.Add("assets/bundled/prefabs/build/door.hinged.prefab", SocketType.Door);
+
             // Foundation steps are fucked up, i need to look how this works more
             //nameToSockets.Add("assets/bundled/prefabs/build/foundation.steps.prefab", SocketType.Floor);
         }
@@ -464,17 +472,18 @@ namespace Oxide.Plugins
             foreach (Construction construction in PrefabAttribute.server.GetAll<Construction>())
             {
                 //Debug.Log(construction.info.name.english.ToString());
-               /* if (construction.info.name.english.ToString().Contains("Triangle"))
-                    {
-                        Socket_Base[] socketArray = (Socket_Base[])socks.GetValue(construction);
-                    Debug.Log(socketArray.ToString());
-                        foreach (Socket_Base socket in socketArray)
-                        {
-                            //Puts(string.Format("{0} {1} {2} {3}", socket.name, socket.type.ToString(), socket.position.ToString(), socket.rotation.w.ToString()));
-                            Puts(string.Format("{0} - {1} {2} {3} {4} - {5} {6} {7}", socket.socketName, socket.rotation.x.ToString(), socket.rotation.y.ToString(), socket.rotation.z.ToString(), socket.rotation.w.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
-                        }
-                        Puts("================");
-                    }*/
+                /* if (construction.info.name.english.ToString().Contains("Triangle"))
+                     {
+                         Socket_Base[] socketArray = (Socket_Base[])socks.GetValue(construction);
+                     Debug.Log(socketArray.ToString());
+                         foreach (Socket_Base socket in socketArray)
+                         {
+                             //Puts(string.Format("{0} {1} {2} {3}", socket.name, socket.type.ToString(), socket.position.ToString(), socket.rotation.w.ToString()));
+                             Puts(string.Format("{0} - {1} {2} {3} {4} - {5} {6} {7}", socket.socketName, socket.rotation.x.ToString(), socket.rotation.y.ToString(), socket.rotation.z.ToString(), socket.rotation.w.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
+                         }
+                         Puts("================");
+                     }*/
+                //Debug.Log(construction.hierachyName);
                 nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
             }
         }
@@ -594,7 +603,7 @@ namespace Oxide.Plugins
             block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
             block.Spawn(true);
             block.SetGrade(grade);
-            if(health <= 0f)
+            if (health <= 0f)
                 block.health = block.MaxHealth();
             else
                 block.health = health;
@@ -628,7 +637,7 @@ namespace Oxide.Plugins
             UnityEngine.GameObject createdPrefab = GameManager.server.CreatePrefab(newPrefab, pos, angles, true);
             if (createdPrefab == null) return;
             BaseEntity entity = createdPrefab.GetComponent<BaseEntity>();
-            if(entity == null)
+            if (entity == null)
             {
                 UnityEngine.Object.Destroy(newPrefab);
                 return;
@@ -648,8 +657,8 @@ namespace Oxide.Plugins
                 if (collider.GetComponentInParent<BuildingBlock>())
                 {
                     if (collider.GetComponentInParent<BuildingBlock>().blockDefinition.fullName == name)
-                            if (Vector3.Distance(collider.transform.position, position) < 0.6f)
-                                return true;
+                        if (Vector3.Distance(collider.transform.position, position) < 0.6f)
+                            return true;
                 }
             }
             return false;
@@ -700,34 +709,34 @@ namespace Oxide.Plugins
             {
                 case "building":
                     DoBuild(buildplayer, currentplayer, currentCollider);
-                break;
+                    break;
                 case "buildup":
-                DoBuildUp(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoBuildUp(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "deploy":
-                DoDeploy(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoDeploy(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "plant":
                 case "animal":
-                DoPlant(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoPlant(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "grade":
-                DoGrade(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoGrade(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "heal":
-                DoHeal(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoHeal(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "erase":
-                DoErase(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoErase(buildplayer, currentplayer, currentCollider);
+                    break;
                 case "rotate":
                     DoRotation(buildplayer, currentplayer, currentCollider);
-                break;
+                    break;
                 case "spawning":
-                DoSpawn(buildplayer, currentplayer, currentCollider);
-                break;
+                    DoSpawn(buildplayer, currentplayer, currentCollider);
+                    break;
                 default:
-                return;
+                    return;
             }
         }
 
@@ -991,7 +1000,7 @@ namespace Oxide.Plugins
             if (newPos.x == 0f)
                 return;
             // Checks if the element has already been built to prevent multiple structure elements on one spot
-            if (isColliding(buildplayer.currentPrefab,newPos, 1f))
+            if (isColliding(buildplayer.currentPrefab, newPos, 1f))
                 return;
 
             SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
@@ -1032,7 +1041,7 @@ namespace Oxide.Plugins
             }
             else if (int.TryParse(arg, out intbuilding))
             {
-                if (intbuilding <= resourcesList.Count )
+                if (intbuilding <= resourcesList.Count)
                 {
                     prefabName = resourcesList[intbuilding];
                     buildType = "plant";
@@ -1308,9 +1317,9 @@ namespace Oxide.Plugins
             defaultHealth = -1f;
             heightAdjustment = 3f;
 
-            if(args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if(args.Length > 2) int.TryParse(args[2],out defaultGrade);
-            if(args.Length > 3) float.TryParse(args[3], out defaultHealth);
+            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
+            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
+            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
 
 
             buildplayer.currentHealth = defaultHealth;
@@ -1471,7 +1480,7 @@ namespace Oxide.Plugins
 
         void SendEchoConsole(Network.Connection cn, string msg)
         {
-            if(Network.Net.sv.IsConnected())
+            if (Network.Net.sv.IsConnected())
             {
                 Network.Net.sv.write.Start();
                 Network.Net.sv.write.PacketID(Network.Message.Type.ConsoleMessage);
