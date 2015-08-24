@@ -450,7 +450,7 @@ namespace Oxide.Plugins
             nameToSockets.Add("assets/bundled/prefabs/build/wall.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.doorway.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.window.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.bar.prefab", SocketType.Bar);
+            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.bars.prefab", SocketType.Bar);
             nameToSockets.Add("assets/bundled/prefabs/build/wall.low.prefab", SocketType.Wall);
             nameToSockets.Add("assets/bundled/prefabs/build/pillar.prefab", SocketType.Support);
             nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.prefab", SocketType.Block);
@@ -483,7 +483,7 @@ namespace Oxide.Plugins
                          }
                          Puts("================");
                      }*/
-                //Debug.Log(construction.hierachyName);
+                Debug.Log(construction.hierachyName + " " + construction.fullName);
                 nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
             }
         }
