@@ -320,7 +320,7 @@ namespace Oxide.Plugins
             var BarToWall = new Dictionary<Vector3, Quaternion>();
             BarToWall.Add(new Vector3(0f, 0f, -2f), new Quaternion(0f, 1f, 0f, 0f));
             BarType.Add(SocketType.Wall, BarToWall);
-            TypeToType.Add(SocketType.Block, BarType);
+            TypeToType.Add(SocketType.Bar, BarType);
 
             // Sockets that can connect on a Floor / Foundation type
             var FloorType = new Dictionary<SocketType, object>();
