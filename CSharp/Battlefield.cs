@@ -18,9 +18,6 @@ namespace Oxide.Plugins
         [PluginReference]
         Plugin EventManager;
 
-        [PluginReference]
-        Plugin ZoneManager;
-
         private bool useThisEvent;
         private bool EventStarted;
         private bool Changed;
@@ -104,60 +101,36 @@ namespace Oxide.Plugins
 
         static float EventStartHealth = 100;
 
-        static Dictionary<string, object> EventZoneConfig;
         static Dictionary<string, object> EventGrounds = DefaultGrounds();
         static string DefaultGround = "shortrange";
         static string DefaultWeapon = "assault";
 
         static string EventMessageKill = "{0} killed {2}. ({1} kills)";
         static string EventMessageOpenBroadcast = "In Battlefield, it's a free for all, the goal is to kill as many players as possible!";
+        static string EventMessageErrorNotLaunched = "Battlefield isn't currently launched";
+        static string EventMessageErrorNotStarted = "You need to wait for the Battlefield to be started to use this command.";
+        static string EventMessageErrorVoteNotBF = "You must be in the battlefield to vote";
+        static string EventMessageVoteGroundAvaible = "︻┳═一 Battlefield Grounds Avaible 一═┳︻ Votes required for an item: {0}";
+        static string EventMessageVoteGroundVotes = "{0} - {1} votes";
+        static string EventMessageErrorVoteNoGround = "This battlefield ground doesn't exist.";
+        static string EventMessageErrorVoteAlreadyGround = "The current ground is already {0}.";
+        static string EventMessageVoteGroundVoted = "You have voted for the ground: {0}.";
+        static string EventMessageVoteGroundShowVotes = "┳═一 {0} has {1} votes";
+        static string EventMessageVoteGroundNew = "︻┳═一 New ground is now: {0}";
+        static string EventMessageVoteWeaponNew = "︻┳═一 New weapon kit is now: {0}";
+        static string EventMessageVoteWeaponShowVotes = "┳═一 {0} has {1} votes";
+        static string EventMessageVoteWeaponAvaible = "︻┳═一 Avaible Weapon Kits For Current Ground 一═┳︻  Votes required for an item: {0}";
+        static string EventMessageVoteWeaponVotes = "{0} - {1} votes";
+        static string EventMessageErrorVoteNoKit = "This weapon kits doesn't exist in this battleground.";
+        static string EventMessageErrorVoteAlreadyWeapon = "The current weapon is already {0}.";
+        static string EventMessageVoteWeaponVoted = "︻┳═一 You have voted for the weapon: {0}.";
 
         static int TokensAddKill = 1;
         static int EventVotePercent = 60;
 
-        private void LoadZoneConfig()
-        {
-            EventZoneConfig = new Dictionary<string, object>();
 
-            EventZoneConfig.Add("eject", true);
-            EventZoneConfig.Add("undestr", true);
-            EventZoneConfig.Add("autolights", true);
-            EventZoneConfig.Add("nobuild", true);
-            EventZoneConfig.Add("nodeploy", true);
-            EventZoneConfig.Add("nokits", true);
-            EventZoneConfig.Add("notp", true);
-            EventZoneConfig.Add("killsleepers", true);
-            EventZoneConfig.Add("nosuicide", true);
-            EventZoneConfig.Add("nocorpse", true);
-            EventZoneConfig.Add("nowounded", true);
-
-            timer.Once(1f, () =>
-            {
-                object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
-                if (zonefieldlist == null)
-                {
-                    Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Battlefield");
-                    return;
-                }
-                foreach (string fielditem in (List<string>)zonefieldlist)
-                {
-                    if (fielditem != "Location" && fielditem != "ID" && fielditem != "name" && fielditem != "radius")
-                    {
-                        if (!EventZoneConfig.ContainsKey(fielditem))
-                            EventZoneConfig.Add(fielditem, false);
-
-                        if (Config["Zone Settings - " + fielditem] is bool)
-                            EventZoneConfig[fielditem] = (bool)Config["Zone Settings - " + fielditem];
-                        else
-                            Config["Zone Settings - " + fielditem] = EventZoneConfig[fielditem];
-                    }
-                }
-            }
-            );
-        }
         private void LoadVariables()
         {
-            LoadZoneConfig();
             LoadConfigVariables();
             SaveConfig();
         }
@@ -168,6 +141,23 @@ namespace Oxide.Plugins
 
             CheckCfg<string>("Messages - Kill", ref EventMessageKill);
             CheckCfg<string>("Messages - Open Broadcast", ref EventMessageOpenBroadcast);
+            CheckCfg<string>("Messages - Error - Not Selected", ref EventMessageErrorNotLaunched);
+            CheckCfg<string>("Messages - Error - Not Started", ref EventMessageErrorNotStarted);
+            CheckCfg<string>("Messages - Error - Not joined", ref EventMessageErrorVoteNotBF);
+            CheckCfg<string>("Messages - Vote - Grounds - Show Avaible Title", ref EventMessageVoteGroundAvaible);
+            CheckCfg<string>("Messages - Vote - Grounds - Show Avaible List", ref EventMessageVoteGroundVotes);
+            CheckCfg<string>("Messages - Error - Vote - Ground Doesnt Exist", ref EventMessageErrorVoteNoGround);
+            CheckCfg<string>("Messages - Error - Vote - Ground Already This One", ref EventMessageErrorVoteAlreadyGround);
+            CheckCfg<string>("Messages - Vote - Grounds - Voted", ref EventMessageVoteGroundVoted);
+            CheckCfg<string>("Messages - Vote - Grounds - Show Votes", ref EventMessageVoteGroundShowVotes);
+            CheckCfg<string>("Messages - Vote - Grounds - New", ref EventMessageVoteGroundNew);
+            CheckCfg<string>("Messages - Vote - Weapons - New", ref EventMessageVoteWeaponNew);
+            CheckCfg<string>("Messages - Vote - Weapons - Show Votes", ref EventMessageVoteWeaponShowVotes);
+            CheckCfg<string>("Messages - Vote - Weapons - Show Avaible Title", ref EventMessageVoteWeaponAvaible);
+            CheckCfg<string>("Messages - Vote - Weapons - Show Avaible List", ref EventMessageVoteWeaponVotes);
+            CheckCfg<string>("Messages - Vote - Weapons - Voted", ref EventMessageVoteWeaponVoted);
+            CheckCfg<string>("Messages - Error - Vote - Weapon Doesnt Exist", ref EventMessageErrorVoteNoKit);
+            CheckCfg<string>("Messages - Error - Vote - Weapon Already This One", ref EventMessageErrorVoteAlreadyWeapon);
 
             CheckCfg<Dictionary<string, object>>("Battlefield - Grounds", ref EventGrounds);
 
@@ -280,22 +270,7 @@ namespace Oxide.Plugins
             }
             return null;
         }
-        void OnPostZoneCreate(string name)
-        {
-            if (name == EventName)
-            {
-                string[] sendstring = new string[EventZoneConfig.Count * 2];
-                int i = 0;
-                foreach (KeyValuePair<string, object> pair in EventZoneConfig)
-                {
-                    sendstring[i] = pair.Key;
-                    i++;
-                    sendstring[i] = pair.Value.ToString();
-                    i++;
-                }
-                EventManager.Call("UpdateZone", EventName, sendstring);
-            }
-        }
+
         object OnEventOpenPost()
         {
             if (useThisEvent)
@@ -422,44 +397,46 @@ namespace Oxide.Plugins
             }
             return true;
         }
+        
         [ChatCommand("ground")]
         void cmdChatGround(BasePlayer player, string command, string[] args)
         {
             if(!useThisEvent)
             {
-                SendReply(player, "Battlefield isn't currently launched");
+                SendReply(player, EventMessageErrorNotLaunched);
                 return;
             }
+            
             if (!EventStarted)
             {
-                SendReply(player, "You need to wait for the Battlefield to be started to use this command.");
+                SendReply(player, EventMessageErrorNotStarted);
                 return;
             }
             BattlefieldPlayer bfplayer = player.GetComponent<BattlefieldPlayer>();
-            if(bfplayer == null && !hasAccess(player))
+            
+            if (bfplayer == null && !hasAccess(player))
             {
-                SendReply(player, "You must be in the battlefield to vote");
+                SendReply(player, EventMessageErrorVoteNotBF);
                 return;
             }
             if (args.Length == 0)
             {
-                SendReply(player, string.Format("︻┳═一 Battlefield Grounds Avaible 一═┳︻ Votes required for an item: {0}", VotePlayersNeeded().ToString()));
+                SendReply(player, string.Format(EventMessageVoteGroundAvaible, VotePlayersNeeded().ToString()));
                 foreach (KeyValuePair<string,object> pair in EventGrounds)
                 {
-                    SendReply(player, string.Format("{0} - {1} votes", pair.Key, GetGroundVotes(pair.Key).ToString()));
+                    SendReply(player, string.Format(EventMessageVoteGroundVotes, pair.Key, GetGroundVotes(pair.Key).ToString()));
                 }
                 return;
             }
             string voteground = args[0];
             if(!EventGrounds.ContainsKey(voteground))
             {
-                SendReply(player, "This battlefield ground doesn't exist.");
+                SendReply(player, EventMessageErrorVoteNoGround);
                 return;
             }
-
             if (voteground == currentGround)
             {
-                SendReply(player, string.Format("The current ground is already {0}.", currentGround));
+                SendReply(player, string.Format(EventMessageErrorVoteAlreadyGround, currentGround));
                 return;
             }
 
@@ -469,7 +446,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            SendReply(player, string.Format("You have voted for the ground: {0}.", voteground));
+            SendReply(player, string.Format(EventMessageVoteGroundVoted, voteground));
             if (GroundVote[bfplayer] == voteground)
                 return;
             GroundVote[bfplayer] = voteground;
@@ -490,7 +467,7 @@ namespace Oxide.Plugins
             }
             foreach (KeyValuePair<string, int> pair in votes)
             {
-                EventManager.Call("BroadcastEvent", string.Format("┳═一 {0} has {1} votes", pair.Key, pair.Value.ToString()));
+                EventManager.Call("BroadcastEvent", string.Format(EventMessageVoteGroundShowVotes, pair.Key, pair.Value.ToString()));
             }
         }
         void SetGround(string newGround)
@@ -514,7 +491,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            EventManager.Call("BroadcastEvent", string.Format("︻┳═一 New ground is now: {0}", newGround));
+            EventManager.Call("BroadcastEvent", string.Format(EventMessageVoteGroundNew, newGround));
 
             currentGround = newGround;
             SetWeapon(newkit);
@@ -526,7 +503,7 @@ namespace Oxide.Plugins
         }
         void SetWeapon(string newWeapon)
         {
-            EventManager.Call("BroadcastEvent", string.Format("︻┳═一 New weapon kit is now: {0}", newWeapon));
+            EventManager.Call("BroadcastEvent", string.Format(EventMessageVoteWeaponNew, newWeapon));
             currentWeapon = newWeapon;
             foreach (BattlefieldPlayer bfplayer in BattlefieldPlayers)
             {
@@ -549,36 +526,37 @@ namespace Oxide.Plugins
             }
             foreach (KeyValuePair<string, int> pair in votes)
             {
-                EventManager.Call("BroadcastEvent", string.Format("┳═一 {0} has {1} votes", pair.Key, pair.Value.ToString()));
+                EventManager.Call("BroadcastEvent", string.Format(EventMessageVoteWeaponShowVotes, pair.Key, pair.Value.ToString()));
             }
         }
+
         [ChatCommand("weapon")]
         void cmdChatWeapon(BasePlayer player, string command, string[] args)
         {
             if (!useThisEvent)
             {
-                SendReply(player, "Battlefield isn't currently launched");
+                SendReply(player, EventMessageErrorNotLaunched);
                 return;
             }
             if (!EventStarted)
             {
-                SendReply(player, "You need to wait for the Battlefield to be started to use this command.");
+                SendReply(player, EventMessageErrorNotStarted);
                 return;
             }
             BattlefieldPlayer bfplayer = player.GetComponent<BattlefieldPlayer>();
             if (bfplayer == null && !hasAccess(player))
             {
-                SendReply(player, "You must be in the battlefield to vote");
+                SendReply(player, EventMessageErrorVoteNotBF);
                 return;
             }
             var eventgrounddata = EventGrounds[currentGround] as Dictionary<string, object>;
             var eventgroundkits = eventgrounddata["kits"] as List<object>;
             if (args.Length == 0)
             {
-                SendReply(player, string.Format("︻┳═一 Avaible Weapon Kits For Current Ground 一═┳︻  Votes required for an item: {0}", VotePlayersNeeded().ToString()));
+                SendReply(player, string.Format(EventMessageVoteWeaponAvaible, VotePlayersNeeded().ToString()));
                 foreach (string kitname in eventgroundkits)
                 {
-                    SendReply(player, string.Format("{0} - {1} votes", kitname, GetWeaponVotes(kitname).ToString()));
+                    SendReply(player, string.Format(EventMessageVoteWeaponVotes, kitname, GetWeaponVotes(kitname).ToString()));
                 }
                 return;
             }
@@ -586,13 +564,13 @@ namespace Oxide.Plugins
             
             if (!eventgroundkits.Contains(voteweap))
             {
-                SendReply(player, "This weapon kits doesn't exist in this battleground.");
+                SendReply(player, EventMessageErrorVoteNoKit);
                 return;
             }
 
             if(voteweap == currentWeapon)
             {
-                SendReply(player, string.Format("The current weapon is already {0}.", currentWeapon));
+                SendReply(player, string.Format(EventMessageErrorVoteAlreadyWeapon, currentWeapon));
                 return;
             }
 
@@ -602,7 +580,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            SendReply(player, string.Format("︻┳═一 You have voted for the weapon: {0}.", voteweap));
+            SendReply(player, string.Format(EventMessageVoteWeaponVoted, voteweap));
             if (WeaponVote[bfplayer] == voteweap)
                 return;
             WeaponVote[bfplayer] = voteweap;
