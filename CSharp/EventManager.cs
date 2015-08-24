@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.2", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.3", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -657,7 +657,7 @@ namespace Oxide.Plugins
             AutoDM.Add("timetojoin", "30");
             AutoDM.Add("minplayers", "1");
             AutoDM.Add("maxplayers", "10");
-            AutoDM.Add("timelimit", "1200");
+            AutoDM.Add("timelimit", "1800");
 
             var AutoBF = new Dictionary<string, object>();
             AutoBF.Add("gametype", "Battlefield");
@@ -667,7 +667,6 @@ namespace Oxide.Plugins
             AutoBF.Add("timelimit", null);
             AutoBF.Add("minplayers", "0");
             AutoBF.Add("maxplayers", "30");
-
 
             newautoconfiglist.Add("0",AutoDM);
             newautoconfiglist.Add("1",AutoBF);
