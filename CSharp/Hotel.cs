@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.6", ResourceId = 1298)]
+    [Info("Hotel", "Reneb", "1.0.7", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -319,6 +319,11 @@ namespace Oxide.Plugins
                 if (intcheckoutTime == default(double))
                     intcheckoutTime = Convert.ToDouble(checkoutTime);
                 return intcheckoutTime;
+            }
+
+            public void Reset()
+            {
+                intcheckoutTime = default(double);
             }
         }
 
@@ -745,6 +750,7 @@ namespace Oxide.Plugins
             room.checkingTime = LogTime().ToString();
 
             room.checkoutTime = hotel.rd == "0" ? "0" : (LogTime() + double.Parse(hotel.rd)).ToString();
+            room.Reset();
 
             LockLock(codelock);
             OpenDoor(door as Door);
@@ -812,6 +818,7 @@ namespace Oxide.Plugins
             room.renter = null;
             room.checkingTime = null;
             room.checkoutTime = null;
+            room.Reset();
         }
 
         void OnUseNPC(BasePlayer npc, BasePlayer player)
@@ -1324,7 +1331,7 @@ namespace Oxide.Plugins
         {
             var input = serverinput.GetValue(player) as InputState;
             var currentRot = Quaternion.Euler(input.current.aimAngles);
-            BuildingBlock target = FindBlockFromRay(player.transform.position, currentRot * Vector3.forward);
+            BuildingBlock target = FindBlockFromRay(player.eyes.position, currentRot * Vector3.forward);
             if (target == null) return default(Vector3);
             if (target.GetComponent<Door>() == null) return default(Vector3);
             return target.transform.position;
@@ -1386,7 +1393,7 @@ namespace Oxide.Plugins
                 SendReply(player, string.Format("Room ID is: {0} in hotel: {1}", targetroom.roomid, targethotel.hotelname));
                 SendReply(player, "Options are:");
                 SendReply(player, "/room \"optional:roomid\" reset => to reset this room");
-                SendReply(player, "/room \"optional:roomid\" give NAME/STEAMID => to give a player this room");
+                //SendReply(player, "/room \"optional:roomid\" give NAME/STEAMID => to give a player this room");
                 SendReply(player, "/room \"optional:roomid\" duration XXXX => to set a new duration time for a player (from the time you set the duration)");
                 return;
             }
@@ -1400,7 +1407,7 @@ namespace Oxide.Plugins
                 case "reset":
                     ResetRoom(targethotel, targetroom);
                     SendReply(player, string.Format("The room {0} was resetted", targetroom.roomid));
-                    break;
+                break;
 
                 case "duration":
                     if (targetroom.renter == null)
@@ -1420,9 +1427,9 @@ namespace Oxide.Plugins
                         SendReply(player, "/room \"optional:roomid\" duration NEWTIMELEFT");
                         return;
                     }
-                    targetroom.checkoutTime = newtimeleft.ToString();
-                    SendReply(player, string.Format("New timeleft for room ID {0} is {1}", targetroom.roomid, newtimeleft.ToString()));
-                    break;
+                    targetroom.checkoutTime = (newtimeleft + LogTime()).ToString();
+                    SendReply(player, string.Format("New timeleft for room ID {0} is {1}s", targetroom.roomid, newtimeleft.ToString()));
+                break;
 
                 case "give":
                     if (targetroom.renter != null)
@@ -1436,7 +1443,7 @@ namespace Oxide.Plugins
                         return;
                     }
 
-                    break;
+                break;
 
                 default:
                     SendReply(player, "This is not a valid option, say /room \"optional:roomid\" to see the options");
