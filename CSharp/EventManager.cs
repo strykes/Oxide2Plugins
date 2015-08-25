@@ -21,7 +21,7 @@ namespace Oxide.Plugins
         [PluginReference]
         Plugin Kits;
 
-        [PluginReference] 
+        [PluginReference]
         Plugin ZoneManager;
 
         [PluginReference]
@@ -250,6 +250,7 @@ namespace Oxide.Plugins
             EventEnded = true;
             EventPending = false;
             EventGameName = defaultGame;
+            InitializeTable();
             timer.Once(0.1f, () => InitializeZones());
             timer.Once(0.2f, () => InitializeGames());
         }
@@ -267,7 +268,7 @@ namespace Oxide.Plugins
                     GameObject.Destroy(gameObj);
             ResetZones();
         }
-         
+
         void OnPlayerRespawned(BasePlayer player)
         {
             if (!(player.GetComponent<EventPlayer>())) return;
@@ -326,7 +327,7 @@ namespace Oxide.Plugins
         {
             if (zonelogs[name] == null) return;
             ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
-            if (EventGames.Contains(name)) 
+            if (EventGames.Contains(name))
                 Interface.CallHook("OnPostZoneCreate", name);
         }
         void ResetZones()
@@ -511,6 +512,377 @@ namespace Oxide.Plugins
             storedData.Tokens[userid] = amount.ToString();
         }
 
+
+        public string tokenoverlay = @"[  
+		                { 
+							""name"": ""EventManagerOverlay"",
+                            ""parent"": ""Overlay"",
+                            ""components"":
+                            [
+                                {
+                                     ""type"":""UnityEngine.UI.Image"",
+                                     ""color"":""0.1 0.1 0.1 1"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0 0"",
+                                    ""anchormax"": ""1 1""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Event Manager"",
+                                    ""fontSize"":30,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.3 0.80"",
+                                    ""anchormax"": ""0.7 0.90""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{msg}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.3 0.70"",
+                                    ""anchormax"": ""0.7 0.79""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Reward"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 0.60"",
+                                    ""anchormax"": ""0.4 0.65""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Amount"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.49 0.60"",
+                                    ""anchormax"": ""0.54 0.65""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Cost"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.55 0.60"",
+                                    ""anchormax"": ""0.6 0.65""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Claim"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.65 0.60"",
+                                    ""anchormax"": ""0.75 0.65""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""Close"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.5 0.20"",
+                                    ""anchormax"": ""0.7 0.25""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""close"":""EventManagerOverlay"",
+                                    ""color"": ""0.5 0.5 0.5 0.2"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.5 0.20"",
+                                    ""anchormax"": ""0.7 0.25""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""<<"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 0.20"",
+                                    ""anchormax"": ""0.3 0.25""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""color"": ""0.5 0.5 0.5 0.2"",
+                                    ""command"":""reward.show {rewardpageminus}"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 0.20"",
+                                    ""anchormax"": ""0.3 0.25""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":"">>"",
+                                    ""fontSize"":20,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.35 0.20"",
+                                    ""anchormax"": ""0.45 0.25""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""color"": ""0.5 0.5 0.5 0.2"",
+                                    ""command"":""reward.show {rewardpageplus}"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.35 0.20"",
+                                    ""anchormax"": ""0.45 0.25""
+                                }
+                            ]
+                        },
+                        
+                    ]
+                    ";
+        string tokenjson = @"[
+        				{
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{rewardname}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 {ymin}"",
+                                    ""anchormax"": ""0.4 {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{rewardamount}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.49 {ymin}"",
+                                    ""anchormax"": ""0.54 {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{rewardcost}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleLeft"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.55 {ymin}"",
+                                    ""anchormax"": ""0.6 {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""EventManagerOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""close"":""EventManagerOverlay"",
+                                    ""command"":""reward.claim {rewardcmd}"",
+                                    ""color"": ""{color}"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.65 {ymin}"",
+                                    ""anchormax"": ""0.69 {ymax}""
+                                }
+                            ]
+                        }
+                    ]
+                    ";
+
+        void ShowRewards(BasePlayer player, double from)
+        {
+            if (from < 0) return;
+            if (from >= rewards.Count) return;
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "EventManagerOverlay");
+            int currenttokens = GetTokens(player.userID.ToString());
+            var ctoverlay = tokenoverlay.Replace("{msg}", string.Format(OverlayGUIMsg, currenttokens.ToString())).Replace("{rewardpageplus}", (from + 6).ToString()).Replace("{rewardpageminus}", (from - 6).ToString());
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", ctoverlay);
+            double current = 0;
+            foreach (KeyValuePair<string, Reward> pair in rewards)
+            {
+                if (current >= from && current < from + 6)
+                {
+                    string color = (pair.Value.GetCost() <= currenttokens) ? "0 0.6 0 0.2" : "1 0 0 0.2";
+                    double pos = 0.55 - 0.05 * (current - from);
+                    var tokenline = tokenjson.Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{color}", color).Replace("{rewardname}", pair.Key).Replace("{rewardcmd}", string.Format("'{0}' {1}", pair.Key, from.ToString())).Replace("{rewardcost}",pair.Value.cost).Replace("{rewardamount}", pair.Value.amount);
+                    CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", tokenline);
+                    //SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString()));
+                }
+                current++;
+            }
+
+            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", new object[] { " " });
+
+        }
+        [ConsoleCommand("reward.show")]
+        void ccmdRewardShow(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length == 0) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            string rewardpage = arg.Args[0].Replace("'", "");
+            double rewardp = Convert.ToDouble(rewardpage);
+            ShowRewards(player, rewardp);
+        }
+        [ConsoleCommand("reward.claim")]
+        void ccmdRewardClaim(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 2) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            string rewardname = arg.Args[0].Replace("'", "");
+            if (rewards[rewardname] == null)
+            {
+                SendReply(player, MessageRewardWrong);
+                return;
+            }
+            int currenttokens = GetTokens(player.userID.ToString());
+            int amount = 1;
+            if (rewards[rewardname].GetCost() * amount > currenttokens)
+            {
+                SendReply(player, string.Format(MessageRewardNotEnoughTokens, rewardname, amount.ToString()));
+                return;
+            }
+            var success = GiveReward(player, rewardname, amount);
+            if (success is string)
+            {
+                SendReply(player, success.ToString());
+                return;
+            }
+            if (success is bool && (bool)success)
+                RemoveTokens(player.userID.ToString(), rewards[rewardname].GetCost() * amount);
+            ShowRewards(player, Convert.ToDouble(arg.Args[1]));
+        }
+        [ChatCommand("reward")]
+        void cmdEventReward(BasePlayer player, string command, string[] args)
+        {
+            ShowRewards(player, 0.0);
+        }
+
+
         //////////////////////////////////////////////////////////////////////////////////////
         // Configs Manager ///////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
@@ -575,7 +947,7 @@ namespace Oxide.Plugins
         private static bool EventAutoEvents = false;
         private static int EventAutoInterval = 600;
         private static int EventAutoAnnounceInterval = 30;
-        private static Dictionary<string,object> EventAutoConfig = CreateDefaultAutoConfig();
+        private static Dictionary<string, object> EventAutoConfig = CreateDefaultAutoConfig();
 
         private static string MessageRewardCurrentReward = "You currently have {0} for the /reward shop";
         private static string MessageRewardCurrent = "You have {0} tokens";
@@ -591,6 +963,8 @@ namespace Oxide.Plugins
         private static string defaultGame = "Deathmatch";
         private static string defaultSpawnfile = "deathmatchspawns";
         private static int eventAuth = 1;
+
+        public string OverlayGUIMsg = "You currently have <color=green>{0}</color> tokens.";
 
         void Init()
         {
@@ -616,7 +990,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Not In Event", ref MessagesEventNotInEvent);
             CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
             CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
-
+             
             CheckCfg<string>("Messages - Error - No players found", ref noPlayerFound);
             CheckCfg<string>("Messages - Error - Multiple players found", ref multipleNames);
 
@@ -637,6 +1011,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event - MinPlayersReached", ref MessagesEventMinPlayers);
 
             CheckCfg<string>("Messages - Reward - Message", ref MessageRewardCurrentReward);
+            CheckCfg<string>("Messages - Reward - GUI Message", ref OverlayGUIMsg);
             CheckCfg<string>("Messages - Reward - Current", ref MessageRewardCurrent);
             CheckCfg<string>("Messages - Reward - Help", ref MessageRewardHelp);
             CheckCfg<string>("Messages - Reward - Reward Description", ref MessageRewardItem);
@@ -647,9 +1022,9 @@ namespace Oxide.Plugins
             SaveConfig();
         }
 
-        static Dictionary<string,object> CreateDefaultAutoConfig()
+        static Dictionary<string, object> CreateDefaultAutoConfig()
         {
-            var newautoconfiglist = new Dictionary<string,object>();
+            var newautoconfiglist = new Dictionary<string, object>();
             var AutoDM = new Dictionary<string, object>();
             AutoDM.Add("gametype", "Deathmatch");
             AutoDM.Add("spawnfile", "deathmatchspawnfile");
@@ -668,8 +1043,8 @@ namespace Oxide.Plugins
             AutoBF.Add("minplayers", "0");
             AutoBF.Add("maxplayers", "30");
 
-            newautoconfiglist.Add("0",AutoDM);
-            newautoconfiglist.Add("1",AutoBF);
+            newautoconfiglist.Add("0", AutoDM);
+            newautoconfiglist.Add("1", AutoBF);
 
             return newautoconfiglist;
         }
@@ -923,7 +1298,7 @@ namespace Oxide.Plugins
                 return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
             }
 
-            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));   
+            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));
             return null;
         }
         void OnEventStartPost()
@@ -1157,7 +1532,7 @@ namespace Oxide.Plugins
             if (name == null) return MessagesErrorSpawnfileIsNull;
             if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
             if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
-            
+
             object success = Interface.CallHook("OnSelectSpawnFile", new object[] { name });
             if (success == null)
             {
@@ -1356,50 +1731,6 @@ namespace Oxide.Plugins
         }
 
 
-        [ChatCommand("reward")]
-        void cmdEventReward(BasePlayer player, string command, string[] args)
-        {
-            int currenttokens = GetTokens(player.userID.ToString());
-            if (args.Length == 0)
-            {
-                SendReply(player, string.Format(MessageRewardCurrent, currenttokens.ToString()));
-                SendReply(player, MessageRewardHelp);
-                foreach (KeyValuePair<string, Reward> pair in rewards)
-                {
-                    string color = "green";
-                    if (pair.Value.GetCost() > currenttokens)
-                        color = "red";
-                    SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString()));
-                }
-                return;
-            }
-            if (rewards[args[0]] == null)
-            {
-                SendReply(player, MessageRewardWrong);
-                return;
-            }
-            int amount = 1;
-            if (args.Length > 1) int.TryParse(args[1], out amount);
-            if (amount < 1)
-            {
-                SendReply(player, MessageRewardNegative);
-                return;
-            }
-            if (rewards[args[0]].GetCost() * amount > currenttokens)
-            {
-                SendReply(player, string.Format(MessageRewardNotEnoughTokens, args[0], amount.ToString()));
-                return;
-            }
-            var success = GiveReward(player, args[0], amount);
-            if (success is string)
-            {
-                SendReply(player, success.ToString());
-                return;
-            }
-            if (success is bool && (bool)success)
-                RemoveTokens(player.userID.ToString(), rewards[args[0]].GetCost() * amount);
-
-        }
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Console Commands //////////////////////////////////////////////////////////////////
