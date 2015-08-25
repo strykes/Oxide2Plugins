@@ -599,7 +599,7 @@ namespace Oxide.Plugins
             {
                 BaseCombatEntity block = entity as BaseCombatEntity;
                 if (buildingZones[block] == null) return;
-                if (!(block is BuildingBlock)) return;
+                if (!(block is BuildingBlock || block.GetComponentInParent<Deployable>() != null)) return;
                 foreach (Zone zone in buildingZones[block])
                 {
                     if (zone.info.undestr != null)
