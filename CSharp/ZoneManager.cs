@@ -1,3 +1,5 @@
+// Reference: RustBuild
+
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -8,7 +10,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.29", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.0.30", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
         ////////////////////////////////////////////
@@ -73,6 +75,7 @@ namespace Oxide.Plugins
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
         public static FieldInfo lastPositionValue;
+        public static FieldInfo npcNextTick;
 
         public Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         /////////////////////////////////////////
@@ -204,7 +207,7 @@ namespace Oxide.Plugins
                     zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Resource");
                     zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Tree");
                 }
-                if (info.nopve != null)
+                if (info.nopve != null || info.npcfreeze != null)
                 {
                     zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("AI");
                 }
@@ -284,8 +287,8 @@ namespace Oxide.Plugins
                     if (!buildingblocks.Contains(col))
                     {
                         buildingblocks.Add(col);
+                        
                         BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
-
                         ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
                         if (baseresource != null)
                         {
@@ -310,6 +313,14 @@ namespace Oxide.Plugins
                                 GameObject.Destroy(col.GetComponentInParent<Decay>());
                             }
                         }
+                        if (info.npcfreeze != null)
+                        {
+                            NPCAI npcai = col.GetComponentInParent<NPCAI>();
+                            if (npcai != null)
+                            {
+                                npcNextTick.SetValue(npcai, 999999999999f);
+                            }
+                        }
                     }
                 }
             }
@@ -320,6 +331,7 @@ namespace Oxide.Plugins
                     inTrigger.Add(col.GetComponentInParent<BasePlayer>());
                     OnEnterZone(this, col.GetComponentInParent<BasePlayer>());
                 }
+                
             }
             void OnTriggerExit(Collider col)
             {
@@ -366,6 +378,7 @@ namespace Oxide.Plugins
             public string radiation;
             public string enter_message;
             public string leave_message;
+            public string npcfreeze;
 
             public ZoneDefinition()
             {
@@ -375,7 +388,6 @@ namespace Oxide.Plugins
             public ZoneDefinition(Vector3 position)
             {
                 this.radius = "20";
-                this.noremove = "true";
                 Location = new ZoneLocation(position, this.radius);
             }
 
@@ -426,6 +438,7 @@ namespace Oxide.Plugins
             buildingMask = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
             AIMask = UnityEngine.LayerMask.GetMask(new string[] { "AI" });
             lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            npcNextTick = typeof(NPCAI).GetField("nextTick", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             /* for(int i = 0; i < 25; i ++)
              {
                  Debug.Log(UnityEngine.LayerMask.LayerToName(i));
@@ -636,6 +649,20 @@ namespace Oxide.Plugins
                 if (corpse == null)
                     continue;
                 corpse.Kill(BaseNetworkable.DestroyMode.None);
+            }
+        }
+
+
+        /////////////////////////////////////////
+        // OnEntitySpawned(BaseNetworkable entity)
+        // Called when any kind of entity is spawned in the world
+        /////////////////////////////////////////
+        void OnEntitySpawned(BaseNetworkable entity)
+        {
+            NPCAI npc = entity.GetComponent<NPCAI>();
+            if(npc != null)
+            {
+                npcNextTick.SetValue(npc, Time.time + 10f);
             }
         }
 
