@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.1.3", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.1.4", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -25,7 +25,7 @@ namespace Oxide.Plugins
         private bool EventStarted;
         private bool Changed;
 
-        private string CurrentKit;
+        public string CurrentKit;
         private List<DeathmatchPlayer> DeathmatchPlayers = new List<DeathmatchPlayer>();
 
         ////////////////////////////////////////////////////////////
@@ -113,7 +113,7 @@ namespace Oxide.Plugins
         static int TokensAddKill = 1;
         static int TokensAddWon = 5;
 
-
+        /*
         private void LoadZoneConfig()
         {
             EventZoneConfig = new Dictionary<string, object>();
@@ -153,12 +153,11 @@ namespace Oxide.Plugins
                 }
             }
             );
-
-        }
+        }*/
         private void LoadVariables()
         {
 
-            LoadZoneConfig();
+            //LoadZoneConfig();
 
             LoadConfigVariables();
 
@@ -269,6 +268,7 @@ namespace Oxide.Plugins
         {
             if (name == EventName)
             {
+                /*
                 string[] sendstring = new string[EventZoneConfig.Count * 2];
                 int i = 0;
                 foreach (KeyValuePair<string, object> pair in EventZoneConfig)
@@ -278,7 +278,7 @@ namespace Oxide.Plugins
                     sendstring[i] = pair.Value.ToString();
                     i++;
                 }
-                EventManager.Call("UpdateZone", EventName, sendstring);
+                EventManager.Call("UpdateZone", EventName, sendstring);*/
             }
         }
         object CanEventOpen()
@@ -330,6 +330,15 @@ namespace Oxide.Plugins
         }
         object CanEventJoin()
         {
+            return null;
+        }
+        object OnSelectKit(string kitname)
+        {
+            if(useThisEvent)
+            {
+                CurrentKit = kitname;
+                return true;
+            }
             return null;
         }
         object OnEventJoinPost(BasePlayer player)
@@ -387,6 +396,10 @@ namespace Oxide.Plugins
             return;
         }
         object EventChooseSpawn(BasePlayer player, Vector3 destination)
+        {
+            return null;
+        }
+        object OnRequestZoneName()
         {
             return null;
         }
