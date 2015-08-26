@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.3", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.4", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -67,6 +67,7 @@ namespace Oxide.Plugins
             public bool inEvent;
             public bool savedInventory;
             public bool savedHome;
+            public string zone;
 
             public Dictionary<string, int> Belt;
             public Dictionary<string, int> Wear;
@@ -326,7 +327,7 @@ namespace Oxide.Plugins
         void InitializeZone(string name)
         {
             if (zonelogs[name] == null) return;
-            ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition(), "undestr", "true", "nobuild", "true", "nodeploy", "true");
+            ZoneManager?.Call("CreateOrUpdateZone", name, new string[] { "radius", zonelogs[name].radius }, zonelogs[name].GetPosition());
             if (EventGames.Contains(name))
                 Interface.CallHook("OnPostZoneCreate", name);
         }
@@ -336,7 +337,7 @@ namespace Oxide.Plugins
             {
                 ZoneManager?.Call("EraseZone", game);
             }
-        }
+        } 
         void UpdateZone(string name, string[] args)
         {
             ZoneManager?.Call("CreateOrUpdateZone", name, args);
@@ -896,24 +897,7 @@ namespace Oxide.Plugins
             else
                 Config[Key] = var;
         }
-        object GetConfig(string menu, string datavalue, object defaultValue)
-        {
-            var data = Config[menu] as Dictionary<string, object>;
-            if (data == null)
-            {
-                data = new Dictionary<string, object>();
-                Config[menu] = data;
-                Changed = true;
-            }
-            object value;
-            if (!data.TryGetValue(datavalue, out value))
-            {
-                value = defaultValue;
-                data[datavalue] = value;
-                Changed = true;
-            }
-            return value;
-        }
+
         private static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
         private static string MessagesEventNotSet = "An Event game must first be chosen.";
         private static string MessagesErrorSpawnfileIsNull = "The spawnfile can't be set to null";
@@ -1102,7 +1086,12 @@ namespace Oxide.Plugins
             var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = newpos;
-            ZoneManager?.Call("AddPlayerToZoneKeepinlist", EventGameName, player);
+
+            var zonen = Interface.Call("OnRequestZoneName");
+            string zonename = zonen is string ? (string)zonen : EventGameName;
+            ZoneManager?.Call("AddPlayerToZoneKeepinlist", zonename, player);
+            player.GetComponent<EventPlayer>().zone = zonename;
+
             ForcePlayerPosition(player, (Vector3)targetpos);
         }
 
@@ -1182,7 +1171,8 @@ namespace Oxide.Plugins
             foreach (EventPlayer eventplayer in EventPlayers)
             {
                 EjectPlayer(eventplayer.player);
-                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, eventplayer.player);
+                if(eventplayer.zone != null)
+                    ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", eventplayer.zone, eventplayer.player);
                 eventplayer.inEvent = false;
             }
         }
@@ -1500,7 +1490,8 @@ namespace Oxide.Plugins
             {
                 BroadcastToChat(string.Format(MessagesEventLeft, player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             }
-            ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", EventGameName, player);
+            if(player.GetComponent<EventPlayer>().zone != null)
+                ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", player.GetComponent<EventPlayer>().zone, player);
             if (EventStarted)
             {
                 player.inventory.Strip();
@@ -1548,6 +1539,29 @@ namespace Oxide.Plugins
                 return (string)success;
             }
 
+            return true;
+        }
+        object SelectKit(string kitname)
+        {
+            if (kitname == null) return "You can't have a null kitname";
+            if (EventGameName == null || EventGameName == "") return MessagesEventNotSet;
+            if (!(EventGames.Contains(EventGameName))) return string.Format(MessagesEventNotAnEvent, EventGameName.ToString());
+
+            object success = Kits.Call("isKit", kitname);
+            if (!(success is bool))
+            {
+                return "Do you have the kits plugin?";
+            }
+            if (!(bool)success)
+            {
+                return string.Format("The kit {0} doesn't exist", kitname);
+            }
+
+            success = Interface.CallHook("OnSelectKit", new object[] { kitname });
+            if(success == null)
+            {
+                return "The Current Event doesn't let you select a Kit";
+            }
             return true;
         }
         object SelectMaxplayers(string num)
@@ -1866,6 +1880,24 @@ namespace Oxide.Plugins
             defaultSpawnfile = arg.Args[0];
             SaveConfig();
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
+        }
+        
+        [ConsoleCommand("event.kit")]
+        void ccmdEventKit(ConsoleSystem.Arg arg)
+        {
+            if (!hasAccess(arg)) return;
+            if (arg.Args == null || arg.Args.Length == 0)
+            {
+                SendReply(arg, "event.kit \"kitname\"");
+                return;
+            }
+            object success = SelectKit((string)arg.Args[0]);
+            if (success is string)
+            {
+                SendReply(arg, (string)success);
+                return;
+            }
+            SendReply(arg, string.Format("The new Kit for {0} is now {1}", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
         [ConsoleCommand("event.zone")]
         void ccmdEventZone(ConsoleSystem.Arg arg)
