@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Battlefield", "Reneb", "1.0.0")]
+    [Info("Event Battlefield", "Reneb", "1.0.2")]
     class Battlefield : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -195,6 +195,7 @@ namespace Oxide.Plugins
             ground1kit.Add("pistols");
             ground1kit.Add("assault");
             ground1.Add("kits", ground1kit);
+            ground1.Add("zone", "BattlefieldGround1");
             ground1.Add("spawnfile", "shortrangespawnfile");
                  
             var ground2 = new Dictionary<string, object>();
@@ -202,8 +203,9 @@ namespace Oxide.Plugins
             ground2kit.Add("sniper");
             ground2kit.Add("pistols");
             ground2.Add("kits", ground2kit);
+            ground2.Add("zone", "BattlefieldGround2");
             ground2.Add("spawnfile", "longrangespawnfile");
-
+             
             grounds.Add("shortrange", ground1);
             grounds.Add("longrange", ground2);
 
@@ -270,7 +272,15 @@ namespace Oxide.Plugins
             }
             return null;
         }
-
+        object OnSelectKit(string kitname)
+        {
+            if (useThisEvent)
+            {
+                SetWeapon(kitname);
+                return true;
+            }
+            return null;
+        }
         object OnEventOpenPost()
         {
             if (useThisEvent)
@@ -283,6 +293,15 @@ namespace Oxide.Plugins
             {
                 EventStarted = false;
                 BattlefieldPlayers.Clear();
+            }
+            return null;
+        }
+        object OnRequestZoneName()
+        {
+            if(useThisEvent)
+            {
+                var eventgrounddata = EventGrounds[currentGround] as Dictionary<string, object>;
+                return eventgrounddata["zone"].ToString();
             }
             return null;
         }
@@ -472,7 +491,7 @@ namespace Oxide.Plugins
         }
         void SetGround(string newGround)
         {
-            var eventgrounddata = EventGrounds[currentGround] as Dictionary<string, object>;
+            var eventgrounddata = EventGrounds[newGround] as Dictionary<string, object>;
             if (eventgrounddata == null) { EventManager.Call("BroadcastToChat", string.Format("Error while setting new ground: {0}. data doesn't exist. WTF?", newGround)); return; }
             if (eventgrounddata["spawnfile"] == null) { EventManager.Call("BroadcastToChat", string.Format("Error while setting new ground: {0}. spawnfile isn't set", newGround)); return; }
 
@@ -529,7 +548,6 @@ namespace Oxide.Plugins
                 EventManager.Call("BroadcastEvent", string.Format(EventMessageVoteWeaponShowVotes, pair.Key, pair.Value.ToString()));
             }
         }
-
         [ChatCommand("weapon")]
         void cmdChatWeapon(BasePlayer player, string command, string[] args)
         {
