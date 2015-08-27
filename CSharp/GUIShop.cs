@@ -517,7 +517,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {currentshop} {sellitem} 10"",
+                                    ""command"":""shop.sell {currentshop} {sellitem} 10"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -552,7 +552,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {currentshop} {sellitem} 100"",
+                                    ""command"":""shop.sell {currentshop} {sellitem} 100"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -791,6 +791,39 @@ namespace Oxide.Plugins
                 SendReply(player, (string)success);
                 return;
             }
+            SendReply(player, string.Format("You've successfully bought {0}x {1}", amount.ToString(), item));
+        }
+        [ConsoleCommand("shop.sell")]
+        void ccmdShopBuy(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            string shop = arg.Args[0].Replace("'", "");
+            string item = arg.Args[1].Replace("'", "");
+            int amount = Convert.ToInt32(arg.Args[2]);
+            object success = TryShopSell(player, shop, item, amount);
+            if (success is string)
+            {
+                SendReply(player, (string)success);
+                return;
+            }
+        }
+        object TryShopSell(BasePlayer player, string shop, string item, int amount)
+        {
+            object success = CanShop(player, shop);
+            if (success is string)
+            {
+                return success;
+            }
+            success = CanDoAction(player, shop, item, "buy");
+            if (success is string)
+            {
+                return success;
+            }
+
+            return true;
         }
 
         object TryShopBuy(BasePlayer player, string shop, string item, int amount)
