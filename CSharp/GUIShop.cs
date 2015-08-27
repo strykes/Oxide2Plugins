@@ -16,9 +16,15 @@ namespace Oxide.Plugins
         [PluginReference("00-Economics")]
         Plugin Economics;
 
+        [PluginReference]
+        Plugin Kits;
+
+        int playersMask;
+
         void Loaded()
         { 
-            InitializeTable();
+            
+            playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
         }
 
         //////////////////////////////////////////////////////////////////////////////////////
@@ -28,6 +34,7 @@ namespace Oxide.Plugins
         private Dictionary<string, LuaFunction> EconomyApi = new Dictionary<string, LuaFunction>();
         void OnServerInitialized()
         {
+            InitializeTable();
             if (!Economics)
             {
                 PrintWarning("Economics plugin not found. " + this.Name + "will not function!");
@@ -75,7 +82,8 @@ namespace Oxide.Plugins
 
             var shop1 = new Dictionary<string,object>();
             var items1 = new List<object>();
-            items1.Add("Weapons");
+            items1.Add("Assault Rifle");
+            items1.Add("Bolt Action Rifle");
             shop1.Add("buy", items1);
             shop1.Add("sell", items1);
             shop1.Add("description", "You currently have {0} coins to spend in this weapons shop");
@@ -83,15 +91,17 @@ namespace Oxide.Plugins
 
             var shop2 = new Dictionary<string, object>();
             var items2 = new List<object>();
-            items2.Add("Builder");
+            items2.Add("Build Kit");
             shop2.Add("buy", items2);
             shop2.Add("description", "You currently have {0} coins to spend in this builders shop");
             shop2.Add("name", "Build");
 
             var shop3 = new Dictionary<string, object>();
             var items3 = new List<object>();
-            items3.Add("Fruits");
-            items3.Add("Weapons");
+            items3.Add("Apple");
+            items3.Add("BlueBerries");
+            items3.Add("Assault Rifle");
+            items3.Add("Bolt Action Rifle");
             shop3.Add("buy", items3);
             shop3.Add("sell", items3);
             shop3.Add("description", "You currently have {0} coins to spend in this farmers market");
@@ -107,8 +117,6 @@ namespace Oxide.Plugins
         {
             var dsc = new Dictionary<string, object>();
             
-            var cat1 = new Dictionary<string, object>();
-
             var scat1 = new Dictionary<string, object>();
             scat1.Add("item", "assault rifle");
             scat1.Add("buy", "10");
@@ -121,19 +129,17 @@ namespace Oxide.Plugins
             scat2.Add("sell", "8");
             scat2.Add("img", "http://vignette1.wikia.nocookie.net/play-rust/images/5/55/Bolt_Action_Rifle_icon.png/revision/latest/scale-to-width-down/100?cb=20150405111457");
 
-            cat1.Add("Assault Rifle", scat1);
-            cat1.Add("Bolt Action Rifle", scat2);
+            dsc.Add("Assault Rifle", scat1);
+            dsc.Add("Bolt Action Rifle", scat2);
 
-            var cat2 = new Dictionary<string, object>();
             var scat3 = new Dictionary<string, object>();
             scat3.Add("item", "kitbuild");
             scat3.Add("buy", "10");
             scat3.Add("sell", "8");
             scat3.Add("img", "http://oxidemod.org/data/resource_icons/0/715.jpg?1425682952");
 
-            cat2.Add("Build Kit", scat3);
+            dsc.Add("Build Kit", scat3);
 
-            var cat3 = new Dictionary<string, object>();
             var scat4 = new Dictionary<string, object>();
             scat4.Add("item", "apple");
             scat4.Add("buy", "1");
@@ -146,12 +152,8 @@ namespace Oxide.Plugins
             scat5.Add("sell", "1");
             scat5.Add("img", "http://vignette1.wikia.nocookie.net/play-rust/images/f/f8/Blueberries_icon.png/revision/latest/scale-to-width-down/100?cb=20150405111338");
 
-            cat3.Add("Apple", scat4);
-            cat3.Add("BlueBerries", scat5);
-
-            dsc.Add("Weapons", cat1);
-            dsc.Add("Builder", cat2);
-            dsc.Add("Fruits", cat3);
+            dsc.Add("Apple", scat4);
+            dsc.Add("BlueBerries", scat5);
 
             return dsc;
         }
@@ -354,7 +356,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {buyitem} 1"",
+                                    ""command"":""shop.buy {currentshop} {buyitem} 1"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -389,7 +391,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {buyitem} 10"",
+                                    ""command"":""shop.buy {currentshop} {buyitem} 10"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -424,7 +426,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {buyitem} 100"",
+                                    ""command"":""shop.buy {currentshop} {buyitem} 100"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -480,7 +482,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.sell {sellitem} 1"",
+                                    ""command"":""shop.sell {currentshop} {sellitem} 1"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -515,7 +517,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {sellitem} 10"",
+                                    ""command"":""shop.buy {currentshop} {sellitem} 10"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -550,7 +552,7 @@ namespace Oxide.Plugins
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
                                     ""close"":""ShopOverlay"",
-                                    ""command"":""shop.buy {sellitem} 100"",
+                                    ""command"":""shop.buy {currentshop} {sellitem} 100"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
                                 },
@@ -721,30 +723,27 @@ namespace Oxide.Plugins
             foreach (KeyValuePair<string, Dictionary<string, bool>> pair in itemslist)
             {
                 if (!ShopCategories.ContainsKey(pair.Key)) continue;
-                foreach (KeyValuePair<string, object> spair in (Dictionary<string, object>)ShopCategories[pair.Key])
+                if (current >= from && current < from + 7)
                 {
-                    if (current >= from && current < from + 7)
-                    {
-                        var itemdata = spair.Value as Dictionary<string, object>;
-                        double pos = 0.55 - 0.05 * (current - from);
+                    var itemdata = ShopCategories[pair.Key] as Dictionary<string, object>;
+                    double pos = 0.55 - 0.05 * (current - from);
 
-                        var shopijson = shopitemjson.Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{itemname}", (string)spair.Key).Replace("{itemurl}", (string)itemdata["img"]);
-                        CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopijson);
-                        if (pair.Value.ContainsKey("buy"))
-                        {
-                            string buycolor = "0 0.6 0 0.1";
-                            var shopitembjson = shopitembuyjson.Replace("{buyprice}", (string)itemdata["buy"]).Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{buyitem}", (string)itemdata["item"]).Replace("{color}",buycolor);
-                            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopitembjson);
-                        }
-                        if (pair.Value.ContainsKey("sell"))
-                        {
-                            string sellcolor = "1 0 0 0.1";
-                            var shopitemsjson = shopitemselljson.Replace("{sellprice}", (string)itemdata["sell"]).Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{sellitem}", (string)itemdata["item"]).Replace("{color}", sellcolor);
-                            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopitemsjson);
-                        }
+                    var shopijson = shopitemjson.Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{itemname}", (string)pair.Key).Replace("{itemurl}", (string)itemdata["img"]);
+                    CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopijson);
+                    if (pair.Value.ContainsKey("buy"))
+                    {
+                        string buycolor = "0 0.6 0 0.1";
+                        var shopitembjson = shopitembuyjson.Replace("{buyprice}", (string)itemdata["buy"]).Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{buyitem}", string.Format("'{0}'", pair.Key)).Replace("{color}", buycolor).Replace("{currentshop}", string.Format("'{0}'", shopid));
+                        CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopitembjson);
                     }
-                    current++;
+                    if (pair.Value.ContainsKey("sell"))
+                    {
+                        string sellcolor = "1 0 0 0.1";
+                        var shopitemsjson = shopitemselljson.Replace("{sellprice}", (string)itemdata["sell"]).Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{sellitem}", string.Format("'{0}'", pair.Key)).Replace("{color}", sellcolor).Replace("{currentshop}", string.Format("'{0}'", shopid));
+                        CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", shopitemsjson);
+                    }
                 }
+                current++;
             }
             double minfrom = from <= 7.0 ? 0.0 : from - 7;
             double maxfrom = from + 7 >= current ? from : from + 7;
@@ -765,15 +764,184 @@ namespace Oxide.Plugins
         }
 
         [ConsoleCommand("shop.show")]
-        void ccmdRewardShow(ConsoleSystem.Arg arg)
+        void ccmdShopShow(ConsoleSystem.Arg arg)
         {
-            if (arg.Args == null || arg.Args.Length < 2) return;
+            if (arg.Args == null || arg.Args.Length < 3) return;
             if (arg.connection == null) return;
             BasePlayer player = arg.connection.player as BasePlayer;
             if (player == null) return;
             string shopid = arg.Args[0].Replace("'", "");
             double shoppage = Convert.ToDouble(arg.Args[1]);
             ShowShop(player, shopid, shoppage);
+        }
+
+        [ConsoleCommand("shop.buy")]
+        void ccmdShopBuy(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            string shop = arg.Args[0].Replace("'", "");
+            string item = arg.Args[1].Replace("'", "");
+            int amount = Convert.ToInt32(arg.Args[2]);
+            object success = TryShopBuy(player, shop, item, amount);
+            if(success is string)
+            {
+                SendReply(player, (string)success);
+                return;
+            }
+        }
+
+        object TryShopBuy(BasePlayer player, string shop, string item, int amount)
+        {
+            object success = CanShop(player, shop);
+            if (success is string)
+            {
+                return success;
+            }
+            success = CanDoAction(player, shop, item, "buy");
+            if (success is string)
+            {
+                return success;
+            }
+            success = CanBuy(player, item, amount);
+            if (success is string)
+            {
+                return success;
+            }
+            success = TryGive(player, item, amount);
+            if(success is string)
+            {
+                return success;
+            }
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            Economics.Call("Withdraw", player, Convert.ToInt32(itemdata["buy"]) * amount);
+            return true;
+        }
+        object TryGive(BasePlayer player, string item, int amount)
+        {
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            if(!itemdata.ContainsKey("item"))
+            {
+                return "WARNING: The admin didn't set this item properly! (item)";
+            }
+            string itemname = itemdata["item"].ToString();
+            object iskit = Kits?.Call("isKit", itemname);
+
+            if (iskit is bool && (bool)iskit)
+            {
+                object successkit = Kits.Call("GiveKit", player, itemname);
+                if(successkit is bool && !(bool)successkit)
+                {
+                    return "There was an error while giving you this kit";
+                }
+                return true;
+            }
+            object success = GiveItem(player, itemname, amount, player.inventory.containerMain);
+            if(success is string)
+            {
+                return success;
+            }
+            return true;
+        }
+        private object GiveItem(BasePlayer player, string itemname, int amount, ItemContainer pref)
+        {
+            itemname = itemname.ToLower();
+
+            bool isBP = false;
+            if (itemname.EndsWith(" bp"))
+            {
+                isBP = true;
+                itemname = itemname.Substring(0, itemname.Length - 3);
+            }
+            if (displaynameToShortname.ContainsKey(itemname))
+                itemname = displaynameToShortname[itemname];
+            var definition = ItemManager.FindItemDefinition(itemname);
+            if (definition == null)
+                return "The item you are trying to buy doesn't seem to exist";
+            int giveamount = 0;
+            int stack = (int)definition.stackable;
+            if (isBP)
+                stack = 1;
+            if (stack < 1) stack = 1;
+            for (var i = amount; i > 0; i = i - stack)
+            {
+                if (i >= stack)
+                    giveamount = stack;
+                else
+                    giveamount = i;
+                if (giveamount < 1) return true;
+                player.inventory.GiveItem(ItemManager.CreateByItemID((int)definition.itemid, giveamount, isBP), pref);
+            }
+            return true;
+        }
+        object CanDoAction(BasePlayer player, string shop, string item, string ttype)
+        {
+            var shopdata = Shops[shop] as Dictionary<string,object>;
+            if(!shopdata.ContainsKey(ttype))
+            {
+                return string.Format("You are not allowed to {0} in this shop", ttype);
+            }
+            var actiondata = shopdata[ttype] as List<object>;
+            if(!actiondata.Contains(item))
+            {
+                return string.Format("You are not allowed to {0} this item here.", ttype);
+            }
+            return true;
+        }
+
+        object CanBuy(BasePlayer player, string item, int amount)
+        {
+            object playerData = EconomyApi["GetUserData"].Call("GetUserData", player.userID.ToString());
+            if (playerData == null)
+            {
+                return "Couldn't get your shop data. Maybe the owner doesn't have Economics?";
+            }
+            var table = (((object[])playerData)[0]) as LuaTable;
+            int playerCoins = Convert.ToInt32(table[1]);
+            if(!ShopCategories.ContainsKey(item))
+            {
+                return "There was a bug with item, it seems that it is not a valid one.";
+            }
+
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            if(!itemdata.ContainsKey("buy"))
+            {
+                return "No buy price was given by the admin, you can't buy this item";
+            }
+            int buyprice = Convert.ToInt32(itemdata["buy"]);
+
+            if(playerCoins < buyprice * amount)
+            {
+                return string.Format("You need {0} coins to buy {1} of {2}",( buyprice*amount).ToString(), amount.ToString(), item);
+            }
+            return true;
+        }
+        bool CanFindNPC(Vector3 pos, string npcid)
+        {
+            foreach (Collider col in Physics.OverlapSphere(pos, 3f, playersMask))
+            {
+                if (col.GetComponentInParent<BasePlayer>() == null) continue;
+                BasePlayer player = col.GetComponentInParent<BasePlayer>();
+                if (player.userID.ToString() == npcid) return true;
+            }
+            return false;
+        }
+        object CanShop(BasePlayer player, string shopname)
+        {
+            if (!Shops.ContainsKey(shopname))
+            {
+                return "This shop doesn't exist";
+            }
+            if (shopname != "chat")
+            {
+                if (!CanFindNPC(player.transform.position, shopname))
+                {
+                    return "The NPC owning this shop was not found around you";
+                }
+            }
+            return true;
         }
     }
 }
