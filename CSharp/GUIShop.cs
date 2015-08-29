@@ -13,22 +13,22 @@ namespace Oxide.Plugins
     [Info("GUIShop", "Reneb", "1.0.0")]
     class GUIShop : RustPlugin
     {
+
+        int playersMask;
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // References ////////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
         [PluginReference("00-Economics")]
         Plugin Economics;
 
         [PluginReference]
         Plugin Kits;
 
-        int playersMask;
-
-        void Loaded()
-        { 
-            
-            playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
-        }
-
         //////////////////////////////////////////////////////////////////////////////////////
-        // Workaround the Blocks of Economics. Hope This wont be needed in the future ////////
+        // Workaround the Blocks of Economics. Hope This wont be needed in the future
+        // THX MUGHISI ///////////////////////////////////////////////////////////////////////
         //////////////////////////////////////////////////////////////////////////////////////
 
         private Dictionary<string, LuaFunction> EconomyApi = new Dictionary<string, LuaFunction>();
@@ -65,13 +65,45 @@ namespace Oxide.Plugins
         private static Dictionary<string, object> ShopCategories = DefaultShopCategories();
         private static Dictionary<string, object> Shops = DefaultShops();
 
+        static string MessageShowNoEconomics = "Couldn't get informations out of Economics. Is it installed?";
+        static string MessageBought = "You've successfully bought {0}x {1}";
+        static string MessageSold = "You've successfully sold {0}x {1}";
+        static string MessageErrorNoShop = "This shop doesn't seem to exist.";
+        static string MessageErrorNoActionShop = "You are not allowed to {0} in this shop";
+        static string MessageErrorNoNPC = "The NPC owning this shop was not found around you";
+        static string MessageErrorNoActionItem = "You are not allowed to {0} this item here";
+        static string MessageErrorItemItem = "WARNING: The admin didn't set this item properly! (item)";
+        static string MessageErrorItemNoValid = "WARNING: It seems like it's not a valid item";
+        static string MessageErrorRedeemKit = "WARNING: There was an error while giving you this kit";
+        static string MessageErrorBuyPrice = "WARNING: No buy price was given by the admin, you can't buy this item";
+        static string MessageErrorSellPrice = "WARNING: No sell price was given by the admin, you can't sell this item";
+        static string MessageErrorNotEnoughMoney = "You need {0} coins to buy {1} of {2}";
+        static string MessageErrorNotEnoughSell = "You don't have enough of this item.";
+        static string MessageErrorItemNoExist = "WARNING: The item you are trying to buy doesn't seem to exist";
+        static string MessageErrorNPCRange = "You may not use the chat shop. You might need to find the NPC Shops.";
+
         void Init()
         {
             CheckCfg<Dictionary<string,object>>("Shop - Shop Categories", ref ShopCategories);
             CheckCfg<Dictionary<string, object>>("Shop - Shop List", ref Shops);
-
+            CheckCfg<string>("Message - Error - No Econonomics", ref MessageShowNoEconomics);
+            CheckCfg<string>("Message - Bought", ref MessageBought);
+            CheckCfg<string>("Message - Sold", ref MessageSold);
+            CheckCfg<string>("Message - Error - No Shop", ref MessageErrorNoShop);
+            CheckCfg<string>("Message - Error - No Action In Shop", ref MessageErrorNoActionShop);
+            CheckCfg<string>("Message - Error - No NPC", ref MessageErrorNoNPC);
+            CheckCfg<string>("Message - Error - No Action Item", ref MessageErrorNoActionItem);
+            CheckCfg<string>("Message - Error - Item Not Set Properly", ref MessageErrorItemItem);
+            CheckCfg<string>("Message - Error - Item Not Valid", ref MessageErrorItemNoValid);
+            CheckCfg<string>("Message - Error - Redeem Kit", ref MessageErrorRedeemKit);
+            CheckCfg<string>("Message - Error - No Buy Price", ref MessageErrorBuyPrice);
+            CheckCfg<string>("Message - Error - No Sell Price", ref MessageErrorSellPrice);
+            CheckCfg<string>("Message - Error - Not Enough Money", ref MessageErrorNotEnoughMoney);
+            CheckCfg<string>("Message - Error - Not Enough Items", ref MessageErrorNotEnoughSell);
+            CheckCfg<string>("Message - Error - Item Doesnt Exist", ref MessageErrorItemNoExist);
+            CheckCfg<string>("Message - Error - No Chat Shop", ref MessageErrorNPCRange);
             SaveConfig();
-        }
+        } 
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Default Shops for Tutorial purpoise ///////////////////////////////////////////////
@@ -174,6 +206,24 @@ namespace Oxide.Plugins
             }
         }
 
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Oxide Hooks ///////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        void Loaded()
+        {
+            playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
+        }
+
+        void OnUseNPC(BasePlayer npc, BasePlayer player)
+        {
+            if (!Shops.ContainsKey(npc.userID.ToString())) return;
+            ShowShop(player, npc.userID.ToString(), 0);
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // GUI ///////////////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
 
         public string shopoverlay = @"[  
 		                { 
@@ -355,7 +405,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.buy {currentshop} {buyitem} 1"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -390,7 +439,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.buy {currentshop} {buyitem} 10"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -425,7 +473,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.buy {currentshop} {buyitem} 100"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -481,7 +528,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.sell {currentshop} {sellitem} 1"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -516,7 +562,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.sell {currentshop} {sellitem} 10"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -551,7 +596,6 @@ namespace Oxide.Plugins
                             [
                                 {
                                     ""type"":""UnityEngine.UI.Button"",
-                                    ""close"":""ShopOverlay"",
                                     ""command"":""shop.sell {currentshop} {sellitem} 100"",
                                     ""color"": ""{color}"",
                                     ""imagetype"": ""Tiled""
@@ -673,19 +717,21 @@ namespace Oxide.Plugins
                         
                     ]
                     ";
+
+        Hash<BasePlayer, double> shopPage = new Hash<BasePlayer, double>();
         void ShowShop(BasePlayer player, string shopid, double from = 0.0)
         {
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "ShopOverlay");
-
+            shopPage[player] = from;
             if (!Shops.ContainsKey(shopid))
             {
-                SendReply(player, "This shop doesn't seem to exist.");
+                SendReply(player, MessageErrorNoShop);
                 return;
             }
             object playerData = EconomyApi["GetUserData"].Call("GetUserData",player.userID.ToString());
             if (playerData == null)
             {
-                SendReply(player, "Couldn't get your shop data. Maybe the owner doesn't have Economics?");
+                SendReply(player, MessageShowNoEconomics);
                 return;
             }
             var table = (((object[])playerData)[0]) as LuaTable;
@@ -750,81 +796,53 @@ namespace Oxide.Plugins
             var chgpage = shopchangepage.Replace("{currentshop}", shopid).Replace("{shoppageplus}", (maxfrom).ToString()).Replace("{shoppageminus}", (minfrom).ToString());
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", chgpage);
         }
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Shop Functions ////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
 
-
-        [ChatCommand("shop")]
-        void cmdShop(BasePlayer player, string command, string[] args)
+        object CanDoAction(BasePlayer player, string shop, string item, string ttype)
         {
-            if(!Shops.ContainsKey("chat"))
+            var shopdata = Shops[shop] as Dictionary<string, object>;
+            if (!shopdata.ContainsKey(ttype))
             {
-                SendReply(player, "You may not use the chat shop. You might need to find the NPC Shops.");
-                return;
+                return string.Format(MessageErrorNoActionShop, ttype);
             }
-            ShowShop(player, "chat");
-        }
-
-        [ConsoleCommand("shop.show")]
-        void ccmdShopShow(ConsoleSystem.Arg arg)
-        {
-            if (arg.Args == null || arg.Args.Length < 3) return;
-            if (arg.connection == null) return;
-            BasePlayer player = arg.connection.player as BasePlayer;
-            if (player == null) return;
-            string shopid = arg.Args[0].Replace("'", "");
-            double shoppage = Convert.ToDouble(arg.Args[1]);
-            ShowShop(player, shopid, shoppage);
-        }
-
-        [ConsoleCommand("shop.buy")]
-        void ccmdShopBuy(ConsoleSystem.Arg arg)
-        {
-            if (arg.Args == null || arg.Args.Length < 3) return;
-            if (arg.connection == null) return;
-            BasePlayer player = arg.connection.player as BasePlayer;
-            if (player == null) return;
-            string shop = arg.Args[0].Replace("'", "");
-            string item = arg.Args[1].Replace("'", "");
-            int amount = Convert.ToInt32(arg.Args[2]);
-            object success = TryShopBuy(player, shop, item, amount);
-            if(success is string)
+            var actiondata = shopdata[ttype] as List<object>;
+            if (!actiondata.Contains(item))
             {
-                SendReply(player, (string)success);
-                return;
+                return string.Format(MessageErrorNoActionItem, ttype);
             }
-            SendReply(player, string.Format("You've successfully bought {0}x {1}", amount.ToString(), item));
-        }
-        [ConsoleCommand("shop.sell")]
-        void ccmdShopBuy(ConsoleSystem.Arg arg)
-        {
-            if (arg.Args == null || arg.Args.Length < 3) return;
-            if (arg.connection == null) return;
-            BasePlayer player = arg.connection.player as BasePlayer;
-            if (player == null) return;
-            string shop = arg.Args[0].Replace("'", "");
-            string item = arg.Args[1].Replace("'", "");
-            int amount = Convert.ToInt32(arg.Args[2]);
-            object success = TryShopSell(player, shop, item, amount);
-            if (success is string)
-            {
-                SendReply(player, (string)success);
-                return;
-            }
-        }
-        object TryShopSell(BasePlayer player, string shop, string item, int amount)
-        {
-            object success = CanShop(player, shop);
-            if (success is string)
-            {
-                return success;
-            }
-            success = CanDoAction(player, shop, item, "buy");
-            if (success is string)
-            {
-                return success;
-            }
-
             return true;
         }
+        bool CanFindNPC(Vector3 pos, string npcid)
+        {
+            foreach (Collider col in Physics.OverlapSphere(pos, 3f, playersMask))
+            {
+                if (col.GetComponentInParent<BasePlayer>() == null) continue;
+                BasePlayer player = col.GetComponentInParent<BasePlayer>();
+                if (player.userID.ToString() == npcid) return true;
+            }
+            return false;
+        }
+        object CanShop(BasePlayer player, string shopname)
+        {
+            if (!Shops.ContainsKey(shopname))
+            {
+                return MessageErrorNoShop;
+            }
+            if (shopname != "chat")
+            {
+                if (!CanFindNPC(player.transform.position, shopname))
+                {
+                    return MessageErrorNoNPC;
+                }
+            }
+            return true;
+        }
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Buy Functions /////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
 
         object TryShopBuy(BasePlayer player, string shop, string item, int amount)
         {
@@ -844,7 +862,7 @@ namespace Oxide.Plugins
                 return success;
             }
             success = TryGive(player, item, amount);
-            if(success is string)
+            if (success is string)
             {
                 return success;
             }
@@ -855,9 +873,9 @@ namespace Oxide.Plugins
         object TryGive(BasePlayer player, string item, int amount)
         {
             var itemdata = ShopCategories[item] as Dictionary<string, object>;
-            if(!itemdata.ContainsKey("item"))
+            if (!itemdata.ContainsKey("item"))
             {
-                return "WARNING: The admin didn't set this item properly! (item)";
+                return MessageErrorItemNoValid;
             }
             string itemname = itemdata["item"].ToString();
             object iskit = Kits?.Call("isKit", itemname);
@@ -865,14 +883,14 @@ namespace Oxide.Plugins
             if (iskit is bool && (bool)iskit)
             {
                 object successkit = Kits.Call("GiveKit", player, itemname);
-                if(successkit is bool && !(bool)successkit)
+                if (successkit is bool && !(bool)successkit)
                 {
-                    return "There was an error while giving you this kit";
+                    return MessageErrorRedeemKit;
                 }
                 return true;
             }
             object success = GiveItem(player, itemname, amount, player.inventory.containerMain);
-            if(success is string)
+            if (success is string)
             {
                 return success;
             }
@@ -892,7 +910,7 @@ namespace Oxide.Plugins
                 itemname = displaynameToShortname[itemname];
             var definition = ItemManager.FindItemDefinition(itemname);
             if (definition == null)
-                return "The item you are trying to buy doesn't seem to exist";
+                return MessageErrorItemNoExist;
             int giveamount = 0;
             int stack = (int)definition.stackable;
             if (isBP)
@@ -909,72 +927,208 @@ namespace Oxide.Plugins
             }
             return true;
         }
-        object CanDoAction(BasePlayer player, string shop, string item, string ttype)
-        {
-            var shopdata = Shops[shop] as Dictionary<string,object>;
-            if(!shopdata.ContainsKey(ttype))
-            {
-                return string.Format("You are not allowed to {0} in this shop", ttype);
-            }
-            var actiondata = shopdata[ttype] as List<object>;
-            if(!actiondata.Contains(item))
-            {
-                return string.Format("You are not allowed to {0} this item here.", ttype);
-            }
-            return true;
-        }
-
         object CanBuy(BasePlayer player, string item, int amount)
         {
             object playerData = EconomyApi["GetUserData"].Call("GetUserData", player.userID.ToString());
             if (playerData == null)
             {
-                return "Couldn't get your shop data. Maybe the owner doesn't have Economics?";
+                return MessageShowNoEconomics;
             }
             var table = (((object[])playerData)[0]) as LuaTable;
             int playerCoins = Convert.ToInt32(table[1]);
-            if(!ShopCategories.ContainsKey(item))
+            if (!ShopCategories.ContainsKey(item))
             {
-                return "There was a bug with item, it seems that it is not a valid one.";
+                return MessageErrorItemNoValid;
             }
 
             var itemdata = ShopCategories[item] as Dictionary<string, object>;
-            if(!itemdata.ContainsKey("buy"))
+            if (!itemdata.ContainsKey("buy"))
             {
-                return "No buy price was given by the admin, you can't buy this item";
+                return MessageErrorBuyPrice;
             }
             int buyprice = Convert.ToInt32(itemdata["buy"]);
 
-            if(playerCoins < buyprice * amount)
+            if (playerCoins < buyprice * amount)
             {
-                return string.Format("You need {0} coins to buy {1} of {2}",( buyprice*amount).ToString(), amount.ToString(), item);
+                return string.Format(MessageErrorNotEnoughMoney, (buyprice * amount).ToString(), amount.ToString(), item);
             }
             return true;
         }
-        bool CanFindNPC(Vector3 pos, string npcid)
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Sell Functions ////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        object TryShopSell(BasePlayer player, string shop, string item, int amount)
         {
-            foreach (Collider col in Physics.OverlapSphere(pos, 3f, playersMask))
+            object success = CanShop(player, shop);
+            if (success is string)
             {
-                if (col.GetComponentInParent<BasePlayer>() == null) continue;
-                BasePlayer player = col.GetComponentInParent<BasePlayer>();
-                if (player.userID.ToString() == npcid) return true;
+                return success;
             }
-            return false;
+            success = CanDoAction(player, shop, item, "sell");
+            if (success is string)
+            {
+                return success;
+            }
+            success = CanSell(player, item, amount);
+            if (success is string)
+            {
+                return success;
+            }
+            success = TrySell(player, item, amount);
+            if (success is string)
+            {
+                return success;
+            }
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            Economics.Call("Deposit", player, Convert.ToInt32(itemdata["sell"]) * amount);
+            return true;
         }
-        object CanShop(BasePlayer player, string shopname)
+        object TrySell(BasePlayer player, string item, int amount)
         {
-            if (!Shops.ContainsKey(shopname))
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            if (!itemdata.ContainsKey("item"))
             {
-                return "This shop doesn't exist";
+                return MessageErrorItemItem;
             }
-            if (shopname != "chat")
+            string itemname = itemdata["item"].ToString();
+            object iskit = Kits?.Call("isKit", itemname);
+
+            if (iskit is bool && (bool)iskit)
             {
-                if (!CanFindNPC(player.transform.position, shopname))
-                {
-                    return "The NPC owning this shop was not found around you";
-                }
+                return "You can't sell kits";
+            }
+            object success = TakeItem(player, itemname, amount);
+            if (success is string)
+            {
+                return success;
             }
             return true;
+        }
+        private object TakeItem(BasePlayer player, string itemname, int amount)
+        {
+            itemname = itemname.ToLower();
+
+            bool isBP = false;
+            if (itemname.EndsWith(" bp"))
+            {
+                //isBP = true;
+                //itemname = itemname.Substring(0, itemname.Length - 3);
+                return "You can't sell blueprints";
+            }
+            if (displaynameToShortname.ContainsKey(itemname))
+                itemname = displaynameToShortname[itemname];
+            var definition = ItemManager.FindItemDefinition(itemname);
+            if (definition == null)
+                return MessageErrorItemNoExist;
+
+            int pamount = player.inventory.GetAmount(definition.itemid);
+            if (pamount < amount)
+            {
+                return MessageErrorNotEnoughSell;
+            }
+
+            player.inventory.Take(null, definition.itemid, amount);
+            return true;
+        }
+        object CanSell(BasePlayer player, string item, int amount)
+        {
+            if (!ShopCategories.ContainsKey(item))
+            {
+                return MessageErrorItemNoValid;
+            }
+            var itemdata = ShopCategories[item] as Dictionary<string, object>;
+            if (!itemdata.ContainsKey("sell"))
+            {
+                return MessageErrorSellPrice;
+            }
+            return true;
+        }
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Chat Commands /////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        [ChatCommand("shop")]
+        void cmdShop(BasePlayer player, string command, string[] args)
+        {
+            if(!Shops.ContainsKey("chat"))
+            {
+                SendReply(player, MessageErrorNPCRange);
+                return;
+            }
+            ShowShop(player, "chat");
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Console Commands //////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+        [ConsoleCommand("shop.show")]
+        void ccmdShopShow(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            string shopid = arg.Args[0].Replace("'", "");
+            double shoppage = Convert.ToDouble(arg.Args[1]);
+            ShowShop(player, shopid, shoppage);
+        }
+
+        [ConsoleCommand("shop.buy")]
+        void ccmdShopBuy(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            object success = Interface.Call("CanShop", player);
+            if(success != null)
+            {
+                string message = "You are not allowed to shop at the moment";
+                if (success is string)
+                    message = (string)success;
+                SendReply(player, message);
+                return;
+            }
+
+            string shop = arg.Args[0].Replace("'", "");
+            string item = arg.Args[1].Replace("'", "");
+            int amount = Convert.ToInt32(arg.Args[2]);
+            success = TryShopBuy(player, shop, item, amount);
+            if(success is string)
+            {
+                SendReply(player, (string)success);
+                return;
+            }
+            SendReply(player, string.Format(MessageBought, amount.ToString(), item));
+            ShowShop(player, shop, shopPage[player]);
+        }
+        [ConsoleCommand("shop.sell")]
+        void ccmdShopSell(ConsoleSystem.Arg arg)
+        {
+            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.connection == null) return;
+            BasePlayer player = arg.connection.player as BasePlayer;
+            if (player == null) return;
+            object success = Interface.Call("CanShop", player);
+            if (success != null)
+            {
+                string message = "You are not allowed to shop at the moment";
+                if (success is string)
+                    message = (string)success;
+                SendReply(player, message);
+                return;
+            }
+            string shop = arg.Args[0].Replace("'", "");
+            string item = arg.Args[1].Replace("'", "");
+            int amount = Convert.ToInt32(arg.Args[2]);
+            success = TryShopSell(player, shop, item, amount);
+            if (success is string)
+            {
+                SendReply(player, (string)success);
+                return;
+            }
+            SendReply(player, string.Format(MessageSold, amount.ToString(), item));
+            ShowShop(player, shop, shopPage[player]);
         }
     }
 }
