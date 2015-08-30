@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.7", ResourceId = 1298)]
+    [Info("Hotel", "Reneb", "1.0.8", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -502,8 +502,10 @@ namespace Oxide.Plugins
             LoadPermissions();
         }
 
-        object CanUseDoor(BasePlayer player, CodeLock codelock)
+        object CanUseDoor(BasePlayer player, BaseLock baselock)
         {
+            if (baselock == null) return null;
+            CodeLock codelock = baselock as CodeLock;
             if (codelock == null) return null;
             BaseEntity parententity = codelock.GetParentEntity();
             if (parententity == null) return null;
