@@ -586,6 +586,7 @@ namespace Oxide.Plugins
                 if (door == null) continue;
                 if (!door.HasSlot(BaseEntity.Slot.Lock)) continue;
                 if (door.GetSlot(BaseEntity.Slot.Lock) == null) continue;
+                if (!(door.GetSlot(BaseEntity.Slot.Lock) is CodeLock)) continue;
                 CloseDoor(door);
                 listLocks.Add(door);
             }
@@ -1461,7 +1462,7 @@ namespace Oxide.Plugins
 
             string hname = args[0];
             if (storedData.Hotels.Count > 0)
-            {
+            { 
                 foreach (HotelData hotel in storedData.Hotels)
                 {
                     if (hotel.hotelname.ToLower() == hname.ToLower())
