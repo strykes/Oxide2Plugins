@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.15", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.16", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
         //////////////////////////////////////////////////////
@@ -16,6 +16,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////
         private static FieldInfo serverinput;
         private static FieldInfo viewangles;
+        public static FieldInfo lastPositionValue;
         private static int playerLayer;
         private DamageTypeList emptyDamage;
         private List<Oxide.Plugins.Timer> TimersList;
@@ -24,6 +25,7 @@ namespace Oxide.Plugins
         private static Vector3 jumpPosition;
         private static int groundLayer;
         private static int blockshootLayer;
+       
 
         StoredData storedData;
         Hash<string, HumanNPCInfo> humannpcs = new Hash<string, HumanNPCInfo>();
@@ -82,7 +84,7 @@ namespace Oxide.Plugins
                 return speed;
             }
         }
-
+         
         //////////////////////////////////////////////////////
         ///  class SpawnInfo
         ///  Spawn information, position & rotation
@@ -277,6 +279,7 @@ namespace Oxide.Plugins
                 waypointDone = Mathf.InverseLerp(0f, secondsToTake, secondsTaken);
                 nextPos = Vector3.Lerp(StartPos, EndPos, waypointDone);
                 npc.player.transform.position = nextPos;
+                
                 npc.player.TransformChanged();
             }
             void GetNextPath()
@@ -396,7 +399,6 @@ namespace Oxide.Plugins
             {
                 this.info = info;
                 if (info == null) return;
-                player.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
                 player.userID = ulong.Parse(info.userid);
                 player.displayName = info.displayName;
                 invulnerability = bool.Parse(info.invulnerability);
@@ -406,6 +408,7 @@ namespace Oxide.Plugins
                 player.InitializeHealth(float.Parse(info.health), float.Parse(info.health));
                 player.syncPosition = true;
                 player.transform.position = info.spawnInfo.GetPosition();
+                lastPositionValue.SetValue(player, player.transform.position);
                 player.TransformChanged();
                 SetViewAngle(player, info.spawnInfo.GetRotation());
                 player.EndSleeping();
@@ -619,14 +622,16 @@ namespace Oxide.Plugins
         static Dictionary<string, object> DefaultWeaponToFx()
         {
             var defaultfx = new Dictionary<string, object>();
-            defaultfx.Add("shotgun_waterpipe", "fx/weapons/vm_waterpipe_shotgun/attack");
-            defaultfx.Add("shotgun_pump", "fx/weapons/vm_waterpipe_shotgun/attack");
-            defaultfx.Add("smg_thompson", "fx/weapons/vm_thompson/attack");
-            defaultfx.Add("rifle_ak", "fx/weapons/vm_ak47u/attack");
-            defaultfx.Add("rifle_bolt", "fx/weapons/vm_bolt_rifle/attack");
-            defaultfx.Add("pistol_revolver", "fx/weapons/vm_revolver/attack");
-            defaultfx.Add("pistol_eoka", "fx/weapons/vm_eoka_pistol/attack");
-            return defaultfx;
+            defaultfx.Add("shotgun_waterpipe", "assets/blunded/prefabs/fx/weapons/vm_waterpipe_shotgun/attack.prefab");
+            defaultfx.Add("shotgun_pump", "assets/blunded/prefabs/fx/weapons/vm_waterpipe_shotgun/attack.prefab");
+            defaultfx.Add("smg_thompson", "assets/blunded/prefabs/fx/weapons/vm_thompson/attack.prefab");
+            defaultfx.Add("rifle_ak", "assets/blunded/prefabs/fx/weapons/vm_ak47u/attack.prefab");
+            defaultfx.Add("rifle_bolt", "assets/blunded/prefabs/fx/weapons/vm_bolt_rifle/attack.prefab");
+            defaultfx.Add("pistol_revolver", "assets/blunded/prefabs/fx/weapons/vm_revolver/attack.prefab");
+            defaultfx.Add("pistol_eoka", "assets/blunded/prefabs/fx/weapons/vm_eoka_pistol/attack.prefab");
+            defaultfx.Add("unarmed", "assets/blunded/prefabs/fx/weapons/vm_unarmed/uppercut.prefab");
+            defaultfx.Add("torch", "assets/blunded/prefabs/fx/weapons/vm_torch/attack.prefab");
+            return defaultfx; 
         }
 
         static float GetGroundY(Vector3 position)
@@ -644,11 +649,18 @@ namespace Oxide.Plugins
             LoadData();
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             viewangles = typeof(BasePlayer).GetField("viewAngles", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             TimersList = new List<Oxide.Plugins.Timer>();
             eyesPosition = new Vector3(0f, 0.5f, 0f);
             jumpPosition = new Vector3(0f, 1f, 0f);
             Vector3Down = new Vector3(0f, -1f, 0f);
             Vector3Forward = new Vector3(0f, 0f, 1f);
+               
+            foreach(BasePlayer player in BasePlayer.activePlayerList)
+            {
+                Network.SendInfo sendInfo = new Network.SendInfo(player.net.group) { method = Network.SendMethod.Unreliable };
+                player.ClientRPCEx(sendInfo, null, "SignalFromServer", new object[] { (int)BaseEntity.Signal.Attack, string.Empty });
+            }
         }
 
         void Unloaded()
@@ -838,7 +850,7 @@ namespace Oxide.Plugins
             }
             return null;
         }
-
+         
         static void DoHit(HumanLocomotion loc, BaseCombatEntity target)
         {
             loc.lastHit = Time.realtimeSinceStartup;
@@ -848,17 +860,38 @@ namespace Oxide.Plugins
                 PointEnd = target.transform.position
             };
             target.SendMessage("OnAttacked", info, SendMessageOptions.DontRequireReceiver);
-            var activeitem = loc.npc.player.GetActiveItem();
-            PlayAttack(activeitem, loc.npc.player.transform.position, (target.transform.position - loc.npc.player.transform.position).normalized);
+            ForceSignalBroadcast(loc.npc.GetComponent<BasePlayer>());
+            
+            var activeitem = loc.npc.player.inventory.containerBelt.GetSlot(0);
+            //PlayAttack(activeitem, loc.npc.player.transform.position, (target.transform.position - loc.npc.player.transform.position));
         }
-
+        static void ForceSignalBroadcast(BasePlayer entity)
+        {
+            entity.SignalBroadcast(BaseEntity.Signal.Gesture, "pickup_item", null);
+            //Network.SendInfo sendInfo = new Network.SendInfo(entity.net.group) { method = Network.SendMethod.Unreliable };
+            //entity.ClientRPCEx(sendInfo, null, "SignalFromServer", new object[] { (int)BaseEntity.Signal.Gesture, "item_drop" });
+        }
+        /*
+        void OnClientRPCEx(BaseEntity entity, Network.SendInfo sendinfo, Network.Connection source, string funcname, object[] args)
+        {
+            Debug.Log(string.Format("{0} : {1} - {2}", entity.ToString(), source == null ? "null" : source.ToString(), funcname));
+            foreach(object arg in args)
+            {
+                Debug.Log(arg == string.Empty ? "EMPTY":arg.ToString());
+            }
+        }*/
         static void PlayAttack(Item attackitem, Vector3 source, Vector3 dir)
         {
             if (attackitem != null)
             {
+                
                 if (weaponToFX.ContainsKey(attackitem.info.shortname))
                 {
-                    Effect effect = new Effect(weaponToFX[attackitem.info.shortname].ToString(), source, dir);
+                    Effect effect = new Effect();
+                    effect.Init(Effect.Type.Projectile, source, dir.normalized, null);
+                    effect.scale = dir.magnitude;
+                    effect.pooledString = (string)weaponToFX[attackitem.info.shortname];
+                    effect.number = 0;
                     EffectNetwork.Send(effect);
                 }
             }
@@ -901,7 +934,6 @@ namespace Oxide.Plugins
             if (humannpcs[userid] == null) return;
             if (!isediting && humannpcs[userid].enable == "false") return;
             var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
-            newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
             newplayer.displayName = (humannpcs[userid]).displayName;
@@ -996,7 +1028,6 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
 
             var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", player.transform.position, currentRot).ToPlayer();
-            newplayer.SetPlayerFlag(BasePlayer.PlayerFlags.IsAdmin, true);
             newplayer.displayName = "NPC";
             newplayer.Spawn(true);
             var humannpcinfo = new HumanNPCInfo(newplayer.userID, player.transform.position, currentRot);
