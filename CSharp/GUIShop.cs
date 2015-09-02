@@ -10,7 +10,7 @@ using NLua;
 
 namespace Oxide.Plugins
 {
-    [Info("GUIShop", "Reneb", "1.0.0")]
+    [Info("GUIShop", "Reneb", "1.0.4", ResourceId = 1319)]
     class GUIShop : RustPlugin
     {
 
@@ -239,6 +239,9 @@ namespace Oxide.Plugins
                                     ""type"":""RectTransform"",
                                     ""anchormin"": ""0 0"",
                                     ""anchormax"": ""1 1""
+                                },
+                                {
+                                    ""type"":""NeedsCursor"",
                                 }
                             ]
                         },
@@ -769,6 +772,7 @@ namespace Oxide.Plugins
             foreach (KeyValuePair<string, Dictionary<string, bool>> pair in itemslist)
             {
                 if (!ShopCategories.ContainsKey(pair.Key)) continue;
+                
                 if (current >= from && current < from + 7)
                 {
                     var itemdata = ShopCategories[pair.Key] as Dictionary<string, object>;
@@ -1064,7 +1068,7 @@ namespace Oxide.Plugins
         [ConsoleCommand("shop.show")]
         void ccmdShopShow(ConsoleSystem.Arg arg)
         {
-            if (arg.Args == null || arg.Args.Length < 3) return;
+            if (arg.Args == null || arg.Args.Length < 2) return;
             if (arg.connection == null) return;
             BasePlayer player = arg.connection.player as BasePlayer;
             if (player == null) return;
@@ -1080,7 +1084,7 @@ namespace Oxide.Plugins
             if (arg.connection == null) return;
             BasePlayer player = arg.connection.player as BasePlayer;
             if (player == null) return;
-            object success = Interface.Call("CanShop", player);
+            object success = Interface.Call("canShop", player);
             if(success != null)
             {
                 string message = "You are not allowed to shop at the moment";
@@ -1109,7 +1113,7 @@ namespace Oxide.Plugins
             if (arg.connection == null) return;
             BasePlayer player = arg.connection.player as BasePlayer;
             if (player == null) return;
-            object success = Interface.Call("CanShop", player);
+            object success = Interface.Call("canShop", player);
             if (success != null)
             {
                 string message = "You are not allowed to shop at the moment";
