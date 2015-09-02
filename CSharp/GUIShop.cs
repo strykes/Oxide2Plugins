@@ -10,7 +10,7 @@ using NLua;
 
 namespace Oxide.Plugins
 {
-    [Info("GUIShop", "Reneb", "1.0.4", ResourceId = 1319)]
+    [Info("GUIShop", "Reneb", "1.0.5", ResourceId = 1319)]
     class GUIShop : RustPlugin
     {
 
@@ -233,7 +233,7 @@ namespace Oxide.Plugins
                             [
                                 {
                                      ""type"":""UnityEngine.UI.Image"",
-                                     ""color"":""0.1 0.1 0.1 1"",
+                                     ""color"":""0.1 0.1 0.1 0.8"",
                                 },
                                 {
                                     ""type"":""RectTransform"",
@@ -259,23 +259,6 @@ namespace Oxide.Plugins
                                     ""type"":""RectTransform"",
                                     ""anchormin"": ""0.3 0.80"",
                                     ""anchormax"": ""0.7 0.90""
-                                }
-                            ]
-                        },
-                        {
-                            ""parent"": ""ShopOverlay"",
-                            ""components"":
-                            [
-                                {
-                                    ""type"":""UnityEngine.UI.Text"",
-                                    ""text"":""{shopdescription}"",
-                                    ""fontSize"":15,
-                                    ""align"": ""MiddleCenter"",
-                                },
-                                {
-                                    ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.2 0.70"",
-                                    ""anchormax"": ""0.8 0.79""
                                 }
                             ]
                         },
@@ -325,8 +308,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.72 0.60"",
-                                    ""anchormax"": ""0.87 0.65""
+                                    ""anchormin"": ""0.75 0.60"",
+                                    ""anchormax"": ""0.90 0.65""
                                 }
                             ]
                         },
@@ -487,9 +470,62 @@ namespace Oxide.Plugins
                                 }
                             ]
                         },
+                        {
+                            ""parent"": ""ShopOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""1000"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.69 {ymin}"",
+                                    ""anchormax"": ""0.72 {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""ShopOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""command"":""shop.buy {currentshop} {buyitem} 1000"",
+                                    ""color"": ""{color}"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.69 {ymin}"",
+                                    ""anchormax"": ""0.72 {ymax}""
+                                }
+                            ]
+                        }
                     ]
                     ";
-       
+        string shopdescriptionjson = @"[
+{
+                            ""parent"": ""ShopOverlay"",
+                            ""name"": ""ShopDescOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""{shopdescription}"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.2 0.70"",
+                                    ""anchormax"": ""0.8 0.79""
+                                }
+                            ]
+                        }
+]";
         string shopitemselljson = @"[
                         {
                             ""parent"": ""ShopOverlay"",
@@ -503,8 +539,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.77 {ymin}"",
-                                    ""anchormax"": ""0.80 {ymax}""
+                                    ""anchormin"": ""0.80 {ymin}"",
+                                    ""anchormax"": ""0.83 {ymax}""
                                 }
                             ]
                         },
@@ -520,8 +556,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.72 {ymin}"",
-                                    ""anchormax"": ""0.77 {ymax}""
+                                    ""anchormin"": ""0.75 {ymin}"",
+                                    ""anchormax"": ""0.78 {ymax}""
                                 }
                             ]
                         },
@@ -537,8 +573,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.77 {ymin}"",
-                                    ""anchormax"": ""0.80 {ymax}""
+                                    ""anchormin"": ""0.80 {ymin}"",
+                                    ""anchormax"": ""0.83 {ymax}""
                                 }
                             ]
                         },
@@ -554,8 +590,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.80 {ymin}"",
-                                    ""anchormax"": ""0.83 {ymax}""
+                                    ""anchormin"": ""0.83 {ymin}"",
+                                    ""anchormax"": ""0.86 {ymax}""
                                 }
                             ]
                         },
@@ -571,8 +607,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.80 {ymin}"",
-                                    ""anchormax"": ""0.83 {ymax}""
+                                    ""anchormin"": ""0.83 {ymin}"",
+                                    ""anchormax"": ""0.86 {ymax}""
                                 }
                             ]
                         },
@@ -588,8 +624,8 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.83 {ymin}"",
-                                    ""anchormax"": ""0.86 {ymax}""
+                                    ""anchormin"": ""0.86 {ymin}"",
+                                    ""anchormax"": ""0.89 {ymax}""
                                 }
                             ]
                         },
@@ -605,11 +641,45 @@ namespace Oxide.Plugins
                                 },
                                 {
                                     ""type"":""RectTransform"",
-                                    ""anchormin"": ""0.83 {ymin}"",
-                                    ""anchormax"": ""0.86 {ymax}""
+                                    ""anchormin"": ""0.86 {ymin}"",
+                                    ""anchormax"": ""0.89 {ymax}""
                                 }
                             ]
                         },
+                        {
+                            ""parent"": ""ShopOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Text"",
+                                    ""text"":""1000"",
+                                    ""fontSize"":15,
+                                    ""align"": ""MiddleCenter"",
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.89 {ymin}"",
+                                    ""anchormax"": ""0.92 {ymax}""
+                                }
+                            ]
+                        },
+                        {
+                            ""parent"": ""ShopOverlay"",
+                            ""components"":
+                            [
+                                {
+                                    ""type"":""UnityEngine.UI.Button"",
+                                    ""command"":""shop.sell {currentshop} {sellitem} 1000"",
+                                    ""color"": ""{color}"",
+                                    ""imagetype"": ""Tiled""
+                                },
+                                {
+                                    ""type"":""RectTransform"",
+                                    ""anchormin"": ""0.89 {ymin}"",
+                                    ""anchormax"": ""0.92 {ymax}""
+                                }
+                            ]
+                        }
                     ]
                     ";
         string shopitemjson = @"[
@@ -722,9 +792,10 @@ namespace Oxide.Plugins
                     ";
 
         Hash<BasePlayer, double> shopPage = new Hash<BasePlayer, double>();
-        void ShowShop(BasePlayer player, string shopid, double from = 0.0)
+        void ShowShop(BasePlayer player, string shopid, double from = 0.0, bool fullRefresh = true)
         {
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "ShopOverlay");
+            
+           
             shopPage[player] = from;
             if (!Shops.ContainsKey(shopid))
             {
@@ -765,9 +836,20 @@ namespace Oxide.Plugins
             }
             double current = 0.0;
 
-            string soverlay = shopoverlay.Replace("{shopname}", (string)shop["name"]).Replace("{shopdescription}", string.Format((string)shop["description"], playerCoins.ToString()));
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", soverlay);
+            string soverlay = shopoverlay.Replace("{shopname}", (string)shop["name"]);
+            string sdoverlay = shopdescriptionjson.Replace("{shopdescription}", string.Format((string)shop["description"], playerCoins.ToString()));
 
+            if (!fullRefresh)
+            {
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "ShopDescOverlay");
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", sdoverlay);
+                return;
+            }
+
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "ShopOverlay");
+
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", soverlay);
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", sdoverlay);
             if (from < 0) return;
             foreach (KeyValuePair<string, Dictionary<string, bool>> pair in itemslist)
             {
@@ -1104,7 +1186,7 @@ namespace Oxide.Plugins
                 return;
             }
             SendReply(player, string.Format(MessageBought, amount.ToString(), item));
-            ShowShop(player, shop, shopPage[player]);
+            ShowShop(player, shop, shopPage[player], false);
         }
         [ConsoleCommand("shop.sell")]
         void ccmdShopSell(ConsoleSystem.Arg arg)
@@ -1132,7 +1214,7 @@ namespace Oxide.Plugins
                 return;
             }
             SendReply(player, string.Format(MessageSold, amount.ToString(), item));
-            ShowShop(player, shop, shopPage[player]);
+            ShowShop(player, shop, shopPage[player], false);
         }
     }
 }
