@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Battlefield", "Reneb", "1.0.2")]
+    [Info("Event Battlefield", "Reneb", "1.0.3")]
     class Battlefield : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -393,9 +393,8 @@ namespace Oxide.Plugins
         int EventPlayersCount()
         {
             int plcount = 0;
-            foreach (KeyValuePair<BattlefieldPlayer, string> pair in WeaponVote)
+            foreach (BattlefieldPlayer bfplayer in BattlefieldPlayers)
             {
-                if (pair.Key == null) continue;
                 plcount++;
             }
             return plcount;
