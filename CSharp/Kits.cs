@@ -10,7 +10,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "2.1.3")]
+    [Info("Kits", "Reneb", "2.1.4")]
     class Kits : RustPlugin
     {
         //////////////////////////////////////////////////////////////////////////////////////////
@@ -795,6 +795,9 @@ namespace Oxide.Plugins
                                     ""type"":""RectTransform"",
                                     ""anchormin"": ""0 0"",
                                     ""anchormax"": ""1 1""
+                                },
+                                {
+                                    ""type"":""NeedsCursor"",
                                 }
                             ]
                         },
@@ -883,7 +886,6 @@ namespace Oxide.Plugins
            
             localmsg = buttonjson.Replace("{guimsg}", "close").Replace("{msg}", "Close").Replace("{color}", "1 1 1 0.2").Replace("{xmin}", guiKitminX.ToString()).Replace("{xmax}", guiKitmaxX.ToString()).Replace("{ymin}", (guiKitmaxY - (guipos + 1) * guiKitYheight).ToString()).Replace("{ymax}", (guiKitmaxY - guipos * guiKitYheight).ToString());
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", localmsg);
-            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", new object[] { " " });
         }
 
         void OnUseNPC(BasePlayer npc, BasePlayer player)
