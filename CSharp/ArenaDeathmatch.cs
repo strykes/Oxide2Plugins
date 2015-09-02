@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Arena Deathmatch", "Reneb", "1.1.4", ResourceId = 741)]
+    [Info("Arena Deathmatch", "Reneb", "1.1.5", ResourceId = 741)]
     class ArenaDeathmatch : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -98,6 +98,7 @@ namespace Oxide.Plugins
 
         static string DefaultKit = "deathmatch";
         static string EventName = "Deathmatch";
+        static string EventZoneName = "Deathmatch";
         static string EventSpawnFile = "DeathmatchSpawnfile";
         static int EventWinKills = 10;
 
@@ -113,55 +114,9 @@ namespace Oxide.Plugins
         static int TokensAddKill = 1;
         static int TokensAddWon = 5;
 
-        /*
-        private void LoadZoneConfig()
-        {
-            EventZoneConfig = new Dictionary<string, object>();
-
-            EventZoneConfig.Add("eject", true);
-            EventZoneConfig.Add("undestr", true);
-            EventZoneConfig.Add("autolights", true);
-            EventZoneConfig.Add("nobuild", true);
-            EventZoneConfig.Add("nodeploy", true);
-            EventZoneConfig.Add("nokits", true);
-            EventZoneConfig.Add("notp", true);
-            EventZoneConfig.Add("killsleepers", true);
-            EventZoneConfig.Add("nosuicide", true);
-            EventZoneConfig.Add("nocorpse", true);
-            EventZoneConfig.Add("nowounded", true);
-
-            timer.Once(1f, () =>
-            {
-                object zonefieldlist = ZoneManager?.Call("ZoneFieldListRaw");
-                if (zonefieldlist == null)
-                {
-                    Debug.LogWarning("You don't have ZoneManager installed or is out of date, you may not use Arena Deathmatch");
-                    return;
-                }
-                foreach (string fielditem in (List<string>)zonefieldlist)
-                {
-                    if (fielditem != "Location" && fielditem != "ID" && fielditem != "name" && fielditem != "radius")
-                    {
-                        if (!EventZoneConfig.ContainsKey(fielditem))
-                            EventZoneConfig.Add(fielditem, false);
-
-                        if (Config["Zone Settings - " + fielditem] is bool)
-                            EventZoneConfig[fielditem] = (bool)Config["Zone Settings - " + fielditem];
-                        else
-                            Config["Zone Settings - " + fielditem] = EventZoneConfig[fielditem];
-                    }
-                }
-            }
-            );
-        }*/
         private void LoadVariables()
         {
-
-            //LoadZoneConfig();
-
             LoadConfigVariables();
-
-
             SaveConfig();
         }
         private void LoadConfigVariables()
@@ -169,6 +124,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("DeathMatch - Kit - Default", ref DefaultKit);
             CheckCfg<string>("DeathMatch - Event - Name", ref EventName);
             CheckCfg<string>("DeathMatch - Event - SpawnFile", ref EventSpawnFile);
+            CheckCfg<string>("DeathMatch - Zone - Name", ref EventZoneName);
             CheckCfg<int>("DeathMatch - Win - Kills Needed", ref EventWinKills);
             CheckCfgFloat("DeathMatch - Start - Health", ref EventStartHealth);
 
@@ -268,17 +224,7 @@ namespace Oxide.Plugins
         {
             if (name == EventName)
             {
-                /*
-                string[] sendstring = new string[EventZoneConfig.Count * 2];
-                int i = 0;
-                foreach (KeyValuePair<string, object> pair in EventZoneConfig)
-                {
-                    sendstring[i] = pair.Key;
-                    i++;
-                    sendstring[i] = pair.Value.ToString();
-                    i++;
-                }
-                EventManager.Call("UpdateZone", EventName, sendstring);*/
+                return;
             }
         }
         object CanEventOpen()
@@ -401,6 +347,10 @@ namespace Oxide.Plugins
         }
         object OnRequestZoneName()
         {
+            if (useThisEvent)
+            {
+                return EventZoneName;
+            }
             return null;
         }
         //////////////////////////////////////////////////////////////////////////////////////
