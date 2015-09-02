@@ -1,13 +1,16 @@
+// Reference: NLua
+
 using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Oxide.Core;
 using Oxide.Core.Plugins;
 using UnityEngine;
+using NLua;
 
 namespace Oxide.Plugins
 {
-    [Info("Hotel", "Reneb", "1.0.8", ResourceId = 1298)]
+    [Info("Hotel", "Reneb", "1.1.2", ResourceId = 1298)]
     class Hotel : RustPlugin
     {
 
@@ -17,6 +20,26 @@ namespace Oxide.Plugins
 
         [PluginReference]
         Plugin ZoneManager;
+
+        [PluginReference("00-Economics")]
+        Plugin Economics;
+
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Workaround the Blocks of Economics. Hope This wont be needed in the future
+        // THX MUGHISI ///////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////////////////
+
+        private Dictionary<string, LuaFunction> EconomyApi = new Dictionary<string, LuaFunction>();
+        void OnServerInitialized()
+        {
+            LoadPermissions();
+            var apiFuncs = Economics.Call("GetEconomyAPI") as LuaTable;
+            foreach (KeyValuePair<object, object> method in apiFuncs)
+            {
+                var value = method.Value as LuaFunction;
+                if (value != null) EconomyApi.Add(method.Key.ToString(), value);
+            }
+        }
 
         ////////////////////////////////////////////////////////////
         // Fields
@@ -60,12 +83,14 @@ namespace Oxide.Plugins
         static string MessageErrorPermissionsNeeded = "You must have the {0} permission to rent a room here";
         static string MessageRentUnlimited = "You now have access to this room for an unlimited time";
         static string MessageRentTimeLeft = "You now have access to this room. You are allowed to keep this room for {0}";
+        static string MessagePaydRent = "You payd for this room {0} coins";
+        static string MessageErrorNotEnoughCoins = "This room costs {0} coins. You only have {1} coins";
 
-        static string GUIBoardAdmin = "                             <color=green>HOTEL MANAGER</color> \n\nHotel Name:      {name} \n\nHotel Location: {loc} \nHotel Radius:     {hrad} \n\nRooms Radius:   {rrad} \nRooms:                {rnum} \n<color=red>Occupied:            {onum}</color>";
+        static string GUIBoardAdmin = "                             <color=green>HOTEL MANAGER</color> \n\nHotel Name:      {name} \n\nHotel Location: {loc} \nHotel Radius:     {hrad} \n\nRooms Radius:   {rrad} \nRooms:                {rnum} \n<color=red>Occupied:            {onum}</color>\nRent Price:                  {rp}";
         static string GUIBoardPlayer = "                             <color=green>{name}</color> \n\nRooms:        <color=green>{fnum}</color>/{rnum} ";
         static string GUIBoardPlayerRoom = "\n\n                        Your Room\nJoined:         {jdate}\nTimeleft:      {timeleft}.";
         static string GUIBoardPlayerMaintenance = "                             <color=green>{name}</color> \n\nHotel is under maintenance. Please wait couple seconds/minutes until the admin is finished.";
-        static string xmin = "0.7";
+        static string xmin = "0.65";
         static string xmax = "1.0";
         static string ymin = "0.6";
         static string ymax = "0.9";
@@ -188,7 +213,9 @@ namespace Oxide.Plugins
             CheckCfg<string>("PlayerMessage - Error - Need Permissions", ref MessageErrorPermissionsNeeded);
             CheckCfg<string>("PlayerMessage - Unlimited Access", ref MessageRentUnlimited);
             CheckCfg<string>("PlayerMessage - Limited Access", ref MessageRentTimeLeft);
-
+            CheckCfg<string>("PlayerMessage - Payd Rent", ref MessagePaydRent);
+            CheckCfg<string>("PlayerMessage - Error - Not Enough Coins", ref MessageErrorNotEnoughCoins);
+            
             CheckCfg<string>("GUI - Admin - Board Message", ref GUIBoardAdmin);
             CheckCfg<string>("GUI - Player - Board Message", ref GUIBoardPlayer);
             CheckCfg<string>("GUI - Player - Room Board Message ", ref GUIBoardPlayerRoom);
@@ -338,11 +365,13 @@ namespace Oxide.Plugins
             public string rd;
             public string npc;
             public string p;
+            public string e;
 
             public Dictionary<string, Room> rooms;
 
             Vector3 pos;
             public bool enabled;
+            public int price;
 
             public HotelData()
             {
@@ -360,6 +389,8 @@ namespace Oxide.Plugins
                 this.rr = "10";
                 this.rd = "86400";
                 this.p = null;
+                this.e = null;
+
                 this.rooms = new Dictionary<string, Room>();
                 enabled = false;
             }
@@ -421,7 +452,11 @@ namespace Oxide.Plugins
                     rooms.Add(roomid, detectedRooms[roomid]);
                 }
             }
-
+            public int Price()
+            {
+                if (this.e == null) return 0;
+                return Convert.ToInt32(this.e);
+            }
             public void Deactivate()
             {
                 enabled = false;
@@ -497,11 +532,6 @@ namespace Oxide.Plugins
             LoadData();
         }
 
-        void OnServerInitialized()
-        {
-            LoadPermissions();
-        }
-
         object CanUseDoor(BasePlayer player, BaseLock baselock)
         {
             if (baselock == null) return null;
@@ -546,6 +576,10 @@ namespace Oxide.Plugins
                 if (!CanRentRoom(player, targethotel)) return false;
                 ResetRoom(codelock, targethotel, room);
                 NewRoomOwner(codelock, player, targethotel, room);
+                if(targethotel.e != null && Economics)
+                {
+                    EconomicsWithdraw(player, targethotel.Price());
+                }
             }
 
             LockLock(codelock);
@@ -652,7 +686,24 @@ namespace Oxide.Plugins
 
             return hotel.rooms[roomid];
         }
+        void EconomicsWithdraw(BasePlayer player, int amount)
+        {
+            Economics.Call("Withdraw", player, amount);
+            SendReply(player, string.Format("You payd for this room {0} coins", amount.ToString()));
+        }
+        int GetEconomics(BasePlayer player)
+        {
+            object playerData = EconomyApi["GetUserData"].Call("GetUserData", player.userID.ToString());
+            if (playerData == null)
+            {
+                SendReply(player, "Couldn't get informations out of Economics");
+                return 0;
+            }
+            var table = (((object[])playerData)[0]) as LuaTable;
+            int playerCoins = Convert.ToInt32(table[1]);
 
+            return playerCoins;
+        }
 
         bool CanRentRoom(BasePlayer player, HotelData hotel)
         {
@@ -669,6 +720,15 @@ namespace Oxide.Plugins
                 if (!permission.UserHasPermission(player.userID.ToString(), hotel.p))
                 {
                     SendReply(player, string.Format(MessageErrorPermissionsNeeded, hotel.p));
+                    return false;
+                }
+            }
+            if(hotel.e != null && Economics != null)
+            {
+                int money = GetEconomics(player);
+                if(money < hotel.Price())
+                {
+                    SendReply(player, string.Format(MessageErrorNotEnoughCoins, hotel.e, money.ToString()));
                     return false;
                 }
             }
@@ -953,6 +1013,7 @@ namespace Oxide.Plugins
             string loc = hoteldata.x == null ? "None" : string.Format("{0} {1} {2}", hoteldata.x, hoteldata.y, hoteldata.z);
             string hrad = hoteldata.r == null ? "None" : hoteldata.r;
             string rrad = hoteldata.rr == null ? "None" : hoteldata.rr;
+            string rrp = hoteldata.e == null ? "None" : hoteldata.e;
             string rnum = hoteldata.rooms == null ? "0" : hoteldata.rooms.Count.ToString();
 
             int onumint = 0;
@@ -968,7 +1029,7 @@ namespace Oxide.Plugins
             string onum = onumint.ToString();
             string fnum = fnumint.ToString();
 
-            newguimsg = GUIBoardAdmin.Replace("{name}", hoteldata.hotelname).Replace("{loc}", loc).Replace("{hrad}", hrad).Replace("{rrad}", rrad).Replace("{rnum}", rnum).Replace("{onum}", onum).Replace("{fnum}", fnum);
+            newguimsg = GUIBoardAdmin.Replace("{name}", hoteldata.hotelname).Replace("{loc}", loc).Replace("{hrad}", hrad).Replace("{rrad}", rrad).Replace("{rnum}", rnum).Replace("{onum}", onum).Replace("{fnum}", fnum).Replace("{rp}", rrp);
 
             return newguimsg;
         }
@@ -1112,6 +1173,7 @@ namespace Oxide.Plugins
                 SendReply(player, "/hotel permission PERMISSIONNAME => sets the oxide permissions that the player needs to rent a room here");
                 SendReply(player, "/hotel radius XX => sets the radius of the hotel (the entire structure of the hotel needs to be covered by the zone");
                 SendReply(player, "/hotel rentduration XX => Sets the duration of a default rent in this hotel. 0 is infinite.");
+                SendReply(player, "/hotel rentprice XX => Sets the rentprice of a room. This requires Economics");
                 SendReply(player, "/hotel reset => resets the hotel data (all players and rooms but keeps the hotel)");
                 SendReply(player, "/hotel roomradius XX => sets the radius of the rooms");
                 SendReply(player, "/hotel rooms => refreshs the rooms (detects new rooms, deletes rooms if they don't exist anymore, if rooms are in use they won't get taken in count)");
@@ -1142,6 +1204,26 @@ namespace Oxide.Plugins
 
                         (EditHotel[player.userID.ToString()]).rd = rd.ToString();
                         SendReply(player, string.Format("Rent Duration set to {0}", rd == 0 ? "Infinite" : rd.ToString()));
+                        break;
+                    case "rentprice":
+                        if(Economics == null)
+                        {
+                            SendReply(player, "You don't have economics, so this is useless for you.");
+                            return;
+                        }
+                        if (args.Length == 1)
+                        {
+                            SendReply(player, "/hotel rentprice XX");
+                            return;
+                        }
+                        int rp = 0;
+                        if(!int.TryParse(args[1], out rp))
+                        {
+                            SendReply(player, "/hotel rentprice XX");
+                            return;
+                        }
+                        (EditHotel[player.userID.ToString()]).e = rp == 0 ? null : rp.ToString();
+                        SendReply(player, string.Format("Rent Price set to {0}", rp == 0 ? "null" : rp.ToString()));
                         break;
                     case "roomradius":
                         if (args.Length == 1)
