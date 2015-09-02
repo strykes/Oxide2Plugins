@@ -286,6 +286,10 @@ namespace Oxide.Plugins
                         resourcesList.Add(str.str);
                     }
                 }
+                if(str.str.Contains("fx") && str.str.Contains("attack.prefab"))
+                {
+                    Debug.Log(str.str);
+                }
             }
         }
 
@@ -482,7 +486,7 @@ namespace Oxide.Plugins
                          }
                          Puts("================");
                      }*/
-                Debug.Log(construction.hierachyName + " " + construction.fullName);
+                //Debug.Log(construction.hierachyName + " " + construction.fullName);
                 nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
             }
         }
