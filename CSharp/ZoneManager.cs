@@ -10,7 +10,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.30", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.0.33", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
         ////////////////////////////////////////////
@@ -71,7 +71,7 @@ namespace Oxide.Plugins
         public static int buildingMask;
         public static int AIMask;
 
-        public FieldInfo[] allZoneFields;
+        public static FieldInfo[] allZoneFields;
         public FieldInfo cachedField;
         public static FieldInfo fieldInfo;
         public static FieldInfo lastPositionValue;
@@ -87,6 +87,8 @@ namespace Oxide.Plugins
         public List<DamageTypeEntry> emptyDamageList;
         public BasePlayer cachedPlayer;
         public RaycastHit cachedRaycasthit;
+        public static Dictionary<BasePlayer, List<string>> playerTags = new Dictionary<BasePlayer, List<string>>(); 
+
         /////////////////////////////////////////
         // ZoneLocation
         // Stored information for the zone location and radius
@@ -246,6 +248,7 @@ namespace Oxide.Plugins
                     if (pair.Value.Contains(this))
                         pair.Value.Remove(this);
                 }
+                UpdateAllPlayers();
             }
             void CheckLights()
             {
@@ -374,6 +377,7 @@ namespace Oxide.Plugins
             public string nocorpse;
             public string nosuicide;
             public string noremove;
+            public string nobleed;
             public string killsleepers;
             public string radiation;
             public string enter_message;
@@ -509,6 +513,17 @@ namespace Oxide.Plugins
             }
         }
 
+        void OnRunPlayerMetabolism(PlayerMetabolism metabolism, BaseCombatEntity ownerEntity, float delta)
+        {
+            if (metabolism.bleeding.value < 0.01f) return;
+            BasePlayer player = ownerEntity.GetComponent<BasePlayer>();
+            if (player == null) return;
+            if (hasTag(player, "nobleed"))
+            {
+                metabolism.bleeding.value = 0f;
+            }
+        }
+
         /////////////////////////////////////////
         // OnPlayerChat(ConsoleSystem.Arg arg)
         // Called when a user writes something in the chat, doesn't take in count the commands
@@ -635,7 +650,10 @@ namespace Oxide.Plugins
                     timer.Once(0.1f, () => EraseCorpse(entity.transform.position));
                 }
                 if (playerZones[cachedPlayer] != null)
+                {
                     playerZones[cachedPlayer].Clear();
+                    UpdateTags(cachedPlayer);
+                }
             }
         }
         void EraseCorpse(Vector3 position)
@@ -692,7 +710,7 @@ namespace Oxide.Plugins
             {
                 timer.Once(0.01f, () => looter.EndLooting());
             }
-        }
+        } 
 
         /////////////////////////////////////////
         // CanBeWounded(BasePlayer player)
@@ -964,17 +982,40 @@ namespace Oxide.Plugins
             foreach (FieldInfo fieldinfo in allZoneFields) { if (fieldinfo.Name == name) return fieldinfo; }
             return null;
         }
-        static bool hasTag(BasePlayer player, string tagname)
+        static void UpdateAllPlayers()
         {
-            if (playerZones[player] == null) { return false; }
-            if (playerZones[player].Count == 0) { return false; }
-            fieldInfo = typeof(ZoneDefinition).GetField(tagname, BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+            var players = new List<BasePlayer>();
+            foreach(KeyValuePair<BasePlayer, List<string>> pair in playerTags)
+            {
+                players.Add(pair.Key);
+            }
+            foreach(BasePlayer player in players)
+            {
+                UpdateTags(player);
+            }
+        }
+        static void UpdateTags(BasePlayer player)
+        {
+            if (playerTags.ContainsKey(player)) playerTags.Remove(player);
+            if (playerZones[player] == null) { return; }
+            if (playerZones[player].Count == 0) { return; }
+            playerTags.Add(player, new List<string>());
             foreach (Zone zone in playerZones[player])
             {
-                if (fieldInfo.GetValue(zone.info) != null)
-                    return true;
+                foreach (FieldInfo fieldinfo in allZoneFields)
+                {
+                    if (fieldinfo.GetValue(zone.info) != null)
+                    {
+                        playerTags[player].Add(fieldinfo.Name);
+                    }
+                }
             }
-            return false;
+        }
+        static bool hasTag(BasePlayer player, string tagname)
+        {
+            if (!playerTags.ContainsKey(player)) return false;
+            if (playerTags[player].Count == 0) return false;
+            return playerTags[player].Contains(tagname);
         }
 
 
@@ -1014,7 +1055,7 @@ namespace Oxide.Plugins
         {
             if (playerZones[player] == null) playerZones[player] = new List<Zone>();
             if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
-            
+            UpdateTags(player);
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
             if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player) && !zone.keepInList.Contains(player)) EjectPlayer(zone, player);
             Interface.CallHook("OnEnterZone", zone.info.ID, player);
@@ -1022,6 +1063,7 @@ namespace Oxide.Plugins
         static void OnExitZone(Zone zone, BasePlayer player)
         {
             if (playerZones[player].Contains(zone)) playerZones[player].Remove(zone);
+            UpdateTags(player);
             if (zone.info.leave_message != null) SendMessage(player, zone.info.leave_message);
             if (zone.keepInList.Contains(player)) AttractPlayer(zone, player);
             Interface.CallHook("OnExitZone", zone.info.ID, player);
@@ -1029,7 +1071,6 @@ namespace Oxide.Plugins
 
         static void EjectPlayer(Zone zone, BasePlayer player)
         {
-            
             cachedDirection = player.transform.position - zone.transform.position;
             player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
             lastPositionValue.SetValue(player, player.transform.position);
