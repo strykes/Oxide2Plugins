@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.4", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.10", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -23,15 +23,18 @@ namespace Oxide.Plugins
 
         [PluginReference]
         Plugin ZoneManager;
-
+         
         [PluginReference]
         Plugin DeadPlayersList;
+
+        [PluginReference]
+        Plugin FriendlyFire;
 
         private string EventSpawnFile;
         private string EventGameName;
         private string itemname;
 
-
+         
         private bool EventOpen;
         private bool EventStarted;
         private bool EventEnded;
@@ -267,7 +270,6 @@ namespace Oxide.Plugins
             if (objects != null)
                 foreach (var gameObj in objects)
                     GameObject.Destroy(gameObj);
-            ResetZones();
         }
 
         void OnPlayerRespawned(BasePlayer player)
@@ -331,13 +333,6 @@ namespace Oxide.Plugins
             if (EventGames.Contains(name))
                 Interface.CallHook("OnPostZoneCreate", name);
         }
-        void ResetZones()
-        {
-            foreach (string game in EventGames)
-            {
-                ZoneManager?.Call("EraseZone", game);
-            }
-        } 
         void UpdateZone(string name, string[] args)
         {
             ZoneManager?.Call("CreateOrUpdateZone", name, args);
@@ -528,6 +523,9 @@ namespace Oxide.Plugins
                                     ""type"":""RectTransform"",
                                     ""anchormin"": ""0 0"",
                                     ""anchormax"": ""1 1""
+                                },
+                                {
+                                    ""type"":""NeedsCursor"",
                                 }
                             ]
                         },
@@ -832,9 +830,6 @@ namespace Oxide.Plugins
                 }
                 current++;
             }
-
-            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", new object[] { " " });
-
         }
         [ConsoleCommand("reward.show")]
         void ccmdRewardShow(ConsoleSystem.Arg arg)
@@ -1222,8 +1217,10 @@ namespace Oxide.Plugins
             if (!AutoEventLaunched) return;
 
             DestroyTimers();
-            AutoArenaTimers.Add(timer.Once(300f, () => CancelEvent("Not enough players")));
-            AutoArenaTimers.Add(timer.Repeat(30f, 0, () => AnnounceEvent()));
+            var evencfg = EventAutoConfig[EventAutoNum.ToString()] as Dictionary<string, object>;
+            if(evencfg["timelimit"]!=null && evencfg["timelimit"] != "0")
+                AutoArenaTimers.Add(timer.Once(Convert.ToSingle(evencfg["timelimit"]), () => CancelEvent("Not enough players")));
+            AutoArenaTimers.Add(timer.Repeat(EventAutoAnnounceInterval, 0, () => AnnounceEvent()));
         }
         object CanEventOpen()
         {
@@ -1288,7 +1285,7 @@ namespace Oxide.Plugins
                 return "No Events were successfully initialized, check that your events are correctly configured in AutoEvents - Config";
             }
 
-            AutoArenaTimers.Add(timer.Once(Convert.ToSingle(EventAutoInterval), () => OpenEvent()));
+            AutoArenaTimers.Add(timer.Once(EventAutoInterval, () => OpenEvent()));
             return null;
         }
         void OnEventStartPost()
@@ -1429,8 +1426,10 @@ namespace Oxide.Plugins
             EventPlayer event_player = player.GetComponent<EventPlayer>();
             if (event_player == null) event_player = player.gameObject.AddComponent<EventPlayer>();
 
+            event_player.inEvent = true;
             event_player.enabled = true;
             EventPlayers.Add(event_player);
+            FriendlyFire?.Call("EnableBypass", player.userID);
 
             if (EventStarted)
             {
@@ -1484,7 +1483,7 @@ namespace Oxide.Plugins
             {
                 return "You are not currently in the Event.";
             }
-
+            FriendlyFire?.Call("DisableBypass", player.userID);
             player.GetComponent<EventPlayer>().inEvent = false;
             if (!EventEnded || !EventStarted)
             {
@@ -1636,6 +1635,13 @@ namespace Oxide.Plugins
             EventPlayer eplayer = player.GetComponent<EventPlayer>();
             if (eplayer == null) return null;
             return false;
+        }
+        object canShop(BasePlayer player)
+        {
+            if (!EventStarted) return null;
+            EventPlayer eplayer = player.GetComponent<EventPlayer>();
+            if (eplayer == null) return null;
+            return "You are not allowed to shop while in an Event";
         }
 
         Dictionary<string, string> deadPlayers = new Dictionary<string, string>();
@@ -1881,7 +1887,7 @@ namespace Oxide.Plugins
             SaveConfig();
             SendReply(arg, string.Format("Spawnfile for {0} is now {1} .", EventGameName.ToString(), EventSpawnFile.ToString()));
         }
-        
+
         [ConsoleCommand("event.kit")]
         void ccmdEventKit(ConsoleSystem.Arg arg)
         {
@@ -1897,8 +1903,9 @@ namespace Oxide.Plugins
                 SendReply(arg, (string)success);
                 return;
             }
-            SendReply(arg, string.Format("The new Kit for {0} is now {1}", EventGameName.ToString(), EventSpawnFile.ToString()));
+            SendReply(arg, string.Format("The new Kit for {0} is now {1}", EventGameName.ToString(), arg.Args[0]));
         }
+        /*
         [ConsoleCommand("event.zone")]
         void ccmdEventZone(ConsoleSystem.Arg arg)
         {
@@ -1921,7 +1928,7 @@ namespace Oxide.Plugins
             }
 
             SendReply(arg, string.Format("New Zone Created for {0}: @ {1} {2} {3} with {4}m radius .", EventGameName.ToString(), arg.connection.player.transform.position.x.ToString(), arg.connection.player.transform.position.y.ToString(), arg.connection.player.transform.position.z.ToString(), arg.Args[0]));
-        }
+        }*/
         [ConsoleCommand("event.reward")]
         void ccmdEventReward(ConsoleSystem.Arg arg)
         {
