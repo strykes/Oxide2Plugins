@@ -25,7 +25,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////////
 
         static string noAccess = "You are not allowed to use this command";
-		static Dictionary<string, object> NPCKits = GetExampleNPCKits();
+		static Dictionary<string, object> GUIKits = GetExampleGUIKits();
 		
         private bool Changed;
 
@@ -40,29 +40,35 @@ namespace Oxide.Plugins
         void Init()
         {
             CheckCfg<string>("Messages - No Access", ref noAccess);
-            CheckCfg<Dictionary<string, object>>("NPC - GUI Kits", ref NPCKits);
+            CheckCfg<Dictionary<string, object>>("NPC - GUI Kits", ref GUIKits);
 
             SaveConfig();
         }
 
         void LoadDefaultConfig() { }
         
-        static Dictionary<string,object> GetExampleNPCKits()
+        static Dictionary<string,object> GetExampleGUIKits()
         {
-        	var npckits = new Dictionary<string,object>();
+        	var GUIKits = new Dictionary<string,object>();
         	
-        	var npc1 = new List<object>();
-        	npc1.Add("kit1");
-        	npc1.Add("kit2");
+        	var npc1 = new Dictionary<string,List<object>>();
+        	var kitsnpc1 = new List<object>();
+        	kitsnpc1.Add("kit1");
+        	kitsnpc1.Add("kit2");
+        	npc1.Add("kits",kitsnpc1);
+        	npc1.Add("description", "NPC Kit 1 Description here");
         	
         	var npc2 = new List<object>();
-        	npc2.Add("kit1");
-        	npc2.Add("kit3");
+        	var kitsnpc2 = new List<object>();
+        	kitsnpc2.Add("kit1");
+        	kitsnpc2.Add("kit3");
+        	npc2.Add("kits",kitsnpc2);
+        	npc2.Add("description", "NPC Kit 2 Description here");
         	
-        	npckits.Add("1235439", npc1);
-        	npckits.Add("8753201223", npc2);
+        	GUIKits.Add("1235439", npc1);
+        	GUIKits.Add("8753201223", npc2);
         
-        	return npckits;
+        	return GUIKits;
         }
         
         
@@ -140,6 +146,49 @@ namespace Oxide.Plugins
     	
     	double CurrentTime() { return System.DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
     	
+    	bool CanSeeKit(BasePlayer player, string kitname, bool fromNPC, out string reason)
+    	{
+    		reason = string.Empty;
+    		if(!isKit(kitname))
+    			return false;
+    		Kit kit = storedData.Kits[kitname];
+    		if(kit.hide != null)
+    			return false;
+    		if(kit.authlevel != null)
+    			if(player.net.connection.authLevel < (int)kit.authlevel)
+    				return false;
+    		if(kit.permission != null)
+    			if(player.net.connection.authLevel < 2 && !permission.UserHasPermission(player.userID.ToString(), kit.permission))
+    				return false;
+    		if(kit.npconly != null && !fromNPC)
+    			return false;
+    		if(kit.max != null)
+    		{
+    			int left = (int)GetData(player, kitname, "max");
+    			if(left >= kit.max)
+    			{
+    				reason += "- 0 left";
+    				return false;
+    			}
+    			else
+    			{
+    				reason += string.Format("- {0} left",(kit.max - left).ToString());
+    			}
+    		}
+    		if(kit.cooldown != null)
+    		{
+    			double cd = (double)GetData(player, kitname, "cooldown");
+    			double ct = CurrentTime();
+    			if(cd < ct && cd != 0.0)
+    			{
+    				reason += string.Format("- {0} seconds", (ct - cd).ToString());
+    				return false;
+    			}
+    		}
+    		return true;
+    	
+    	}
+    	
     	object CanRedeemKit(BasePlayer player, string kitname)
     	{
     		if(!isKit(kitname))
@@ -177,7 +226,7 @@ namespace Oxide.Plugins
     		{
     			bool foundNPC = false;
     			var neededNpc = new List<string>();
-    			foreach(KeyValuePair<string, object> pair in NPCKits)
+    			foreach(KeyValuePair<string, object> pair in GUIKits)
     			{
     				var listkits = pair.Value as List<object>;
     				if(listkits.Contains( kitname ))
@@ -254,6 +303,7 @@ namespace Oxide.Plugins
             public string hide;
             public string npconly;
             public string permission;
+            public string image;
 			public List<KitItem> items;
 			
             public Kit()
@@ -335,7 +385,335 @@ namespace Oxide.Plugins
         
         Hash<BasePlayer, string> kitEditor = new Hash<BasePlayer, string>();
         
-         //////////////////////////////////////////////////////////////////////////////////////
+        
+        //////////////////////////////////////////////////////////////////////////////////////
+        // GUI
+        //////////////////////////////////////////////////////////////////////////////////////
+        
+        Dictionary<BasePlayer, Hash<string, string>> PlayerGUI = new Dictionary<BasePlayer, Hash<string, string>>();
+        
+        public string overlayjson = @"[  
+			{ 
+				""name"": ""KitOverlay"",
+				""parent"": ""Overlay"",
+				""components"":
+				[
+					{
+						 ""type"":""UnityEngine.UI.Image"",
+						 ""color"":""0.1 0.1 0.1 0.8"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0 0"",
+						""anchormax"": ""1 1""
+					},
+					{
+						""type"":""NeedsCursor"",
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{msg}"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.1 0.7"",
+						""anchormax"": ""0.9 0.9""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Name"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.15 0.65"",
+						""anchormax"": ""0.25 0.7""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Description"",
+						""fontSize"":10,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.25 0.65"",
+						""anchormax"": ""0.70 0.7""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Cooldown (s)"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.70 0.65"",
+						""anchormax"": ""0.75 0.7""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Left"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.75 0.65"",
+						""anchormax"": ""0.80 0.7""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Redeem"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.80 0.65"",
+						""anchormax"": ""0.90 0.7""
+					}
+				]
+			}
+		]";
+		string kitlistoverlay = @"[
+			{ 
+				""name"": ""KitListOverlay"",
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						 ""type"":""UnityEngine.UI.Image"",
+						 ""color"":""0 0 0 0"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0 0"",
+						""anchormax"": ""1 1""
+					}
+				]
+			}
+		]";
+		
+        string buttonjson = @"[
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.RawImage"",
+						""imagetype"": ""Tiled"",
+						""url"": ""{imageurl}"",
+                    },
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.10 {ymin}"",
+						""anchormax"": ""0.15 {ymax}""
+					}
+				]
+			},
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{kitfullname}"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+                    },
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.15 {ymin}"",
+						""anchormax"": ""0.25 {ymax}""
+					}
+				]
+			},
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{kitdescription}"",
+						""fontSize"":12,
+						""align"": ""MiddleLeft"",
+                    },
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.25 {ymin}"",
+						""anchormax"": ""0.70 {ymax}""
+					}
+				]
+			},
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{cooldown}"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+                    },
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.70 {ymin}"",
+						""anchormax"": ""0.75 {ymax}""
+					}
+				]
+			},
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""{left}"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+                    },
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.75 {ymin}"",
+						""anchormax"": ""0.80 {ymax}""
+					}
+				]
+			},
+			{
+				""parent"": ""KitListOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Redeem"",
+						""fontSize"":15,
+						""align"": ""MiddleLeft"",
+                    },
+					{
+						""type"":""UnityEngine.UI.Button"",
+						""command"":""kit.gui {guimsg}"",
+						""color"": ""{color}"",
+						""imagetype"": ""Tiled""
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.80 {ymin}"",
+						""anchormax"": ""0.90 {ymax}""
+					}
+				]
+			}
+		]";
+		
+		void NewKitPanel(BasePlayer player, string guiId = "chat")
+		{
+			DestroyAllGUI(player);
+			if (!GUIKits.ContainsKey(guiId)) return;
+			
+			var kitpanel = GUIKits[guiId] as Dictionary<string,object>;
+			
+			var goverlay = overlayjson.Replace("{msg}", kitpanel.ContainsKey("description") ? (string)kitpanel["description"] : string.Empty);
+			CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", goverlay);
+			
+			RefreshKitPanel(player, guiId, 0);
+		}
+        void RefreshKitPanel(BasePlayer player, string guiId, int minKit = 0)
+        {
+        	if( !PlayerGUI.ContainsKey(player) ) PlayerGUI.Add(player, new Hash<string,string>);
+        	PlayerGUI[player]["guiid"] = guiId;
+        	PlayerGUI[player]["page"] = (string)minKit;
+        	
+            DestroyGUI( player, "KitListOverlay" );
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", kitlistoverlay);
+            var kitpanel = GUIKits[guiId] as Dictionary<string,object>;
+            
+            int current = 0;
+            foreach( string kitname in kitpanel["kits"] )
+            {
+            	if(current >= minKit && current < minKit + 8)
+            	{
+            		if(!storedData.Kits.ContainsKey(kitname.ToLower())) continue;
+            		Kit kit = storedData.Kits[kitname.ToLower()] as Dictionary<string,object>;
+            		
+            		var ckit = buttonjson.Replace("{guimsg}",string.Format("'{0}'", kitname.ToLower())).Replace("{ymin}", 0.6 - ((current - minKit) + 1) * 0.05 ).Replace("{ymax}", 0.6 - (current - minKit)*0.05 ).Replace("{kitfullname}",kit.name).Replace("{kitdescription}", kit.description != null ? kit.description : string.Empty).Replace("{imageurl}", kit.image != null ? kit.image : "http://i.imgur.com/xxQnE1R.png").Replace("{left}", kit.max == null ? string.Empty : ((int)kit.max - (int)GetData(player, kitname.ToLower(), "max")).ToString() ).Replace("{cooldown}", kit.cooldown == null ? string.Empty : CurrentTime() > (double)GetData(player, kitname.ToLower(), "cooldown") ? "0" : (CurrentTime() - (double)GetData(player, kitname.ToLower(), "cooldown")).ToString() );
+            		CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", ckit);
+            	}
+            	current++;
+            }
+        }
+        
+        void DestroyAllGUI(BasePlayer player) { CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay"); }
+        void DestroyGUI(BasePlayer player, string GUIName) { CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", GUIName); }
+        void OnUseNPC(BasePlayer npc, BasePlayer player)
+        {
+            if (!GUIKits.ContainsKey(npc.userID.ToString())) return;
+            NewKitPanel(player, npc.userID.ToString());
+        } 
+        
+        
+        //////////////////////////////////////////////////////////////////////////////////////
+        // Console Command
+        //////////////////////////////////////////////////////////////////////////////////////
+        [ConsoleCommand("kit.gui")]
+        void cmdConsoleKitGui(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection == null)
+            {
+                SendReply(arg, "You can't use this command from the server console");
+                return;
+            }
+            if ((arg.Args == null) || (arg.Args != null && arg.Args.Length == 0))
+            {
+                SendReply(arg, "You are not allowed to use manually this command");
+                return;
+            }
+            BasePlayer player = (BasePlayer)arg.connection.player;
+
+            string kitname = arg.Args[0].Substring(1, arg.Args[0].Length - 2);
+            TryGiveKit(player, kitname);
+            RefreshKitPanel( player, PlayerGUI[player]["guiid"], (int)PlayerGUI[player]["page"] );
+        }
+        
+        //////////////////////////////////////////////////////////////////////////////////////
         // Chat Command
         //////////////////////////////////////////////////////////////////////////////////////
         [ChatCommand("kit")]
@@ -343,7 +721,18 @@ namespace Oxide.Plugins
         {
         	if(args.Length == 0)
         	{
-        		// SEND LIST HERE
+        		if( GUIKits.ContainsKey("chat") )
+        			NewKitPanel( player, "chat" );
+        		else
+        		{
+        			string reason = string.Empty;
+        			foreach( KeyValuePair<string, Kit> pair in storedData.Kits )
+        			{
+        				bool cansee = CanSeeKit(player, pair.Key, false, out reason);
+        				if(!cansee && reason == string.Empty) continue;
+        				SendReply(player, string.Format("{0} - {1} - {2}", pair.Value.name, pair.Value.description, reason));
+        			}
+        		}
         		return;
         	}
         	if(args.Length == 1)
@@ -365,9 +754,11 @@ namespace Oxide.Plugins
         				kitEditor.Clear();
         				ResetData();
         				SaveKits();
+        				SendReply(player, "Resetted all kits and player data");
         			break;
         			case "resetdata":
         				ResetData();
+        				SendReply(player, "Resetted all player data");
         			break;
         			default:
         				TryGiveKit( player, args[0].ToLower() );
