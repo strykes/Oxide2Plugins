@@ -19,7 +19,21 @@ namespace Oxide.Plugins
     	void Loaded()
     	{
     		allKitFields = typeof(Kit).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+    		LoadData();
     		KitsData = Interface.GetMod().DataFileSystem.GetDatafile("Kits_Data");
+    	}
+    	
+    	void OnServerInitialized()
+    	{
+    		InitializePermissions();
+    	}
+    	void InitializePermissions()
+    	{
+    		foreach(KeyValuePair<string, Kit> pair in storedData.Kits)
+    		{
+    			if(pair.Value.permission != null)
+    				if(!permission.PermissionExists(pair.Value.permission)) permission.RegisterPermission(pair.Value.permission, this);
+    		}
     	}
     	//////////////////////////////////////////////////////////////////////////////////////////
         ///// Configuration
@@ -52,14 +66,14 @@ namespace Oxide.Plugins
         	kitsnpc1.Add("kit1");
         	kitsnpc1.Add("kit2");
         	npc1.Add("kits",kitsnpc1);
-        	npc1.Add("description", "NPC Kit 1 Description here");
+        	npc1.Add("description", "Welcome on this server, Here is a list of free kits that you can get <color=red>only once each</color>\n\n                      <color=green>Enjoy your stay</color>");
         	
         	var npc2 = new Dictionary<string,object>();
         	var kitsnpc2 = new List<object>();
         	kitsnpc2.Add("kit1");
         	kitsnpc2.Add("kit3");
         	npc2.Add("kits",kitsnpc2);
-        	npc2.Add("description", "NPC Kit 2 Description here");
+        	npc2.Add("description", "<color=red>VIPs Kits</color>");
         	
         	GUIKits.Add("1235439", npc1);
         	GUIKits.Add("8753201223", npc2);
@@ -67,6 +81,16 @@ namespace Oxide.Plugins
         	return GUIKits;
         }
         
+        void OnPlayerRespawned(BasePlayer player)
+        {
+            if (storedData.Kits["autokit"] == null) return;
+            object thereturn = Interface.GetMod().CallHook("canRedeemKit", new object[] { player });
+            if (thereturn == null)
+            {
+                player.inventory.Strip();
+                GiveKit(player, "autokit");
+            }
+        }
         
     	List<KitItem> GetPlayerItems( BasePlayer player )
     	{
@@ -372,7 +396,7 @@ namespace Oxide.Plugins
         //////////////////////////////////////////////////////////////////////////////////////
         
         public FieldInfo[] allKitFields;
-        FieldInfo GetZoneField(string name)
+        FieldInfo GetKitField(string name)
         {
             name = name.ToLower();
             foreach (FieldInfo fieldinfo in allKitFields) { if (fieldinfo.Name == name) return fieldinfo; }
@@ -670,7 +694,10 @@ namespace Oxide.Plugins
             {
             	if(current >= minKit && current < minKit + 8)
             	{
-            		if(!storedData.Kits.ContainsKey(kitname.ToLower())) continue;
+            		string reason = string.Empty;
+            		var cansee = CanSeeKit(player, kitname.ToLower(), true, out reason);
+            		if(!cansee && reason == string.Empty) continue;
+
             		Kit kit = storedData.Kits[kitname.ToLower()];
             		
             		var ckit = buttonjson.Replace("{guimsg}",string.Format("'{0}'", kitname.ToLower())).Replace("{ymin}", (0.6 - ((current - minKit) + 1) * 0.05).ToString() ).Replace("{ymax}", (0.6 - (current - minKit)*0.05).ToString() ).Replace("{kitfullname}",kit.name).Replace("{kitdescription}", kit.description != null ? kit.description : string.Empty).Replace("{imageurl}", kit.image != null ? kit.image : "http://i.imgur.com/xxQnE1R.png").Replace("{left}", kit.max == null ? string.Empty : (int.Parse(kit.max) - int.Parse(GetData(player, kitname.ToLower(), "max"))).ToString() ).Replace("{cooldown}", kit.cooldown == null ? string.Empty : CurrentTime() > double.Parse(GetData(player, kitname.ToLower(), "cooldown")) ? "0" : (CurrentTime() - double.Parse(GetData(player, kitname.ToLower(), "cooldown"))).ToString() );
@@ -722,7 +749,42 @@ namespace Oxide.Plugins
         		return true;
         	return false;
         }
-        
+        void SendListKitEdition(BasePlayer player)
+        {
+        	foreach (FieldInfo fieldinfo in allKitFields) { 
+        		switch(fieldinfo.Name)
+        		{
+        			case "name":
+        			break;
+        			case "permission":
+        				SendReply(player, "permission \"permission name\" => set the permission needed to get this kit");
+        			break;
+        			case "description":
+        				SendReply(player, "description \"description text here\" => set a description for this kit");
+        			break;
+        			case "image":
+        				SendReply(player, "image \"image http url\" => set an image for this kit (gui only)");
+        			break;
+        			case "cooldown":
+        			case "authlevel":
+        			case "max":
+        				SendReply(player, fieldinfo.Name + " XXX");
+        			break;
+        			case "items":
+        				SendReply(player, fieldinfo.Name + " => set new items for your kit (will copy your inventory)");
+        			break;
+        			case "npconly":
+        				SendReply(player, "npconly TRUE/FALSE => only get this kit out of a NPC");
+        			break;
+        			case "hide":
+        				SendReply(player, "hide TRUE/FALSE => dont show this kit in lists (EVER)");
+        			break;
+        			
+        			default:
+        			break;
+        		}
+        	}        
+        }
         [ChatCommand("kit")]
         void cmdChatKit(BasePlayer player, string command, string[] args)
         {
@@ -749,14 +811,18 @@ namespace Oxide.Plugins
         			case "add":
 					case "remove":
 					case "edit":
-						if(!hasAccess(player))
-						{
-							SendReply(player, "You don't have access to this command");
-							return;
-						}
+						if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
 						SendReply(player, string.Format("/kit {0} KITNAME", args[0]));
 					break;
+					case "list":
+						if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
+						foreach( KeyValuePair<string, Kit> pair in storedData.Kits )
+						{
+							SendReply(player, string.Format("{0} - {1}", pair.Value.name, pair.Value.description));
+						}
+					break;
         			case "resetkits":
+        				if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
         				storedData.Kits.Clear();
         				kitEditor.Clear();
         				ResetData();
@@ -764,6 +830,7 @@ namespace Oxide.Plugins
         				SendReply(player, "Resetted all kits and player data");
         			break;
         			case "resetdata":
+        				if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
         				ResetData();
         				SendReply(player, "Resetted all player data");
         			break;
@@ -773,11 +840,7 @@ namespace Oxide.Plugins
         		}
         	
         	}
-        	if(!hasAccess(player))
-			{
-				SendReply(player, "You don't have access to this command");
-				return;
-			}
+        	if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
 			
 			string kitname = string.Empty;
         	switch( args[0] )
@@ -791,6 +854,8 @@ namespace Oxide.Plugins
 					}
 					storedData.Kits[kitname] = new Kit( args[1] );
 					kitEditor[player] = kitname;
+					SendReply(player, "You've created a new kit: " + args[1]);
+					SendListKitEdition(player);
         		break;
         		case "edit":
         			kitname = args[1].ToLower();
@@ -801,6 +866,7 @@ namespace Oxide.Plugins
         			}
         			kitEditor[player] = kitname;
         			SendReply(player, string.Format("You are now editing the kit: {0}",kitname));
+        			SendListKitEdition(player);
         		break;
         		case "remove":
         			kitname = args[1].ToLower();
@@ -837,7 +903,7 @@ namespace Oxide.Plugins
 						// I WILL NEED TO MAKE IT THAT YOU CAN CHANGE THE NAME 
 						else
 						{
-							FieldInfo cachedField = GetZoneField(args[i]);
+							FieldInfo cachedField = GetKitField(args[i]);
 							if (cachedField == null) 
 							{
 								SendReply(player, string.Format("{0} is not a valid argument", args[i]));
@@ -861,6 +927,15 @@ namespace Oxide.Plugins
 							}
 							cachedField.SetValue(storedData.Kits[kitEditor[player]], editvalue);
 							SendReply( player, string.Format( "{0} set to {1}", cachedField.Name, editvalue == null ? "null" : editvalue) );
+							switch(cachedField.Name)
+							{
+								case "permission":
+									InitializePermissions();
+								break;
+								default:
+								break;
+							
+							}
 						}
         			}
         		break;
