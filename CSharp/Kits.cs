@@ -16,6 +16,10 @@ namespace Oxide.Plugins
     {
     	int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
     	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        ///// Plugin initialization
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	
     	void Loaded()
     	{
     		allKitFields = typeof(Kit).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
@@ -27,6 +31,7 @@ namespace Oxide.Plugins
     	{
     		InitializePermissions();
     	}
+    	
     	void InitializePermissions()
     	{
     		foreach(KeyValuePair<string, Kit> pair in storedData.Kits)
@@ -92,6 +97,10 @@ namespace Oxide.Plugins
             }
         }
         
+        //////////////////////////////////////////////////////////////////////////////////////////
+        ///// Kit Creator
+        //////////////////////////////////////////////////////////////////////////////////////////
+        
     	List<KitItem> GetPlayerItems( BasePlayer player )
     	{
     		var kititems = new List<KitItem>();
@@ -108,9 +117,12 @@ namespace Oxide.Plugins
             {
 				kititems.Add( new KitItem( item.info.itemid, item.IsBlueprint(), "belt", item.amount, item.skin ) );
             }
-    		
     		return kititems;
     	}
+    	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        ///// Kit Redeemer
+        //////////////////////////////////////////////////////////////////////////////////////////
     	
     	void TryGiveKit(BasePlayer player, string kitname)
     	{
@@ -139,10 +151,8 @@ namespace Oxide.Plugins
     			SetData( player, kitname, "max", (int.Parse(GetData(player, kitname, "max")) + 1).ToString() );
     		
     		if(kit.cooldown != null)
-    			SetData( player, kitname, "cooldown", (CurrentTime() + double.Parse(kit.cooldown)).ToString() );
-    			
+    			SetData( player, kitname, "cooldown", (CurrentTime() + double.Parse(kit.cooldown)).ToString() );	
     	}
-    	
     	object GiveKit(BasePlayer player, string kitname)
     	{
     		if(!isKit(kitname))
@@ -156,6 +166,11 @@ namespace Oxide.Plugins
     		}
     		return true;
     	}
+    	
+    	//////////////////////////////////////////////////////////////////////////////////////////
+        ///// Check Kits
+        //////////////////////////////////////////////////////////////////////////////////////////
+    	
     	bool isKit(string kitname)
         {
             if (storedData.Kits[kitname] == null)
@@ -268,25 +283,7 @@ namespace Oxide.Plugins
     		}
     		return true;
     	}
-    	string GetData( BasePlayer player, string kitname, string dataname )
-    	{
-    		if(KitsData[player.userID.ToString()] == null)
-    			KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string,string>>();
-    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).ContainsKey(kitname) ) return "0";
-    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].ContainsKey(dataname) ) return "0";
-    		return ((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname][dataname];
-    	}
-    	void SetData(BasePlayer player, string kitname, string dataname, string datavalue)
-    	{
-    		if(KitsData[player.userID.ToString()] == null)
-    			KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string,string>>();
-    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).ContainsKey(kitname) )
-    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).Add(kitname, new Dictionary<string, string>());
-    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].ContainsKey(dataname) )
-    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].Add(dataname, datavalue);
-    		else
-    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname][dataname] = datavalue;
-    	}
+    	
     	
 		//////////////////////////////////////////////////////////////////////////////////////
         // Kit Class
@@ -390,6 +387,26 @@ namespace Oxide.Plugins
                 storedData = new StoredData();
             }
         }
+        
+        string GetData( BasePlayer player, string kitname, string dataname )
+    	{
+    		if(KitsData[player.userID.ToString()] == null)
+    			KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string,string>>();
+    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).ContainsKey(kitname) ) return "0";
+    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].ContainsKey(dataname) ) return "0";
+    		return ((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname][dataname];
+    	}
+    	void SetData(BasePlayer player, string kitname, string dataname, string datavalue)
+    	{
+    		if(KitsData[player.userID.ToString()] == null)
+    			KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string,string>>();
+    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).ContainsKey(kitname) )
+    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()]).Add(kitname, new Dictionary<string, string>());
+    		if( !((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].ContainsKey(dataname) )
+    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname].Add(dataname, datavalue);
+    		else
+    			((Dictionary<string, Dictionary<string,string>>)KitsData[player.userID.ToString()])[kitname][dataname] = datavalue;
+    	}
         
         //////////////////////////////////////////////////////////////////////////////////////
         // Kit Editor
@@ -533,6 +550,40 @@ namespace Oxide.Plugins
 						""anchormax"": ""0.90 0.7""
 					}
 				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Text"",
+						""text"":""Close"",
+						""fontSize"":20,
+						""align"": ""MiddleCenter"",
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.5 0.15"",
+						""anchormax"": ""0.7 0.20""
+					}
+				]
+			},
+			{
+				""parent"": ""KitOverlay"",
+				""components"":
+				[
+					{
+						""type"":""UnityEngine.UI.Button"",
+						""close"":""KitOverlay"",
+						""color"": ""0.5 0.5 0.5 0.2"",
+						""imagetype"": ""Tiled""
+					},
+					{
+						""type"":""RectTransform"",
+						""anchormin"": ""0.5 0.15"",
+						""anchormax"": ""0.7 0.20""
+					}
+				]
 			}
 		]
 		";
@@ -667,6 +718,78 @@ namespace Oxide.Plugins
 		]
 		";
 		
+		string kitchangepage = @"[
+		{
+			""parent"": ""KitListOverlay"",
+			""components"":
+			[
+				{
+					""type"":""UnityEngine.UI.Text"",
+					""text"":""<<"",
+					""fontSize"":20,
+					""align"": ""MiddleCenter"",
+				},
+				{
+					""type"":""RectTransform"",
+					""anchormin"": ""0.2 0.15"",
+					""anchormax"": ""0.3 0.20""
+				}
+			]
+		},
+		{
+			""parent"": ""KitListOverlay"",
+			""components"":
+			[
+				{
+					""type"":""UnityEngine.UI.Button"",
+					""color"": ""0.5 0.5 0.5 0.2"",
+					""command"":""kit.show {pageminus}"",
+					""imagetype"": ""Tiled""
+				},
+				{
+					""type"":""RectTransform"",
+					""anchormin"": ""0.2 0.15"",
+					""anchormax"": ""0.3 0.20""
+				}
+			]
+		},
+		{
+			""parent"": ""KitListOverlay"",
+			""components"":
+			[
+				{
+					""type"":""UnityEngine.UI.Text"",
+					""text"":"">>"",
+					""fontSize"":20,
+					""align"": ""MiddleCenter"",
+				},
+				{
+					""type"":""RectTransform"",
+					""anchormin"": ""0.35 0.15"",
+					""anchormax"": ""0.45 0.20""
+				}
+			]
+		},
+		{
+			""parent"": ""KitListOverlay"",
+			""components"":
+			[
+				{
+					""type"":""UnityEngine.UI.Button"",
+					""color"": ""0.5 0.5 0.5 0.2"",
+					""command"":""kit.show {pageplus}"",
+					""imagetype"": ""Tiled""
+				},
+				{
+					""type"":""RectTransform"",
+					""anchormin"": ""0.35 0.15"",
+					""anchormax"": ""0.45 0.20""
+				}
+			]
+		},
+		]
+		";
+		
 		void NewKitPanel(BasePlayer player, string guiId = "chat")
 		{
 			DestroyAllGUI(player);
@@ -705,6 +828,11 @@ namespace Oxide.Plugins
             	}
             	current++;
             }
+            
+            int pageminus = minKit - 8 < 0 ? 0 : minKit - 8;
+            int pageplus = minKit + 8 > current ? minKit : minKit + 8;
+            var kpage = kitchangepage.Replace("{pageminus}",pageminus.ToString()).Replace("{pageplus}",pageplus.ToString());
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", kpage);
         }
         
         void DestroyAllGUI(BasePlayer player) { CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "KitOverlay"); }
@@ -737,6 +865,29 @@ namespace Oxide.Plugins
             string kitname = arg.Args[0].Substring(1, arg.Args[0].Length - 2);
             TryGiveKit(player, kitname);
             RefreshKitPanel( player, PlayerGUI[player]["guiid"], int.Parse(PlayerGUI[player]["page"]) );
+        }
+        
+        [ConsoleCommand("kit.show")]
+        void cmdConsoleKitGui(ConsoleSystem.Arg arg)
+        {
+            if (arg.connection == null)
+            {
+                SendReply(arg, "You can't use this command from the server console");
+                return;
+            }
+            if ((arg.Args == null) || (arg.Args != null && arg.Args.Length == 0))
+            {
+                SendReply(arg, "You are not allowed to use manually this command");
+                return;
+            }
+            BasePlayer player = (BasePlayer)arg.connection.player;
+			
+			if(PlayerGUI[player] == null) return;
+            if(PlayerGUI[player]["guiid"] == null) return;
+			
+			int kitNum = 0;
+            int.TryParse(arg.Args[0].Substring(1, arg.Args[0].Length - 2), out kitNum);
+            RefreshKitPanel( player, PlayerGUI[player]["guiid"], kitNum );
         }
         
         //////////////////////////////////////////////////////////////////////////////////////
@@ -808,11 +959,29 @@ namespace Oxide.Plugins
         	{
         		switch( args[0] )
         		{
+        			case "help":
+        				SendReply(player, "====== Player Commands ======");
+        				SendReply(player, "/kit => to get the list of kits");
+        				SendReply(player, "/kit KITNAME => to redeem the kit");
+        				if(!hasAccess(player)) { return; }
+        				SendReply(player, "====== Admin Commands ======");
+        				SendReply(player, "/kit add KITNAME => add a kit");
+        				SendReply(player, "/kit remove KITNAME => remove a kit");
+        				SendReply(player, "/kit edit KITNAME => edit a kit");
+        				SendReply(player, "/kit list => get a raw list of kits (the real full list)");
+        				SendReply(player, "/kit give PLAYER/STEAMID KITNAME => give a kit to a player");
+        				SendReply(player, "/kit resetkits => deletes all kits");
+        				SendReply(player, "/kit resetdata => reset player data");
+        			break;
         			case "add":
 					case "remove":
 					case "edit":
 						if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
 						SendReply(player, string.Format("/kit {0} KITNAME", args[0]));
+					break;
+					cave "give":
+						if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
+						SendReply(player, "/kit give PLAYER/STEAMID KITNAME");
 					break;
 					case "list":
 						if(!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
