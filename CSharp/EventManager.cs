@@ -190,46 +190,6 @@ namespace Oxide.Plugins
             player.ClientRPCPlayer(null, player, "FinishLoading");
 
         }
-        static string MakeItemName(Item item)
-        {
-            return string.Format("{0} {1}", item.info.shortname, item.IsBlueprint().ToString());
-        }
-        static void GetItemGood(string itemdata, out bool isBP, out string itemname)
-        {
-            if (!(bool.TryParse(itemdata.Substring(itemdata.IndexOf(" ") + 1), out isBP)))
-                isBP = false;
-            itemname = itemdata.Substring(0, itemdata.IndexOf(" "));
-        }
-        static void GiveGoodItem(BasePlayer player, string itemdata, int amount, ItemContainer container)
-        {
-            bool isBP;
-            string itemname;
-            GetItemGood(itemdata, out isBP, out itemname);
-            GiveItem(player, itemname, amount, container, isBP);
-        }
-        static void GiveItem(BasePlayer player, string name, int amount, ItemContainer container, bool isBlueprint)
-        {
-            var itemdefinition = ItemManager.FindItemDefinition(name);
-            if (itemdefinition != null)
-            {
-                int stackable = 1;
-                if (itemdefinition.stackable == null || itemdefinition.stackable < 1) stackable = 1;
-                else stackable = itemdefinition.stackable;
-                for (var i = amount; i > 0; i = i - stackable)
-                {
-                    var giveamount = 0;
-                    if (i >= stackable)
-                        giveamount = stackable;
-                    else
-                        giveamount = i;
-                    if (giveamount > 0)
-                    {
-                        player.inventory.GiveItem(ItemManager.CreateByItemID(itemdefinition.itemid, giveamount, isBlueprint), container);
-                    }
-                }
-            }
-        }
-
 
         //////////////////////////////////////////////////////////////////////////////////////
         // Oxide Hooks ///////////////////////////////////////////////////////////////////////
