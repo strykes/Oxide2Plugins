@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.10", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.11", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -63,6 +63,27 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // EventPlayer class to store informations /////////////////
         ////////////////////////////////////////////////////////////
+        class EventInvItem
+        {
+        	public string itemid;
+        	public string bp;
+        	public string skinid;
+        	public string container;
+        	public string amount;
+        	
+        	public EventInvItem()
+        	{
+        	
+        	}
+        	public EventInvItem(int itemid, bool bp, string container, int amount, int skinid = 0)
+        	{
+        		this.itemid = itemid.ToString();
+        		this.bp = bp.ToString();
+        		this.skinid = skinid.ToString();
+        		this.amount = amount.ToString();
+        		this.container = container;
+        	}
+        }
         class EventPlayer : MonoBehaviour
         {
             public BasePlayer player;
@@ -72,9 +93,7 @@ namespace Oxide.Plugins
             public bool savedHome;
             public string zone;
 
-            public Dictionary<string, int> Belt;
-            public Dictionary<string, int> Wear;
-            public Dictionary<string, int> Main;
+            public List<EventInvItem> InvItems = new List<EventInvItem>();
 
             public Vector3 Home;
 
@@ -107,56 +126,32 @@ namespace Oxide.Plugins
             {
                 if (savedInventory)
                     return;
-                var containerbelt = player.inventory.containerBelt.itemList;
-                var containermain = player.inventory.containerMain.itemList;
-                var containerwear = player.inventory.containerWear.itemList;
-                string itemname = string.Empty;
-                Belt.Clear();
-                Main.Clear();
-                Wear.Clear();
-
-                foreach (Item item in containerbelt)
-                {
-                    itemname = MakeItemName(item);
-                    if (!(Belt.ContainsKey(itemname)))
-                        Belt.Add(itemname, 0);
-                    Belt[itemname] = Belt[itemname] + item.amount;
-                }
-
-                foreach (Item item in containermain)
-                {
-                    itemname = MakeItemName(item);
-                    if (!(Main.ContainsKey(itemname)))
-                        Main.Add(itemname, 0);
-                    Main[itemname] = Main[itemname] + item.amount;
-                }
-                foreach (Item item in containerwear)
-                {
-                    itemname = MakeItemName(item);
-                    if (!(Wear.ContainsKey(itemname)))
-                        Wear.Add(itemname, 0);
-                    Wear[itemname] = Wear[itemname] + item.amount;
-                }
+                    
+                InvItems.Clear();
+                foreach (Item item in player.inventory.containerWear.itemList)
+				{
+					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "wear", item.amount, item.skin ) );
+				}
+				foreach (Item item in player.inventory.containerMain.itemList)
+				{
+					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "main", item.amount, item.skin ) );
+				}
+				foreach (Item item in player.inventory.containerBelt.itemList)
+				{
+					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "belt", item.amount, item.skin ) );
+				}
+				
                 savedInventory = true;
             }
 
             public void RestoreInventory()
             {
-                var containerbelt = player.inventory.containerBelt;
-                var containermain = player.inventory.containerMain;
-                var containerwear = player.inventory.containerWear;
-                foreach (KeyValuePair<string, int> pair in Belt)
-                {
-                    GiveGoodItem(player, pair.Key, pair.Value, containerbelt);
-                }
-                foreach (KeyValuePair<string, int> pair in Main)
-                {
-                    GiveGoodItem(player, pair.Key, pair.Value, containermain);
-                }
-                foreach (KeyValuePair<string, int> pair in Wear)
-                {
-                    GiveGoodItem(player, pair.Key, pair.Value, containerwear);
-                }
+            	foreach( EventInvItem kitem in InvItems )
+    			{
+    				Item item = ItemManager.CreateByItemID(int.Parse(kitem.itemid), int.Parse(kitem.amount), Convert.ToBoolean(kitem.bp));
+    				item.skin = int.Parse(kitem.skinid);
+    				player.inventory.GiveItem( item , kitem.container == "belt" ? player.inventory.containerBelt : kitem.container == "wear" ? player.inventory.containerWear : player.inventory.containerMain );
+    			}
                 savedInventory = false;
             }
         }
