@@ -1,3 +1,12 @@
+/*
+TO DO:
+- Time for activated Remover tool
+- GUI
+- Pay to remove
+- Raid Blocker
+
+*/
+
 using System.Collections.Generic;
 using System;
 using System.Reflection;
@@ -78,6 +87,11 @@ namespace Oxide.Plugins
         	InitializeRustIO();
         }
         
+        void OnServerInitialized()
+        {
+        	InitializeTable();
+        }
+        
         private Library RustIO;
         private MethodInfo isInstalled;
         private MethodInfo hasFriend;
@@ -134,7 +148,7 @@ namespace Oxide.Plugins
 		class ToolRemover : MonoBehaviour
 		{
 			public BasePlayer player;
-			public float endTime;
+			public int endTime;
 			public RemoveType removeType;
 			public BasePlayer playerActivator;
 			public float distance;
@@ -146,6 +160,17 @@ namespace Oxide.Plugins
                 player = GetComponent<BasePlayer>();
             }
             
+            public void RefreshDestroy()
+            {
+            	CancelInvoke("DoDestroy");
+            	Invoke("DoDestroy", endTime);
+            }
+            
+            void DoDestroy()
+            {
+            	GameObject.Destroy(this);
+            }
+            
             void FixedUpdate()
             {
                 inputState = serverinput.GetValue(player) as InputState;
@@ -154,6 +179,11 @@ namespace Oxide.Plugins
                 	Ray ray = new Ray( player.eyes.position, Quaternion.Euler(input.current.aimAngles) * Vector3.forward );
                 	TryRemove( player, ray, removeType, distance );
                 }
+            }
+            
+            void OnDestroy()
+            {
+                // SEND MESSAGE THAT REMOVE IS OFF
             }
 			
 		}
@@ -239,6 +269,7 @@ namespace Oxide.Plugins
         }
 		bool CanRemoveEntity( BasePlayer player, BaseEntity entity, RemoveType removeType )
 		{
+			if(entity.isDestroyed) return false;
 			if(removeType == RemoveType.Admin || removeType == RemoveType.All) return true;
 			var externalPlugins = Interface.CallHook("canRemove", player);
             if (externalPlugins != null) { 
@@ -286,6 +317,15 @@ namespace Oxide.Plugins
         	if(toolremover == null) return;
         	GameObject.Destroy(toolremover);
         }
+        
+        void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
+		{
+			BuildingBlock block = entity.GetComponent<BuildingBlock>();
+			if(block == null) return;
+			
+			// DO SOME CHECKS TO SEE IF ITS A RAID OR SOMETHING
+			// SPHERECAST ALL PLAYERS TO BLOCK THERE REMOVE
+		}
 		
 		[ChatCommand("remove")]
         void cmdChatRemove(BasePlayer player, string command, string[] args)
@@ -343,10 +383,11 @@ namespace Oxide.Plugins
             if(toolremover == null)
             	toolremover = target.gameObject.AddComponent<ToolRemover>();
             
-            toolremover.endTime = float.Parse(removeTime) + Time.realtimeSinceStartup;
+            toolremover.endTime = removeTime;
             toolremover.removeType = removetype;
             toolremover.playerActivator = player;
             toolremover.distance = float.Parse(distanceRemove);
+            toolremover.RefreshDestroy();
         }
         
         static int RemoveTimeDefault = 30;
@@ -359,12 +400,56 @@ namespace Oxide.Plugins
         static bool useRustIO = true;
         static bool useToolCupboard = true;
         
+        static bool useRaidBlocker = true;
+        static int RaidBlockerTime = 300;
+        static int RaidBlockerRadius = 80;
+        
         static bool usePay = true;
+        static bool payDeployable = true;
+        static bool payStructure = true;
+        static Dictionary<string, object> payForRemove = defaultPay();
         
         static bool useRefund = true;
         static bool refundDeployable = true;
         static bool refundStructure = true;
         static Dictionary<string, object> refundPercentage = defaultRefund();
+        
+        static Dictionary<string, object> defaultPay()
+        {
+        	var dp = new Dictionary<string,object>();
+        	
+        	var dp0 = new Dictionary<string,object>();
+        	dp0.Add("wood", "1");
+        	dp.Add("0", dp0);
+        	
+        	var dp1 = new Dictionary<string,object>();
+        	dp1.Add("wood", "100");
+        	dp.Add("1", dp1);
+        	
+        	var dp2 = new Dictionary<string,object>();
+        	dp2.Add("wood", "100");
+        	dp2.Add("stone", "150");
+        	dp.Add("2", dp2);
+        	
+        	var dp3 = new Dictionary<string,object>();
+        	dp3.Add("wood", "100");
+        	dp3.Add("stone", "50");
+        	dp3.Add("metal fragments", "75");
+        	dp.Add("3", dp3);
+        	
+        	var dp4 = new Dictionary<string,object>();
+        	dp4.Add("wood", "250");
+        	dp4.Add("stone", "350");
+        	dp4.Add("metal fragments", "75");
+        	dp4.Add("high quality metal", "25");
+        	dp.Add("4", dp4);
+        	
+        	var dpdepoyable = new Dictionary<string,object>();
+        	dpdepoyable.Add("wood", "50");
+        	dp.Add("deployable", dpdepoyable);
+        	
+        	return dp;
+        }
         
         static Dictionary<string, object> defaultRefund()
         {
@@ -377,6 +462,17 @@ namespace Oxide.Plugins
         	dr.Add("4", "20.0");
         	
         	return dr;
+        }
+        
+        private Dictionary<string, string> displaynameToShortname;
+        private void InitializeTable()
+        {
+            displaynameToShortname.Clear();
+            List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
+            foreach (ItemDefinition itemdef in ItemsDefinition)
+            {
+                displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
+            }
         }
     }
 }
