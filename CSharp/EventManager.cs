@@ -9,7 +9,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Event Manager", "Reneb", "1.2.11", ResourceId = 740)]
+    [Info("Event Manager", "Reneb", "1.2.12", ResourceId = 740)]
     class EventManager : RustPlugin
     {
         ////////////////////////////////////////////////////////////
@@ -103,9 +103,6 @@ namespace Oxide.Plugins
                 savedInventory = false;
                 savedHome = false;
                 player = GetComponent<BasePlayer>();
-                Belt = new Dictionary<string, int>();
-                Wear = new Dictionary<string, int>();
-                Main = new Dictionary<string, int>();
             }
 
             public void SaveHome()
@@ -1033,7 +1030,7 @@ namespace Oxide.Plugins
             var targetpos = Spawns.Call("GetRandomSpawn", new object[] { EventSpawnFile });
             if (targetpos is string)
                 return;
-            var newpos = Spawns.Call("EventChooseSpawn", new object[] { player, targetpos });
+            var newpos = Interface.Call("EventChooseSpawn", new object[] { player, targetpos });
             if (newpos is Vector3)
                 targetpos = newpos;
 
