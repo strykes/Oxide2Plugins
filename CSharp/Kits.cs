@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "3.0.3")]
+    [Info("Kits", "Reneb", "3.0.4")]
     class Kits : RustPlugin
     {
         int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
@@ -365,6 +365,10 @@ namespace Oxide.Plugins
         void Unload()
         {
             SaveKitsData();
+            foreach(BasePlayer player in BasePlayer.activePlayerList)
+            {
+                DestroyAllGUI(player);
+            }
         }
         void OnServerSave()
         {
@@ -915,6 +919,32 @@ namespace Oxide.Plugins
             RefreshKitPanel(player, PlayerGUI[player]["guiid"], kitNum);
         }
 
+        List<BasePlayer> FindPlayer(string arg)
+        {
+            var listPlayers = new List<BasePlayer>();
+
+            ulong steamid = 0L;
+            ulong.TryParse(arg, out steamid);
+            string lowerarg = arg.ToLower();
+
+            foreach (BasePlayer player in BasePlayer.activePlayerList)
+            {
+                if (steamid != 0L)
+                    if (player.userID == steamid)
+                    {
+                        listPlayers.Clear();
+                        listPlayers.Add(player);
+                        return listPlayers;
+                    }
+                string lowername = player.displayName.ToLower();
+                if (lowername.Contains(lowerarg))
+                {
+                    listPlayers.Add(player);
+                }
+            }
+            return listPlayers;
+        }
+
         //////////////////////////////////////////////////////////////////////////////////////
         // Chat Command
         //////////////////////////////////////////////////////////////////////////////////////
@@ -995,7 +1025,7 @@ namespace Oxide.Plugins
                         SendReply(player, "/kit remove KITNAME => remove a kit");
                         SendReply(player, "/kit edit KITNAME => edit a kit");
                         SendReply(player, "/kit list => get a raw list of kits (the real full list)");
-                        //SendReply(player, "/kit give PLAYER/STEAMID KITNAME => give a kit to a player");
+                        SendReply(player, "/kit give PLAYER/STEAMID KITNAME => give a kit to a player");
                         SendReply(player, "/kit resetkits => deletes all kits");
                         SendReply(player, "/kit resetdata => reset player data");
                         break;
@@ -1055,6 +1085,33 @@ namespace Oxide.Plugins
                     kitEditor[player] = kitname;
                     SendReply(player, "You've created a new kit: " + args[1]);
                     SendListKitEdition(player);
+                    break;
+                case "give":
+                    if(args.Length < 3)
+                    {
+                        SendReply(player, "/kit give PLAYER/STEAMID KITNAME");
+                        return;
+                    }
+                    kitname = args[2].ToLower();
+                    if (storedData.Kits[kitname] == null)
+                    {
+                        SendReply(player, "This kit doesn't seem to exist.");
+                        return;
+                    }
+                    List<BasePlayer> findPlayers = FindPlayer(args[1]);
+                    if(findPlayers.Count == 0)
+                    {
+                        SendReply(player, "No players found.");
+                        return;
+                    }
+                    if (findPlayers.Count > 1)
+                    {
+                        SendReply(player, "Multiple players found.");
+                        return;
+                    }
+                    GiveKit(findPlayers[0], kitname);
+                    SendReply(player, string.Format("You gave {0} the kit: {1}", findPlayers[0].displayName, storedData.Kits[kitname].name));
+                    SendReply(findPlayers[0], string.Format("You've received the kit {1} from {0}", player.displayName, storedData.Kits[kitname].name));
                     break;
                 case "edit":
                     kitname = args[1].ToLower();
@@ -1142,6 +1199,5 @@ namespace Oxide.Plugins
             }
             SaveKits();
         }
-
     }
 }
