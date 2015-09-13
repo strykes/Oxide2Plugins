@@ -23,7 +23,7 @@ namespace Oxide.Plugins
 
         [PluginReference]
         Plugin ZoneManager;
-         
+
         [PluginReference]
         Plugin DeadPlayersList;
 
@@ -34,7 +34,7 @@ namespace Oxide.Plugins
         private string EventGameName;
         private string itemname;
 
-         
+
         private bool EventOpen;
         private bool EventStarted;
         private bool EventEnded;
@@ -65,24 +65,24 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         class EventInvItem
         {
-        	public string itemid;
-        	public string bp;
-        	public string skinid;
-        	public string container;
-        	public string amount;
-        	
-        	public EventInvItem()
-        	{
-        	
-        	}
-        	public EventInvItem(int itemid, bool bp, string container, int amount, int skinid = 0)
-        	{
-        		this.itemid = itemid.ToString();
-        		this.bp = bp.ToString();
-        		this.skinid = skinid.ToString();
-        		this.amount = amount.ToString();
-        		this.container = container;
-        	}
+            public string itemid;
+            public string bp;
+            public string skinid;
+            public string container;
+            public string amount;
+
+            public EventInvItem()
+            {
+
+            }
+            public EventInvItem(int itemid, bool bp, string container, int amount, int skinid = 0)
+            {
+                this.itemid = itemid.ToString();
+                this.bp = bp.ToString();
+                this.skinid = skinid.ToString();
+                this.amount = amount.ToString();
+                this.container = container;
+            }
         }
         class EventPlayer : MonoBehaviour
         {
@@ -123,32 +123,32 @@ namespace Oxide.Plugins
             {
                 if (savedInventory)
                     return;
-                    
+
                 InvItems.Clear();
                 foreach (Item item in player.inventory.containerWear.itemList)
-				{
-					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "wear", item.amount, item.skin ) );
-				}
-				foreach (Item item in player.inventory.containerMain.itemList)
-				{
-					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "main", item.amount, item.skin ) );
-				}
-				foreach (Item item in player.inventory.containerBelt.itemList)
-				{
-					InvItems.Add( new EventInvItem( item.info.itemid, item.IsBlueprint(), "belt", item.amount, item.skin ) );
-				}
-				
+                {
+                    InvItems.Add(new EventInvItem(item.info.itemid, item.IsBlueprint(), "wear", item.amount, item.skin));
+                }
+                foreach (Item item in player.inventory.containerMain.itemList)
+                {
+                    InvItems.Add(new EventInvItem(item.info.itemid, item.IsBlueprint(), "main", item.amount, item.skin));
+                }
+                foreach (Item item in player.inventory.containerBelt.itemList)
+                {
+                    InvItems.Add(new EventInvItem(item.info.itemid, item.IsBlueprint(), "belt", item.amount, item.skin));
+                }
+
                 savedInventory = true;
             }
 
             public void RestoreInventory()
             {
-            	foreach( EventInvItem kitem in InvItems )
-    			{
-    				Item item = ItemManager.CreateByItemID(int.Parse(kitem.itemid), int.Parse(kitem.amount), Convert.ToBoolean(kitem.bp));
-    				item.skin = int.Parse(kitem.skinid);
-    				player.inventory.GiveItem( item , kitem.container == "belt" ? player.inventory.containerBelt : kitem.container == "wear" ? player.inventory.containerWear : player.inventory.containerMain );
-    			}
+                foreach (EventInvItem kitem in InvItems)
+                {
+                    Item item = ItemManager.CreateByItemID(int.Parse(kitem.itemid), int.Parse(kitem.amount), Convert.ToBoolean(kitem.bp));
+                    item.skin = int.Parse(kitem.skinid);
+                    player.inventory.GiveItem(item, kitem.container == "belt" ? player.inventory.containerBelt : kitem.container == "wear" ? player.inventory.containerWear : player.inventory.containerMain);
+                }
                 savedInventory = false;
             }
         }
@@ -776,7 +776,7 @@ namespace Oxide.Plugins
                 {
                     string color = (pair.Value.GetCost() <= currenttokens) ? "0 0.6 0 0.2" : "1 0 0 0.2";
                     double pos = 0.55 - 0.05 * (current - from);
-                    var tokenline = tokenjson.Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{color}", color).Replace("{rewardname}", pair.Key).Replace("{rewardcmd}", string.Format("'{0}' {1}", pair.Key, from.ToString())).Replace("{rewardcost}",pair.Value.cost).Replace("{rewardamount}", pair.Value.amount);
+                    var tokenline = tokenjson.Replace("{ymin}", pos.ToString()).Replace("{ymax}", (pos + 0.05).ToString()).Replace("{color}", color).Replace("{rewardname}", pair.Key).Replace("{rewardcmd}", string.Format("'{0}' {1}", pair.Key, from.ToString())).Replace("{rewardcost}", pair.Value.cost).Replace("{rewardamount}", pair.Value.amount);
                     CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", tokenline);
                     //SendReply(player, string.Format(MessageRewardItem, pair.Value.name, pair.Value.cost, (Convert.ToBoolean(pair.Value.kit) ? "Kit : " : "Item : ") + pair.Value.item, pair.Value.amount, color.ToString()));
                 }
@@ -921,7 +921,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Messages - Event Error - Not In Event", ref MessagesEventNotInEvent);
             CheckCfg<string>("Messages - Event Error - Not Registered Event", ref MessagesEventNotAnEvent);
             CheckCfg<string>("Messages - Event Error - Close&End", ref MessagesEventCloseAndEnd);
-             
+
             CheckCfg<string>("Messages - Error - No players found", ref noPlayerFound);
             CheckCfg<string>("Messages - Error - Multiple players found", ref multipleNames);
 
@@ -1109,6 +1109,7 @@ namespace Oxide.Plugins
                 player.SetPlayerFlag(BasePlayer.PlayerFlags.Wounded, false);
                 player.CancelInvoke("WoundingEnd");
                 player.health = 50f;
+                player.metabolism.bleeding.value = 0f;
             }
             SendReply(player, string.Format(MessageRewardCurrentReward, GetTokens(player.userID.ToString()).ToString()));
         }
@@ -1118,7 +1119,7 @@ namespace Oxide.Plugins
             foreach (EventPlayer eventplayer in EventPlayers)
             {
                 EjectPlayer(eventplayer.player);
-                if(eventplayer.zone != null)
+                if (eventplayer.zone != null)
                     ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", eventplayer.zone, eventplayer.player);
                 eventplayer.inEvent = false;
             }
@@ -1170,7 +1171,7 @@ namespace Oxide.Plugins
 
             DestroyTimers();
             var evencfg = EventAutoConfig[EventAutoNum.ToString()] as Dictionary<string, object>;
-            if(evencfg["timelimit"]!=null && evencfg["timelimit"] != "0")
+            if (evencfg["timelimit"] != null && evencfg["timelimit"] != "0")
                 AutoArenaTimers.Add(timer.Once(Convert.ToSingle(evencfg["timelimit"]), () => CancelEvent("Not enough players")));
             AutoArenaTimers.Add(timer.Repeat(EventAutoAnnounceInterval, 0, () => AnnounceEvent()));
         }
@@ -1441,7 +1442,7 @@ namespace Oxide.Plugins
             {
                 BroadcastToChat(string.Format(MessagesEventLeft, player.displayName.ToString(), (EventPlayers.Count - 1).ToString()));
             }
-            if(player.GetComponent<EventPlayer>().zone != null)
+            if (player.GetComponent<EventPlayer>().zone != null)
                 ZoneManager?.Call("RemovePlayerFromZoneKeepinlist", player.GetComponent<EventPlayer>().zone, player);
             if (EventStarted)
             {
@@ -1509,7 +1510,7 @@ namespace Oxide.Plugins
             }
 
             success = Interface.CallHook("OnSelectKit", new object[] { kitname });
-            if(success == null)
+            if (success == null)
             {
                 return "The Current Event doesn't let you select a Kit";
             }
@@ -1583,7 +1584,6 @@ namespace Oxide.Plugins
 
         object canRedeemKit(BasePlayer player)
         {
-            if (!EventStarted) return null;
             EventPlayer eplayer = player.GetComponent<EventPlayer>();
             if (eplayer == null) return null;
             return false;
