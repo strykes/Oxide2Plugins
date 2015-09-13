@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "3.0.0")]
+    [Info("Kits", "Reneb", "3.0.2")]
     class Kits : RustPlugin
     {
         int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
@@ -391,7 +391,7 @@ namespace Oxide.Plugins
         string GetData(BasePlayer player, string kitname, string dataname)
         {
             if (KitsData[player.userID.ToString()] == null)
-                KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string, string>>();
+                KitsData[player.userID.ToString()] = new Dictionary<string, object>();
             if (!((Dictionary<string, object>)KitsData[player.userID.ToString()]).ContainsKey(kitname)) return "0";
             var playerKitData = ((Dictionary<string, object>)KitsData[player.userID.ToString()])[kitname] as Dictionary<string, object>;
             if (!playerKitData.ContainsKey(dataname)) return "0";
@@ -400,9 +400,9 @@ namespace Oxide.Plugins
         void SetData(BasePlayer player, string kitname, string dataname, string datavalue)
         {
             if (KitsData[player.userID.ToString()] == null)
-                KitsData[player.userID.ToString()] = new Dictionary<string, Dictionary<string, string>>();
+                KitsData[player.userID.ToString()] = new Dictionary<string, object>();
             if (!((Dictionary<string, object>)KitsData[player.userID.ToString()]).ContainsKey(kitname))
-                ((Dictionary<string, object>)KitsData[player.userID.ToString()]).Add(kitname, new Dictionary<string, string>());
+                ((Dictionary<string, object>)KitsData[player.userID.ToString()]).Add(kitname, new Dictionary<string, object>());
             if (!(((Dictionary<string, object>)KitsData[player.userID.ToString()])[kitname] as Dictionary<string, object>).ContainsKey(dataname))
                 (((Dictionary<string, object>)KitsData[player.userID.ToString()])[kitname] as Dictionary<string, object>).Add(dataname, datavalue);
             else
@@ -1016,6 +1016,8 @@ namespace Oxide.Plugins
                             SendReply(player, string.Format("{0} - {1}", pair.Value.name, pair.Value.description));
                         }
                         break;
+                    case "items":
+                        break;
                     case "resetkits":
                         if (!hasAccess(player)) { SendReply(player, "You don't have access to this command"); return; }
                         storedData.Kits.Clear();
@@ -1093,6 +1095,7 @@ namespace Oxide.Plugins
                         {
                             i--;
                             storedData.Kits[kitEditor[player]].items = GetPlayerItems(player);
+                            SendReply(player, "The items were copied from your inventory");
                             continue;
                         }
                         // I WILL NEED TO MAKE IT THAT YOU CAN CHANGE THE ITEMS
