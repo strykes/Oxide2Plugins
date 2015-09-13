@@ -995,7 +995,7 @@ namespace Oxide.Plugins
                         SendReply(player, "/kit remove KITNAME => remove a kit");
                         SendReply(player, "/kit edit KITNAME => edit a kit");
                         SendReply(player, "/kit list => get a raw list of kits (the real full list)");
-                        SendReply(player, "/kit give PLAYER/STEAMID KITNAME => give a kit to a player");
+                        //SendReply(player, "/kit give PLAYER/STEAMID KITNAME => give a kit to a player");
                         SendReply(player, "/kit resetkits => deletes all kits");
                         SendReply(player, "/kit resetdata => reset player data");
                         break;
