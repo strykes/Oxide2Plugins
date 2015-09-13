@@ -11,7 +11,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("Kits", "Reneb", "3.0.2")]
+    [Info("Kits", "Reneb", "3.0.3")]
     class Kits : RustPlugin
     {
         int playerLayer = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
