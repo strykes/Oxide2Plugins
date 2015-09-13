@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.16", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.17", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
         //////////////////////////////////////////////////////
@@ -387,8 +387,8 @@ namespace Oxide.Plugins
 
             public List<TuneNote> tunetoplay = new List<TuneNote>();
             public int currentnote = 0;
-            Effect effectP = new Effect("fx/gestures/guitarpluck", new Vector3(0, 0, 0), Vector3.forward);
-            Effect effectS = new Effect("fx/gestures/guitarstrum", new Vector3(0, 0, 0), Vector3.forward);
+            Effect effectP = new Effect("assets/bundled/prefabs/fx/gestures/guitarpluck.prefab", new Vector3(0, 0, 0), Vector3.forward);
+            Effect effectS = new Effect("assets/bundled/prefabs/fx/gestures/guitarstrum.prefab", new Vector3(0, 0, 0), Vector3.forward);
 
             void Awake()
             {
