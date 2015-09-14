@@ -9,13 +9,14 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", "3.0.0", ResourceId = 651)]
+    [Info("RemoverTool", "Reneb", "3.0.2", ResourceId = 651)]
     class RemoverTool : RustPlugin
     {
 
         static FieldInfo serverinput;
         static FieldInfo buildingPrivlidges;
         static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Deployable", "Prevent Building" });
+        static int playerColl = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
 
         enum RemoveType
         {
@@ -47,7 +48,7 @@ namespace Oxide.Plugins
 
         void Unload()
         {
-            foreach(ToolRemover toolremover in Resources.FindObjectsOfTypeAll<ToolRemover>())
+            foreach (ToolRemover toolremover in Resources.FindObjectsOfTypeAll<ToolRemover>())
             {
                 GameObject.Destroy(toolremover);
             }
@@ -124,9 +125,15 @@ namespace Oxide.Plugins
         static string MessageErrorExternalBlock = "You are not allowed use the remover tool at the moment";
         static string MessageOverrideDisabled = "The remover tool was disabled for the time being.";
         static string MessageToolDeactivated = "{0}: Remover Tool Deactivated";
+        static string MessageRaidBlocked = "RaidBlocker: You need to wait for {0}s before being allowed to remove again";
+        static string MessageErrorCantUseRemoveWithItem = "You can't use the remover tool while you have an active item";
 
         void Init()
         {
+            CheckCfg<bool>("Remove - RaidBlocker", ref useRaidBlocker);
+            CheckCfg<int>("Remove - RaidBlocker - Time To Block", ref RaidBlockerTime);
+            CheckCfg<int>("Remove - RaidBlocker - Radius To Block", ref RaidBlockerRadius);
+
             CheckCfg<string>("Message - Not Allowed", ref MessageErrorNoAccess);
             CheckCfg<string>("Message - Multiple Players Found", ref MessageMultiplePlayersFound);
             CheckCfg<string>("Message - No Players Found", ref MessageNoPlayersFound);
@@ -137,6 +144,8 @@ namespace Oxide.Plugins
             CheckCfg<string>("Message - External Plugin Blocking Remove", ref MessageErrorExternalBlock);
             CheckCfg<string>("Message - Admin Override Disabled the Remover Tool", ref MessageOverrideDisabled);
             CheckCfg<string>("Message - Remover Tool Ended", ref MessageToolDeactivated);
+            CheckCfg<string>("Message - Raid Blocked", ref MessageRaidBlocked);
+            CheckCfg<string>("Message - Cant Use Remove With Item", ref MessageErrorCantUseRemoveWithItem);
 
             CheckCfg<string>("GUI - Position - X Min", ref xmin);
             CheckCfg<string>("GUI - Position - X Max", ref xmax);
@@ -145,7 +154,7 @@ namespace Oxide.Plugins
 
             CheckCfg<int>("Remove - Default Time", ref RemoveTimeDefault);
             CheckCfg<int>("Remove - Max Remove Time", ref MaxRemoveTime);
-            if(MaxRemoveTime > 300)
+            if (MaxRemoveTime > 300)
             {
                 Debug.Log("RemoverTool: Sorry but i won't let you use the Max Remove Time for longer then 300seconds");
                 MaxRemoveTime = 300;
@@ -168,7 +177,7 @@ namespace Oxide.Plugins
             CheckCfg<bool>("Remove - Pay", ref usePay);
             CheckCfg<bool>("Remove - Pay - Deployables", ref payDeployable);
             CheckCfg<bool>("Remove - Pay - Structures", ref payStructure);
-            CheckCfg<Dictionary<string,object>>("Remove - Pay - Costs", ref payForRemove);
+            CheckCfg<Dictionary<string, object>>("Remove - Pay - Costs", ref payForRemove);
 
             CheckCfg<bool>("Remove - Refund", ref useRefund);
             CheckCfg<bool>("Remove - Refund - Deployables", ref refundDeployable);
@@ -261,7 +270,7 @@ namespace Oxide.Plugins
             if (RustIO == null) return false;
             return (bool)hasFriend.Invoke(RustIO, new object[] { playerId, friendId });
         }
-        
+
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// Random Functions
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -368,6 +377,11 @@ namespace Oxide.Plugins
                     if (lastUpdate + 0.5f < currentTime)
                     {
                         lastUpdate = currentTime;
+                        if (player.GetActiveItem() != null)
+                        {
+                            PrintToChat(player, MessageErrorCantUseRemoveWithItem);
+                            return;
+                        }
                         Ray ray = new Ray(player.eyes.position, Quaternion.Euler(inputState.current.aimAngles) * Vector3.forward);
                         TryRemove(player, ray, removeType, distance);
                     }
@@ -376,9 +390,9 @@ namespace Oxide.Plugins
 
             void OnDestroy()
             {
-                if(player.net != null)
+                if (player.net != null)
                     CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "RemoveMsg");
-                if(playerActivator != player)
+                if (playerActivator != player)
                 {
                     if (playerActivator.IsConnected())
                         PrintToChat(playerActivator, string.Format(MessageTargetRemoveEnded, player.displayName));
@@ -557,7 +571,7 @@ namespace Oxide.Plugins
                     }
                 }
             }
-            string pjson = json.Replace("{entity}", entity).Replace("{cost}", cost).Replace("{timeleft}", toolPlayer.timeLeft.ToString()).Replace("{removeType}",toolPlayer.removeType == RemoveType.Normal ? string.Empty : toolPlayer.removeType == RemoveType.Admin ? "(Admin)" : "(All)");
+            string pjson = json.Replace("{entity}", entity).Replace("{cost}", cost).Replace("{timeleft}", toolPlayer.timeLeft.ToString()).Replace("{removeType}", toolPlayer.removeType == RemoveType.Normal ? string.Empty : toolPlayer.removeType == RemoveType.Admin ? "(Admin)" : "(All)");
             CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "AddUI", pjson);
         }
 
@@ -572,19 +586,20 @@ namespace Oxide.Plugins
                 PrintToChat(player, MessageErrorNothingToRemove);
                 return;
             }
-            if (!CanRemoveEntity(player, removeObject, removeType))
+            var success = CanRemoveEntity(player, removeObject, removeType);
+            if (success is string)
             {
-                PrintToChat(player, MessageErrorNotAllowedToRemove);
+                PrintToChat(player, (string)success);
                 return;
             }
-            if (!CanPay(player, removeObject, removeType))
+            if (usePay && !CanPay(player, removeObject, removeType))
             {
                 PrintToChat(player, MessageErrorNotEnoughPay);
                 return;
             }
-            if(removeType == RemoveType.All)
+            if (removeType == RemoveType.All)
             {
-                Interface.Call("RemoveAllFrom",removeObject.transform.position);
+                Interface.Call("RemoveAllFrom", removeObject.transform.position);
                 return;
             }
             Refund(player, removeObject, removeType);
@@ -688,15 +703,18 @@ namespace Oxide.Plugins
             return true;
         }
 
-        static bool CanRemoveEntity(BasePlayer player, BaseEntity entity, RemoveType removeType)
+        static object CanRemoveEntity(BasePlayer player, BaseEntity entity, RemoveType removeType)
         {
-            if (entity.isDestroyed) return false;
+            if (entity.isDestroyed) return "Entity is already destroyed";
             if (removeType == RemoveType.Admin || removeType == RemoveType.All) return true;
             var externalPlugins = Interface.CallHook("canRemove", player);
             if (externalPlugins != null)
+                return externalPlugins is string ? (string)externalPlugins : MessageErrorExternalBlock;
+            if(raidBlockedPlayers[player] != null)
             {
-                PrintToChat(player, externalPlugins is string ? (string)externalPlugins : MessageErrorExternalBlock);
-                return false;
+                if(raidBlockedPlayers[player] > UnityEngine.Time.realtimeSinceStartup )
+                    return string.Format(MessageRaidBlocked, Mathf.Ceil(raidBlockedPlayers[player] - UnityEngine.Time.realtimeSinceStartup).ToString());
+                raidBlockedPlayers.Remove(player);
             }
             if (entity is BuildingBlock && useBuildingOwners)
             {
@@ -706,19 +724,15 @@ namespace Oxide.Plugins
                     string ownerid = (string)returnhook;
                     if (player.userID.ToString() == ownerid) return true;
                     if (useRustIO && RustIOIsInstalled())
-                    {
                         if (HasFriend(ownerid, player.userID.ToString()))
-                        {
                             return true;
-                        }
-                    }
                 }
             }
             if (useToolCupboard)
                 if (hasTotalAccess(player))
                     return true;
 
-            return false;
+            return MessageErrorNotAllowedToRemove;
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -764,16 +778,25 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// Raid Blocker
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        /*
+        
         void OnEntityDeath(BaseCombatEntity entity, HitInfo info)
         {
+            if (!useRaidBlocker) return;
             BuildingBlock block = entity.GetComponent<BuildingBlock>();
             if (block == null) return;
-
-            // DO SOME CHECKS TO SEE IF ITS A RAID OR SOMETHING
-            // SPHERECAST ALL PLAYERS TO BLOCK THERE REMOVE
+            if (info.damageTypes.GetMajorityDamageType() == Rust.DamageType.Explosion)
+                BlockRemoveFromPlayersAroundPos(entity.transform.position);
         }
-        */
+
+        static Hash<BasePlayer, float> raidBlockedPlayers = new Hash<BasePlayer, float>();
+        void BlockRemoveFromPlayersAroundPos(Vector3 pos)
+        {
+            foreach (Collider col in Physics.OverlapSphere(pos, (float)RaidBlockerRadius, playerColl))
+            {
+                raidBlockedPlayers[col.GetComponentInParent<BasePlayer>()] = UnityEngine.Time.realtimeSinceStartup + (float)RaidBlockerTime;
+            }
+        }
+
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// Console Commands
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
