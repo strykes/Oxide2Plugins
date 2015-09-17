@@ -8,7 +8,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("HumanNPC", "Reneb", "0.1.17", ResourceId = 856)]
+    [Info("HumanNPC", "Reneb", "0.1.18", ResourceId = 856)]
     class HumanNPC : RustPlugin
     {
         //////////////////////////////////////////////////////
@@ -17,6 +17,7 @@ namespace Oxide.Plugins
         private static FieldInfo serverinput;
         private static FieldInfo viewangles;
         public static FieldInfo lastPositionValue;
+        public static FieldInfo displayname;
         private static int playerLayer;
         private DamageTypeList emptyDamage;
         private List<Oxide.Plugins.Timer> TimersList;
@@ -388,7 +389,7 @@ namespace Oxide.Plugins
             public List<TuneNote> tunetoplay = new List<TuneNote>();
             public int currentnote = 0;
             Effect effectP = new Effect("assets/bundled/prefabs/fx/gestures/guitarpluck.prefab", new Vector3(0, 0, 0), Vector3.forward);
-            Effect effectS = new Effect("assets/bundled/prefabs/fx/gestures/guitarstrum.prefab", new Vector3(0, 0, 0), Vector3.forward);
+            Effect effectS = new Effect("assets/bundled/prefabs/fx/gestures/guitarpluck.prefab", new Vector3(0, 0, 0), Vector3.forward);
 
             void Awake()
             {
@@ -400,7 +401,7 @@ namespace Oxide.Plugins
                 this.info = info;
                 if (info == null) return;
                 player.userID = ulong.Parse(info.userid);
-                player.displayName = info.displayName;
+                displayname.SetValue(player, info.displayName);
                 invulnerability = bool.Parse(info.invulnerability);
                 stopandtalk = bool.Parse(info.stopandtalk);
                 hostile = bool.Parse(info.hostile);
@@ -649,6 +650,7 @@ namespace Oxide.Plugins
             LoadData();
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             viewangles = typeof(BasePlayer).GetField("viewAngles", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            displayname = typeof(BasePlayer).GetField("_displayName", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             TimersList = new List<Oxide.Plugins.Timer>();
             eyesPosition = new Vector3(0f, 0.5f, 0f);
@@ -936,7 +938,7 @@ namespace Oxide.Plugins
             var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", humannpcs[userid].spawnInfo.GetPosition(), humannpcs[userid].spawnInfo.GetRotation()).ToPlayer();
             newplayer.userID = Convert.ToUInt64(userid);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
-            newplayer.displayName = (humannpcs[userid]).displayName;
+            displayname.SetValue(newplayer, (humannpcs[userid]).displayName);
             newplayer.Spawn(true);
             humanplayer.SetInfo(humannpcs[userid]);
             Puts("Spawned NPC: " + userid);
@@ -1028,7 +1030,7 @@ namespace Oxide.Plugins
             if (!TryGetPlayerView(player, out currentRot)) return;
 
             var newplayer = GameManager.server.CreateEntity("assets/bundled/prefabs/player/player.prefab", player.transform.position, currentRot).ToPlayer();
-            newplayer.displayName = "NPC";
+            displayname.SetValue(newplayer, "NPC");
             newplayer.Spawn(true);
             var humannpcinfo = new HumanNPCInfo(newplayer.userID, player.transform.position, currentRot);
             var humanplayer = newplayer.gameObject.AddComponent<HumanPlayer>();
