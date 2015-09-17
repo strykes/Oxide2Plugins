@@ -20,7 +20,7 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("PlayTime", "Waizujin", "2.1.0")]
+    [Info("PlayTime", "Waizujin & Reneb", "2.1.0")]
     [Description("Logs players play time and allows you to view the players play time with a command.")]
     public class PlayTime : RustPlugin
     {
