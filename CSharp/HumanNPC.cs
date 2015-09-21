@@ -435,7 +435,6 @@ namespace Oxide.Plugins
                 if (locomotion.IsInvoking("PathFinding")) locomotion.CancelInvoke("PathFinding");
                 locomotion.noPath = 0;
                 locomotion.shouldMove = true;
-                Debug.Log("end");
                 Interface.CallHook("OnNPCStopTarget", player, locomotion.attackEntity);
                 locomotion.attackEntity = null;
                 player.health = float.Parse(info.health);
