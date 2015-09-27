@@ -9,13 +9,13 @@ using Oxide.Core.Plugins;
 
 namespace Oxide.Plugins
 {
-    [Info("RemoverTool", "Reneb", "3.0.2", ResourceId = 651)]
+    [Info("RemoverTool", "Reneb", "3.0.6", ResourceId = 651)]
     class RemoverTool : RustPlugin
     {
 
         static FieldInfo serverinput;
         static FieldInfo buildingPrivlidges;
-        static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Deployable", "Prevent Building" });
+        static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Deployable", "Prevent Building", "Deployed" });
         static int playerColl = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
 
         enum RemoveType
@@ -31,7 +31,6 @@ namespace Oxide.Plugins
 
         void Loaded()
         {
-            json = json.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
             serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
             buildingPrivlidges = typeof(BasePlayer).GetField("buildingPrivlidges", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         }
@@ -44,6 +43,17 @@ namespace Oxide.Plugins
             if (!permission.PermissionExists(adminPermission)) permission.RegisterPermission(adminPermission, this);
             if (!permission.PermissionExists(allPermission)) permission.RegisterPermission(allPermission, this);
             if (!permission.PermissionExists(targetPermission)) permission.RegisterPermission(targetPermission, this);
+
+            mainjson = mainjson.Replace("{xmin}", xmin).Replace("{ymin}", ymin);
+            double xminint = Convert.ToSingle(xmin);
+            double yminint = Convert.ToSingle(ymin);
+            double xmaxint = Math.Floor((xminint + 0.20) * 100) / 100;
+            double ymaxint = Math.Floor((yminint + 0.25) * 100) / 100;
+
+            double yboxminint = 0.0;
+            if (!usePay)
+                yboxminint = 0.45;
+            mainjson = mainjson.Replace("{ymax}", ymaxint.ToString()).Replace("{xmax}", xmaxint.ToString()).Replace("{yboxmin}", yboxminint.ToString());
         }
 
         void Unload()
@@ -55,14 +65,19 @@ namespace Oxide.Plugins
         }
 
         private static Dictionary<string, string> displaynameToShortname = new Dictionary<string, string>();
+        private static Dictionary<string, int> deployedToItem = new Dictionary<string, int>();
         private void InitializeTable()
         {
             displaynameToShortname.Clear();
+            deployedToItem.Clear();
             List<ItemDefinition> ItemsDefinition = ItemManager.GetItemDefinitions() as List<ItemDefinition>;
             foreach (ItemDefinition itemdef in ItemsDefinition)
             {
                 displaynameToShortname.Add(itemdef.displayName.english.ToString().ToLower(), itemdef.shortname.ToString());
+                if(itemdef.GetComponent<ItemModDeployable>()!=null) deployedToItem.Add(itemdef.GetComponent<ItemModDeployable>().entityPrefab.resourcePath, itemdef.itemid);
             }
+
+            
         }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,7 +141,7 @@ namespace Oxide.Plugins
         static string MessageOverrideDisabled = "The remover tool was disabled for the time being.";
         static string MessageToolDeactivated = "{0}: Remover Tool Deactivated";
         static string MessageRaidBlocked = "RaidBlocker: You need to wait for {0}s before being allowed to remove again";
-        static string MessageErrorCantUseRemoveWithItem = "You can't use the remover tool while you have an active item";
+        static string MessageErrorCantUseRemoveWithItem = "You can't use the remover tool while you are holding an item";
 
         void Init()
         {
@@ -148,9 +163,7 @@ namespace Oxide.Plugins
             CheckCfg<string>("Message - Cant Use Remove With Item", ref MessageErrorCantUseRemoveWithItem);
 
             CheckCfg<string>("GUI - Position - X Min", ref xmin);
-            CheckCfg<string>("GUI - Position - X Max", ref xmax);
             CheckCfg<string>("GUI - Position - Y Min", ref ymin);
-            CheckCfg<string>("GUI - Position - Y Max", ref ymax);
 
             CheckCfg<int>("Remove - Default Time", ref RemoveTimeDefault);
             CheckCfg<int>("Remove - Max Remove Time", ref MaxRemoveTime);
@@ -354,6 +367,8 @@ namespace Oxide.Plugins
                 CancelInvoke("RefreshRemoveGui");
                 Invoke("DoDestroy", endTime);
                 InvokeRepeating("RefreshRemoveGui", 1, 1);
+                DestroyGUI(player);
+                NewGUI(this);
             }
 
             void DoDestroy()
@@ -390,8 +405,7 @@ namespace Oxide.Plugins
 
             void OnDestroy()
             {
-                if (player.net != null)
-                    CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "RemoveMsg");
+                DestroyGUI(player);
                 if (playerActivator != player)
                 {
                     if (playerActivator.IsConnected())
@@ -405,11 +419,61 @@ namespace Oxide.Plugins
             if (toolremover == null) return;
             GameObject.Destroy(toolremover);
         }
+        static void DestroyGUI(BasePlayer player)
+        {
+            if (player.net == null) return;
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "RemoveMsg");
+        }
+        static void NewGUI(ToolRemover toolremover)
+        {
+            BasePlayer player = toolremover.player;
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", mainjson);
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", timeleftjsonheader);
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", titlejson.Replace("{removeType}", toolremover.removeType == RemoveType.Normal ? string.Empty : toolremover.removeType == RemoveType.Admin ? "(Admin)" : "(All)"));
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", entityjsonheader);
+            if(usePay)
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", costjsonheader);
+        }
+        static void RefreshGUI(ToolRemover toolPlayer)
+        {
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "DestroyUI", "RemoveTimeleftMsg");
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "DestroyUI", "RemoveEntityMsg");
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "DestroyUI", "RemoveCostMsg");
+            string cost = string.Empty;
+            string entity = string.Empty;
+
+            toolPlayer.inputState = serverinput.GetValue(toolPlayer.player) as InputState;
+            Ray ray = new Ray(toolPlayer.player.eyes.position, Quaternion.Euler(toolPlayer.inputState.current.aimAngles) * Vector3.forward);
+
+            BaseEntity removeObject = FindRemoveObject(ray, toolPlayer.distance);
+            if (removeObject != null)
+            {
+                entity = removeObject.ToString();
+                entity = entity.Substring(entity.LastIndexOf("/") + 1).Replace(".prefab", "").Replace("_deployed", "").Replace(".deployed", "");
+                entity = entity.Substring(0, entity.IndexOf("["));
+                if (usePay && toolPlayer.removeType == RemoveType.Normal)
+                {
+                    Dictionary<string, object> costList = GetCost(removeObject);
+                    foreach (KeyValuePair<string, object> pair in costList)
+                    {
+                        cost += string.Format("{0} x{1}\n", pair.Key, pair.Value.ToString());
+                    }
+                }
+            }
+            string ejson = entityjsonmsg.Replace("{entity}", entity);
+            string cjson = costjsonmsg.Replace("{cost}", cost);
+            string tjson = timeleftjsonmsg.Replace("{timeleft}", toolPlayer.timeLeft.ToString());
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "AddUI", ejson);
+            if(usePay)
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "AddUI", cjson);
+
+            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "AddUI", tjson);
+        }
 
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// GUI
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        public static string json = @"[  
+        public static string mainjson = @"[  
 		{ 
 			""name"": ""RemoveMsg"",
 			""parent"": ""Overlay"",
@@ -417,7 +481,7 @@ namespace Oxide.Plugins
 			[
 				{
 					 ""type"":""UnityEngine.UI.Image"",
-					 ""color"":""0.1 0.1 0.1 0.7"",
+					 ""color"":""0 0 0 0"",
 				},
 				{
 					""type"":""RectTransform"",
@@ -426,13 +490,31 @@ namespace Oxide.Plugins
 				}
 			]
 		},
+        { 
+			""parent"": ""RemoveMsg"",
+			""components"":
+			[
+				{
+					 ""type"":""UnityEngine.UI.Image"",
+					 ""color"":""0.1 0.1 0.1 0.4"",
+				},
+				{
+					""type"":""RectTransform"",
+					""anchormin"": ""0 {yboxmin}"",
+					""anchormax"": ""1 1""
+				}
+			]
+		}
+        ]
+		";
+        public static string titlejson = @"[  
 		{
 			""parent"": ""RemoveMsg"",
 			""components"":
 			[
 				{
 					""type"":""UnityEngine.UI.Text"",
-					""text"":""Remover Tool {removeType}"",
+					""text"":""<color=red>Remover Tool {removeType}</color>"", 
 					""fontSize"":15,
 					""align"": ""MiddleCenter"",
 				},
@@ -442,7 +524,10 @@ namespace Oxide.Plugins
 					""anchormax"": ""1.0 0.98""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string timeleftjsonheader = @"[  
         {
 			""parent"": ""RemoveMsg"",
 			""components"":
@@ -459,8 +544,12 @@ namespace Oxide.Plugins
 					""anchormax"": ""0.3 0.80""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string timeleftjsonmsg = @"[  
 		{
+            ""name"": ""RemoveTimeleftMsg"",
 			""parent"": ""RemoveMsg"",
 			""components"":
 			[
@@ -476,7 +565,10 @@ namespace Oxide.Plugins
 					""anchormax"": ""1.0 0.80""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string entityjsonheader = @"[  
 		{
 			""parent"": ""RemoveMsg"",
 			""components"":
@@ -493,8 +585,12 @@ namespace Oxide.Plugins
 					""anchormax"": ""0.3 0.65""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string entityjsonmsg = @"[  
         {
+            ""name"": ""RemoveEntityMsg"",
 			""parent"": ""RemoveMsg"",
 			""components"":
 			[
@@ -510,7 +606,10 @@ namespace Oxide.Plugins
 					""anchormax"": ""1.0 0.65""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string costjsonheader = @"[  
 		{
 			""parent"": ""RemoveMsg"",
 			""components"":
@@ -527,8 +626,12 @@ namespace Oxide.Plugins
 					""anchormax"": ""0.3 0.50""
 				}
 			]
-		},
+		}
+        ]
+		";
+        public static string costjsonmsg = @"[ 
         {
+            ""name"": ""RemoveCostMsg"",
 			""parent"": ""RemoveMsg"",
 			""components"":
 			[
@@ -547,34 +650,7 @@ namespace Oxide.Plugins
 		}
 		]
 		";
-        static void RefreshGUI(ToolRemover toolPlayer)
-        {
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "DestroyUI", "RemoveMsg");
-            string cost = string.Empty;
-            string entity = string.Empty;
-
-            toolPlayer.inputState = serverinput.GetValue(toolPlayer.player) as InputState;
-            Ray ray = new Ray(toolPlayer.player.eyes.position, Quaternion.Euler(toolPlayer.inputState.current.aimAngles) * Vector3.forward);
-
-            BaseEntity removeObject = FindRemoveObject(ray, toolPlayer.distance);
-            if (removeObject != null)
-            {
-                entity = removeObject.ToString();
-                entity = entity.Substring(entity.LastIndexOf("/") + 1).Replace(".prefab", "").Replace("_deployed", "").Replace(".deployed", "");
-                entity = entity.Substring(0, entity.IndexOf("["));
-                if (toolPlayer.removeType == RemoveType.Normal)
-                {
-                    Dictionary<string, object> costList = GetCost(removeObject);
-                    foreach (KeyValuePair<string, object> pair in costList)
-                    {
-                        cost += string.Format("{0} x{1}\n", pair.Key, pair.Value.ToString());
-                    }
-                }
-            }
-            string pjson = json.Replace("{entity}", entity).Replace("{cost}", cost).Replace("{timeleft}", toolPlayer.timeLeft.ToString()).Replace("{removeType}", toolPlayer.removeType == RemoveType.Normal ? string.Empty : toolPlayer.removeType == RemoveType.Admin ? "(Admin)" : "(All)");
-            CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = toolPlayer.player.net.connection }, null, "AddUI", pjson);
-        }
-
+        
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// Remove functions
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -602,8 +678,12 @@ namespace Oxide.Plugins
                 Interface.Call("RemoveAllFrom", removeObject.transform.position);
                 return;
             }
-            Refund(player, removeObject, removeType);
+            if (usePay)
+                Pay(player, removeObject, removeType);
+            if (useRefund)
+                Refund(player, removeObject, removeType);
             DoRemove(removeObject);
+            
         }
 
         List<Vector3> removeFrom = new List<Vector3>();
@@ -613,7 +693,6 @@ namespace Oxide.Plugins
             removeFrom.Add(pos);
             DelayRemoveAll();
         }
-
 
         List<Collider> wasRemoved = new List<Collider>();
         void DelayRemoveAll()
@@ -649,11 +728,11 @@ namespace Oxide.Plugins
         static void Refund(BasePlayer player, BaseEntity entity, RemoveType removeType)
         {
             if (removeType == RemoveType.All) return;
-            if (refundDeployable && entity is WorldItem)
+            if (refundDeployable && entity.GetComponentInParent<Deployable>() != null)
             {
-                WorldItem worlditem = entity as WorldItem;
-                if (worlditem.item != null && worlditem.item.info != null)
-                    player.inventory.GiveItem(worlditem.item.info.itemid, 1, true);
+                Deployable worlditem = entity.GetComponentInParent<Deployable>();
+                if(deployedToItem.ContainsKey(worlditem.gameObject.name))
+                    player.inventory.GiveItem(deployedToItem[worlditem.gameObject.name], 1, true);
             }
             else if (refundStructure && entity is BuildingBlock)
             {
@@ -661,16 +740,13 @@ namespace Oxide.Plugins
                 if (buildingblock.blockDefinition == null) return;
 
                 int buildingblockGrade = (int)buildingblock.grade;
-                for (int i = buildingblockGrade; i >= 0; i--)
+                if (buildingblock.blockDefinition.grades[buildingblockGrade] != null && refundPercentage.ContainsKey(buildingblockGrade.ToString()))
                 {
-                    if (buildingblock.blockDefinition.grades[i] != null && refundPercentage.ContainsKey(i.ToString()))
+                    decimal refundRate = decimal.Parse((string)refundPercentage[buildingblockGrade.ToString()]) / 100.0m;
+                    List<ItemAmount> currentCost = buildingblock.blockDefinition.grades[buildingblockGrade].costToBuild as List<ItemAmount>;
+                    foreach (ItemAmount ia in currentCost)
                     {
-                        decimal refundRate = decimal.Parse((string)refundPercentage[i.ToString()]) / 100.0m;
-                        List<ItemAmount> currentCost = buildingblock.blockDefinition.grades[i].costToBuild as List<ItemAmount>;
-                        foreach (ItemAmount ia in currentCost)
-                        {
-                            player.inventory.GiveItem(ia.itemid, Convert.ToInt32((decimal)ia.amount * refundRate), true);
-                        }
+                        player.inventory.GiveItem(ia.itemid, Convert.ToInt32((decimal)ia.amount * refundRate), true);
                     }
                 }
             }
@@ -738,6 +814,26 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         /// Pay functions
         /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        static void Pay(BasePlayer player, BaseEntity entity, RemoveType removeType)
+        {
+            if (removeType == RemoveType.Admin || removeType == RemoveType.All) return;
+            Dictionary<string, object> cost = GetCost(entity);
+            List<Item> collect = new List<Item>();
+            foreach (KeyValuePair<string, object> pair in cost)
+            {
+                string itemname = pair.Key.ToLower();
+                if (displaynameToShortname.ContainsKey(itemname))
+                    itemname = displaynameToShortname[itemname];
+                ItemDefinition itemdef = ItemManager.FindItemDefinition(itemname);
+                if (itemdef == null) continue;
+                player.inventory.Take(collect, itemdef.itemid, Convert.ToInt32(pair.Value));
+                player.Command(string.Format("note.inv {0} -{1}",itemdef.itemid.ToString(), pair.Value.ToString()), new object[0]);
+            }
+            foreach (Item item in collect)
+            {
+                item.Remove(0f);
+            }
+        }
         static bool CanPay(BasePlayer player, BaseEntity entity, RemoveType removeType)
         {
             if (removeType == RemoveType.Admin || removeType == RemoveType.All) return true;
@@ -900,11 +996,13 @@ namespace Oxide.Plugins
                         if (!hasAccess(player, adminPermission, adminAuthLevel)) return;
                         removetype = RemoveType.Admin;
                         distanceRemove = adminDistanceRemove;
+                        if (args.Length > 1) int.TryParse(args[1], out removeTime);
                         break;
                     case "all":
                         if (!hasAccess(player, allPermission, adminAuthLevel)) return;
                         removetype = RemoveType.All;
                         distanceRemove = allDistanceRemove;
+                        if (args.Length > 1) int.TryParse(args[1], out removeTime);
                         break;
                     case "target":
                         if (!hasAccess(player, targetPermission, adminAuthLevel)) return;
