@@ -1,13 +1,12 @@
 using System.Collections.Generic;
 using System;
 using System.Reflection;
-using System.Data;
+
 using UnityEngine;
-using Oxide.Core;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb", "1.0.25", ResourceId = 715)]
+    [Info("Build", "Reneb & NoGrod", "1.1.1", ResourceId = 715)]
     class Build : RustPlugin
     {
         class BuildPlayer : MonoBehaviour
@@ -56,14 +55,14 @@ namespace Oxide.Plugins
             public void LoadMsgGui(string Msg)
             {
                 if (!useGui) return;
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
-                string send = json.Replace("{msg}", Msg);
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "AddUI", send);
+                Game.Rust.Cui.CuiHelper.DestroyUi(player, "BuildMsg");
+                //Game.Rust.Cui.CuiHelper.AddUi(player, json.Replace("{msg}", Msg));
+                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo { connection = player.net.connection }, null, "AddUI", new Facepunch.ObjectList(json.Replace("{msg}", Msg)));
             }
 
             public void DestroyGui()
             {
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo() { connection = player.net.connection }, null, "DestroyUI", "BuildMsg");
+                Game.Rust.Cui.CuiHelper.DestroyUi(player, "BuildMsg");
             }
         }
 
@@ -78,8 +77,6 @@ namespace Oxide.Plugins
             Door
         }
 
-        private MethodInfo CreateEntity;
-        private MethodInfo FindPrefab;
         private static FieldInfo serverinput;
         private static Dictionary<string, string> deployedToItem;
         private Dictionary<string, string> nameToBlockPrefab;
@@ -91,7 +88,7 @@ namespace Oxide.Plugins
         public static string json = @"[
             {
                 ""name"": ""BuildMsg"",
-                ""parent"": ""Overlay"",
+                ""parent"": ""HUD/Overlay"",
                 ""components"":
                 [
                     {
@@ -149,8 +146,6 @@ namespace Oxide.Plugins
         private static BaseNetworkable currentBaseNet;
         private static List<object> houseList;
         private static List<Vector3> checkFrom;
-        private static BuildingBlock fbuildingblock;
-        private static BuildingBlock buildingblock;
         private static Item newItem;
 
         private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
@@ -233,10 +228,10 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         void Unload()
         {
-            var objects = GameObject.FindObjectsOfType(typeof(BuildPlayer));
+            var objects = UnityEngine.Object.FindObjectsOfType<BuildPlayer>();
             if (objects != null)
                 foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
+                    UnityEngine.Object.Destroy(gameObj);
         }
 
         /////////////////////////////////////////////////////
@@ -248,8 +243,8 @@ namespace Oxide.Plugins
             InitializeBlocks();
             InitializeSockets();
             InitializeDeployables();
-            InitializeResources();
             InitializeAnimals();
+            NextTick(InitializeResources);
         }
 
         /////////////////////////////////////////////////////
@@ -258,7 +253,7 @@ namespace Oxide.Plugins
         void InitializeAnimals()
         {
             animalList = new Dictionary<string, string>();
-            foreach (GameManifest.PooledString str in GameManifest.Get().pooledStrings)
+            foreach (var str in GameManifest.Get().pooledStrings)
             {
                 if (str.str.Contains("autospawn/animals"))
                 {
@@ -274,21 +269,16 @@ namespace Oxide.Plugins
         void InitializeResources()
         {
             resourcesList = new List<string>();
-            foreach (GameManifest.PooledString str in GameManifest.Get().pooledStrings)
+            var filesField = typeof(FileSystem_AssetBundles).GetField("files", BindingFlags.Instance | BindingFlags.NonPublic);
+            var files = (Dictionary<string, AssetBundle>)filesField.GetValue(FileSystem.iface);
+            foreach (var str in files.Keys)
             {
-                if (str.str.Contains("assets/"))
+                if ((str.StartsWith("assets/content/") || str.StartsWith("assets/bundled/")) && str.EndsWith(".prefab"))
                 {
-                    GameObject gmobj = FileSystem.LoadPrefab(str.str);
-                    if (gmobj == null) continue;
+                    var gmobj = GameManager.server.FindPrefab(str);
 
-                    if (gmobj.GetComponent<BaseEntity>())
-                    {
-                        resourcesList.Add(str.str);
-                    }
-                }
-                if(str.str.Contains("fx") && str.str.Contains("attack.prefab"))
-                {
-                    Debug.Log(str.str);
+                    if (gmobj?.GetComponent<BaseEntity>() != null)
+                        resourcesList.Add(str);
                 }
             }
         }
@@ -298,12 +288,12 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         void InitializeDeployables()
         {
-            var allItemsDef = UnityEngine.Resources.FindObjectsOfTypeAll<ItemDefinition>();
-            foreach (ItemDefinition itemDef in allItemsDef)
+            var allItemsDef = ItemManager.itemList;
+            foreach (var itemDef in allItemsDef)
             {
                 if (itemDef.GetComponent<ItemModDeployable>() != null)
                 {
-                    deployedToItem.Add(itemDef.displayName.english.ToString().ToLower(), itemDef.shortname.ToString());
+                    deployedToItem.Add(itemDef.displayName.english.ToLower(), itemDef.shortname);
                 }
             }
         }
@@ -410,16 +400,6 @@ namespace Oxide.Plugins
             // Sockets that can connect on a Floor/Foundation Triangles  type
             var FloorTriangleType = new Dictionary<SocketType, object>();
 
-
-            var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            //THIS ONE WORKS WELL
-            //FTtoFloor.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, -0.0000001629207f));
-
-            // THOSE TWO HAVE A POSITION PROBLEM BUT THE ROTATIONS ARE GOOD
-            FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
-            //FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
-            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-
             // Floor Triangles to Floor Triangles type
             var FTtoFT = new Dictionary<Vector3, Quaternion>();
             FTtoFT.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0.0000001629207f));
@@ -435,12 +415,12 @@ namespace Oxide.Plugins
             FloorTriangleType.Add(SocketType.Wall, FTtoWall);
 
             // Floor Triangles to Floor type is a big fail, need to work on that still
-            /* var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-             FTtoFloor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
-             FTtoFloor.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
-             FTtoFloor.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
-             FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-             */
+            var FTtoFloor = new Dictionary<Vector3, Quaternion>();
+            FTtoFloor.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
+            FTtoFloor.Add(new Vector3(-2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, -0.8660254f));
+            FTtoFloor.Add(new Vector3(2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, 0.8660254f));
+            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
+             
 
             // So at the moment only Floor and Foundation triangles can connect to easy other.
             TypeToType.Add(SocketType.FloorTriangle, FloorTriangleType);
@@ -469,10 +449,11 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         /// Get all blocknames from shortname to full prefabname
         /////////////////////////////////////////////////////
-        private FieldInfo socks = typeof(Construction).GetField("allSockets", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+        //private FieldInfo socks = typeof(Construction).GetField("allSockets", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
         void InitializeBlocks()
         {
-            foreach (Construction construction in PrefabAttribute.server.GetAll<Construction>())
+            var constructions = PrefabAttribute.server.GetAll<Construction>();
+            foreach (var construction in constructions)
             {
                 //Debug.Log(construction.info.name.english.ToString());
                 /* if (construction.info.name.english.ToString().Contains("Triangle"))
@@ -516,9 +497,7 @@ namespace Oxide.Plugins
         {
             viewAngle = new Quaternion(0f, 0f, 0f, 0f);
             var input = serverinput.GetValue(player) as InputState;
-            if (input == null)
-                return false;
-            if (input.current == null)
+            if (input?.current == null)
                 return false;
 
             viewAngle = Quaternion.Euler(input.current.aimAngles);
@@ -532,9 +511,9 @@ namespace Oxide.Plugins
         static bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
         {
             Vector3 sourceEye = sourcePos + new Vector3(0f, 1.5f, 0f);
-            UnityEngine.Ray ray = new UnityEngine.Ray(sourceEye, sourceDir * Vector3.forward);
+            Ray ray = new Ray(sourceEye, sourceDir * Vector3.forward);
 
-            var hits = UnityEngine.Physics.RaycastAll(ray);
+            var hits = Physics.RaycastAll(ray);
             float closestdist = 999999f;
             closestHitpoint = sourcePos;
             closestEnt = false;
@@ -545,7 +524,7 @@ namespace Oxide.Plugins
                     if (hit.distance < closestdist)
                     {
                         closestdist = hit.distance;
-                        closestEnt = hit.collider;
+                        closestEnt = hit.GetCollider();
                         closestHitpoint = hit.point;
                     }
                 }
@@ -562,20 +541,16 @@ namespace Oxide.Plugins
         private static void SpawnDeployable(string prefab, Vector3 pos, Quaternion angles, BasePlayer player)
         {
             newItem = ItemManager.CreateByName(prefab, 1);
-            if (newItem == null)
+            if (newItem?.info.GetComponent<ItemModDeployable>() == null)
             {
                 return;
             }
-            if (newItem.info.GetComponent<ItemModDeployable>() == null)
-            {
-                return;
-            }
-            var deployable = newItem.info.GetComponent<ItemModDeployable>().entityPrefab.Get().GetComponent<Deployable>();
+            var deployable = newItem.info.GetComponent<ItemModDeployable>().entityPrefab.resourcePath;
             if (deployable == null)
             {
                 return;
             }
-            var newBaseEntity = GameManager.server.CreateEntity(deployable.gameObject, pos, angles);
+            var newBaseEntity = GameManager.server.CreateEntity(deployable, pos, angles, true);
             if (newBaseEntity == null)
             {
                 return;
@@ -591,14 +566,13 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static void SpawnStructure(string prefabname, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade, float health)
         {
-            UnityEngine.GameObject prefab = GameManager.server.FindPrefab(prefabname);
+            GameObject prefab = GameManager.server.FindPrefab(prefabname);
             if (prefab == null)
             {
                 return;
             }
-            UnityEngine.GameObject build = UnityEngine.Object.Instantiate(prefab);
-            if (build == null) return;
-            BuildingBlock block = build.GetComponent<BuildingBlock>();
+            var build = UnityEngine.Object.Instantiate(prefab);
+            BuildingBlock block = build?.GetComponent<BuildingBlock>();
             if (block == null) return;
             block.transform.position = pos;
             block.transform.rotation = angles;
@@ -619,33 +593,15 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles)
         {
-            UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
-            if (newPrefab == null)
-            {
-                return;
-            }
-            Debug.Log("yes");
-            BaseEntity entity = GameManager.server.CreateEntity(newPrefab, pos, angles);
-            if (entity == null) return;
-            entity.Spawn(true);
+            BaseEntity entity = GameManager.server.CreateEntity(prefab, pos, angles, true);
+            entity?.Spawn(true);
         }
 
         private static void SpawnAnimal(string prefab, Vector3 pos, Quaternion angles)
         {
-            UnityEngine.GameObject newPrefab = GameManager.server.FindPrefab(prefab);
-            if (newPrefab == null)
-            {
-                return;
-            }
-            UnityEngine.GameObject createdPrefab = GameManager.server.CreatePrefab(newPrefab, pos, angles, true);
-            if (createdPrefab == null) return;
-            BaseEntity entity = createdPrefab.GetComponent<BaseEntity>();
-            if (entity == null)
-            {
-                UnityEngine.Object.Destroy(newPrefab);
-                return;
-            }
-            entity.Spawn(true);
+            var createdPrefab = GameManager.server.CreateEntity(prefab, pos, angles, true);
+            BaseEntity entity = createdPrefab?.GetComponent<BaseEntity>();
+            entity?.Spawn(true);
         }
 
         /////////////////////////////////////////////////////
@@ -654,15 +610,12 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static bool isColliding(string name, Vector3 position, float radius)
         {
-            UnityEngine.Collider[] colliders = UnityEngine.Physics.OverlapSphere(position, radius);
-            foreach (UnityEngine.Collider collider in colliders)
+            var colliders = Physics.OverlapSphere(position, radius);
+            foreach (var collider in colliders)
             {
-                if (collider.GetComponentInParent<BuildingBlock>())
-                {
-                    if (collider.GetComponentInParent<BuildingBlock>().blockDefinition.fullName == name)
-                        if (Vector3.Distance(collider.transform.position, position) < 0.6f)
-                            return true;
-                }
+                var block = collider.GetComponentInParent<BuildingBlock>();
+                if (block != null && block.blockDefinition.fullName == name && Vector3.Distance(collider.transform.position, position) < 0.6f)
+                    return true;
             }
             return false;
         }
@@ -750,9 +703,7 @@ namespace Oxide.Plugins
         private static void DoErase(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
         {
             currentBaseNet = baseentity.GetComponentInParent<BaseNetworkable>();
-            if (currentBaseNet == null)
-                return;
-            currentBaseNet.Kill(BaseNetworkable.DestroyMode.Gib);
+            currentBaseNet?.Kill(BaseNetworkable.DestroyMode.Gib);
         }
 
         /////////////////////////////////////////////////////
@@ -787,7 +738,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static void DoGrade(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
         {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
             if (fbuildingblock == null)
             {
                 return;
@@ -809,7 +760,7 @@ namespace Oxide.Plugins
                 current++;
                 if (current > checkFrom.Count)
                     break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
                 foreach (var hit in hits)
                 {
                     if (hit.GetComponentInParent<BuildingBlock>() != null)
@@ -829,7 +780,7 @@ namespace Oxide.Plugins
         static void DoRotation(BuildingBlock block, Quaternion defaultRotation)
         {
             if (block.blockDefinition == null) return;
-            UnityEngine.Transform transform = block.transform;
+            var transform = block.transform;
             if (defaultRotation == defaultQuaternion)
                 transform.localRotation *= Quaternion.Euler(block.blockDefinition.rotationAmount);
             else
@@ -862,18 +813,15 @@ namespace Oxide.Plugins
                 current++;
                 if (current > checkFrom.Count)
                     break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
                 foreach (var hit in hits)
                 {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    var fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
+                    if (fbuildingblock != null && !(houseList.Contains(fbuildingblock)))
                     {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
-                        {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            DoRotation(fbuildingblock, buildplayer.currentRotate);
-                        }
+                        houseList.Add(fbuildingblock);
+                        checkFrom.Add(fbuildingblock.transform.position);
+                        DoRotation(fbuildingblock, buildplayer.currentRotate);
                     }
                 }
             }
@@ -907,18 +855,15 @@ namespace Oxide.Plugins
                 current++;
                 if (current > checkFrom.Count)
                     break;
-                var hits = UnityEngine.Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
+                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
                 foreach (var hit in hits)
                 {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    var fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
+                    if (fbuildingblock != null && !(houseList.Contains(fbuildingblock)))
                     {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
-                        {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            SetHealth(fbuildingblock);
-                        }
+                        houseList.Add(fbuildingblock);
+                        checkFrom.Add(fbuildingblock.transform.position);
+                        SetHealth(fbuildingblock);
                     }
                 }
             }
@@ -943,7 +888,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static void DoBuildUp(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
         {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
             if (fbuildingblock == null)
             {
                 return;
@@ -963,7 +908,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         private static void DoBuild(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
         {
-            fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
             if (fbuildingblock == null)
             {
                 return;
@@ -971,20 +916,20 @@ namespace Oxide.Plugins
             distance = 999999f;
             Vector3 newPos = new Vector3(0f, 0f, 0f);
             newRot = new Quaternion(0f, 0f, 0f, 0f);
-            ///  Checks if this building has a socket hooked to it self
-            ///  If not ... well it won't be able to be built via AI
+            //  Checks if this building has a socket hooked to it self
+            //  If not ... well it won't be able to be built via AI
             if (nameToSockets.ContainsKey(fbuildingblock.blockDefinition.fullName))
             {
-                sourcesocket = (SocketType)nameToSockets[fbuildingblock.blockDefinition.fullName];
+                sourcesocket = nameToSockets[fbuildingblock.blockDefinition.fullName];
                 // Gets all Sockets that can be connected to the source building
                 if (TypeToType.ContainsKey(sourcesocket))
                 {
-                    sourceSockets = TypeToType[sourcesocket] as Dictionary<SocketType, object>;
-                    targetsocket = (SocketType)nameToSockets[buildplayer.currentPrefab];
+                    sourceSockets = (Dictionary<SocketType, object>)TypeToType[sourcesocket];
+                    targetsocket = nameToSockets[buildplayer.currentPrefab];
                     // Checks if the newly built structure can be connected to the source building
                     if (sourceSockets.ContainsKey(targetsocket))
                     {
-                        newsockets = sourceSockets[targetsocket] as Dictionary<Vector3, Quaternion>;
+                        newsockets = (Dictionary<Vector3, Quaternion>)sourceSockets[targetsocket];
                         // Get all the sockets that can be hooked to the source building via the new structure element
                         foreach (KeyValuePair<Vector3, Quaternion> pair in newsockets)
                         {
@@ -1017,7 +962,7 @@ namespace Oxide.Plugins
         {
             prefabName = "";
             buildType = "";
-            int intbuilding = 0;
+            int intbuilding;
             if (nameToBlockPrefab.ContainsKey(arg))
             {
                 prefabName = nameToBlockPrefab[arg];
@@ -1060,14 +1005,17 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         BuildingGrade.Enum GetGrade(int lvl)
         {
-            if (lvl == 0)
-                return BuildingGrade.Enum.Twigs;
-            else if (lvl == 1)
-                return BuildingGrade.Enum.Wood;
-            else if (lvl == 2)
-                return BuildingGrade.Enum.Stone;
-            else if (lvl == 3)
-                return BuildingGrade.Enum.Metal;
+            switch (lvl)
+            {
+                case 0:
+                    return BuildingGrade.Enum.Twigs;
+                case 1:
+                    return BuildingGrade.Enum.Wood;
+                case 2:
+                    return BuildingGrade.Enum.Stone;
+                case 3:
+                    return BuildingGrade.Enum.Metal;
+            }
             return BuildingGrade.Enum.TopTier;
         }
 
@@ -1079,10 +1027,11 @@ namespace Oxide.Plugins
         {
             if (args == null || args.Length == 0)
             {
-                if (player.GetComponent<BuildPlayer>())
+                var buildPlayer = player.GetComponent<BuildPlayer>();
+                if (buildPlayer != null)
                 {
-                    player.GetComponent<BuildPlayer>().DestroyGui();
-                    UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
+                    buildPlayer.DestroyGui();
+                    UnityEngine.Object.Destroy(buildPlayer);
                     SendReply(player, "Build Tool Deactivated");
                 }
                 else
@@ -1098,10 +1047,7 @@ namespace Oxide.Plugins
         /////////////////////////////////////////////////////
         BuildPlayer GetBuildPlayer(BasePlayer player)
         {
-            if (player.GetComponent<BuildPlayer>() == null)
-                return player.gameObject.AddComponent<BuildPlayer>();
-            else
-                return player.GetComponent<BuildPlayer>();
+            return player.GetComponent<BuildPlayer>() ?? player.gameObject.AddComponent<BuildPlayer>();
         }
 
         /////////////////////////////////////////////////////
@@ -1219,8 +1165,8 @@ namespace Oxide.Plugins
             BuildPlayer buildplayer = GetBuildPlayer(player);
             if (buildplayer.currentType != null && buildplayer.currentType == "erase")
             {
-                player.GetComponent<BuildPlayer>().DestroyGui();
-                UnityEngine.GameObject.Destroy(player.GetComponent<BuildPlayer>());
+                buildplayer.DestroyGui();
+                UnityEngine.Object.Destroy(buildplayer);
                 SendReply(player, "Building Tool: Remove Deactivated");
             }
             else
@@ -1460,7 +1406,7 @@ namespace Oxide.Plugins
                 SendEchoConsole(player.net.connection, "======== Plant List ========");
                 foreach (string resource in resourcesList)
                 {
-                    SendEchoConsole(player.net.connection, string.Format("{0} - {1}", i.ToString(), resource));
+                    SendEchoConsole(player.net.connection, string.Format("{0} - {1}", i, resource));
                     i++;
                 }
             }
