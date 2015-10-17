@@ -2,23 +2,26 @@
 
 using System.Collections.Generic;
 using System;
+using System.Linq;
 using System.Reflection;
-using System.Data;
+
 using UnityEngine;
+
 using Oxide.Core;
+
 using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("ZoneManager", "Reneb", "2.0.33", ResourceId = 739)]
+    [Info("ZoneManager", "Reneb", "2.1.0", ResourceId = 739)]
     class ZoneManager : RustPlugin
     {
         ////////////////////////////////////////////
         /// Configs
         ////////////////////////////////////////////
-        private bool Changed = false;
-        public static float AutolightOnTime;
-        public static float AutolightOffTime;
+        private bool Changed;
+        private static float AutolightOnTime;
+        private static float AutolightOffTime;
         private object GetConfig(string menu, string datavalue, object defaultValue)
         {
             var data = Config[menu] as Dictionary<string, object>;
@@ -60,22 +63,21 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////
         StoredData storedData;
 
-        static Hash<string, ZoneDefinition> zonedefinitions = new Hash<string, ZoneDefinition>();
-        public Hash<BasePlayer, string> LastZone = new Hash<BasePlayer, string>();
-        public static Hash<BasePlayer, List<Zone>> playerZones = new Hash<BasePlayer, List<Zone>>();
-        public static Hash<BaseCombatEntity, List<Zone>> buildingZones = new Hash<BaseCombatEntity, List<Zone>>();
-        public static Hash<ResourceDispenser, List<Zone>> resourceZones = new Hash<ResourceDispenser, List<Zone>>();
+        static readonly Hash<string, ZoneDefinition> zonedefinitions = new Hash<string, ZoneDefinition>();
+        public readonly Hash<BasePlayer, string> LastZone = new Hash<BasePlayer, string>();
+        public static readonly Hash<BasePlayer, List<Zone>> playerZones = new Hash<BasePlayer, List<Zone>>();
+        public static readonly Hash<BaseCombatEntity, List<Zone>> buildingZones = new Hash<BaseCombatEntity, List<Zone>>();
+        public static readonly Hash<BaseNPC, List<Zone>> npcZones = new Hash<BaseNPC, List<Zone>>();
+        public static readonly Hash<ResourceDispenser, List<Zone>> resourceZones = new Hash<ResourceDispenser, List<Zone>>();
 
         public static int triggerLayer;
         public static int playersMask;
         public static int buildingMask;
         public static int AIMask;
 
-        public static FieldInfo[] allZoneFields;
+        public static readonly FieldInfo[] allZoneFields = typeof(ZoneDefinition).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
         public FieldInfo cachedField;
-        public static FieldInfo fieldInfo;
-        public static FieldInfo lastPositionValue;
-        public static FieldInfo npcNextTick;
+        public static readonly FieldInfo npcNextTick = typeof(NPCAI).GetField("nextTick", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
 
         public Vector3 Vector3Down = new Vector3(0f, -1f, 0f);
         /////////////////////////////////////////
@@ -87,7 +89,7 @@ namespace Oxide.Plugins
         public List<DamageTypeEntry> emptyDamageList;
         public BasePlayer cachedPlayer;
         public RaycastHit cachedRaycasthit;
-        public static Dictionary<BasePlayer, List<string>> playerTags = new Dictionary<BasePlayer, List<string>>(); 
+        public static Dictionary<BasePlayer, List<string>> playerTags = new Dictionary<BasePlayer, List<string>>();
 
         /////////////////////////////////////////
         // ZoneLocation
@@ -110,7 +112,7 @@ namespace Oxide.Plugins
                 y = position.y.ToString();
                 z = position.z.ToString();
 
-                r = radius.ToString();
+                r = radius;
 
                 this.position = position;
                 this.radius = float.Parse(radius);
@@ -148,12 +150,12 @@ namespace Oxide.Plugins
                 radiation = gameObject.AddComponent<TriggerRadiation>();
                 zone = GetComponent<Zone>();
                 radiation.RadiationAmount = float.Parse(zone.info.radiation);
-                radiation.radiationSize = GetComponent<UnityEngine.SphereCollider>().radius;
+                radiation.radiationSize = GetComponent<SphereCollider>().radius;
                 radiation.interestLayers = playersMask;
             }
             void OnDestroy()
             {
-                GameObject.Destroy(radiation);
+                Destroy(radiation);
             }
 
         }
@@ -187,31 +189,32 @@ namespace Oxide.Plugins
                 gameObject.layer = triggerLayer;
                 gameObject.name = "Zone Manager";
 
-                gameObject.AddComponent<UnityEngine.SphereCollider>();
+                gameObject.AddComponent<SphereCollider>();
 
                 gameObject.SetActive(true);
                 enabled = false;
             }
+
             public void SetInfo(ZoneDefinition info)
             {
                 this.info = info;
-                GetComponent<UnityEngine.Transform>().position = info.Location.GetPosition();
-                GetComponent<UnityEngine.SphereCollider>().radius = info.Location.GetRadius();
+                GetComponent<Transform>().position = info.Location.GetPosition();
+                GetComponent<SphereCollider>().radius = info.Location.GetRadius();
                 radiationamount = 0f;
                 zoneMask = 0;
                 if (info.undestr != null || info.nodecay != null)
                 {
-                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Construction");
-                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Deployed");
+                    zoneMask |= 1 << LayerMask.NameToLayer("Construction");
+                    zoneMask |= 1 << LayerMask.NameToLayer("Deployed");
                 }
                 if (info.nogather != null)
                 {
-                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Resource");
-                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("Tree");
+                    zoneMask |= 1 << LayerMask.NameToLayer("Resource");
+                    zoneMask |= 1 << LayerMask.NameToLayer("Tree");
                 }
                 if (info.nopve != null || info.npcfreeze != null)
                 {
-                    zoneMask |= ((int)1) << UnityEngine.LayerMask.NameToLayer("AI");
+                    zoneMask |= 1 << LayerMask.NameToLayer("AI");
                 }
                 if (zoneMask != 0) InvokeRepeating("CheckCollisions", 0f, 10f);
 
@@ -232,22 +235,19 @@ namespace Oxide.Plugins
 
                 if (float.TryParse(info.radiation, out radiationamount))
                     radiationzone = gameObject.AddComponent<RadiationZone>();
+                CheckSleepers(this);
             }
             void OnDestroy()
             {
                 if (radiationzone != null)
-                    GameObject.Destroy(radiationzone);
+                    Destroy(radiationzone);
 
-                foreach (KeyValuePair<BaseCombatEntity, List<Zone>> pair in buildingZones)
-                {
-                    if (pair.Value.Contains(this))
-                        pair.Value.Remove(this);
-                }
-                foreach (KeyValuePair<ResourceDispenser, List<Zone>> pair in resourceZones)
-                {
-                    if (pair.Value.Contains(this))
-                        pair.Value.Remove(this);
-                }
+                foreach (var zones in buildingZones.Values)
+                    zones.Remove(this);
+                foreach (var zones in npcZones.Values)
+                    zones.Remove(this);
+                foreach (var zones in resourceZones.Values)
+                    zones.Remove(this);
                 UpdateAllPlayers();
             }
             void CheckLights()
@@ -257,12 +257,13 @@ namespace Oxide.Plugins
                 {
                     if (lightsOn)
                     {
-                        foreach (Collider col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
+                        foreach (var col in Physics.OverlapSphere(GetComponent<Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
                         {
-                            if (col.GetComponentInParent<BaseOven>())
+                            var oven = col.GetComponentInParent<BaseOven>();
+                            if (oven != null)
                             {
-                                if (!col.GetComponentInParent<BaseOven>().IsInvoking("Cook"))
-                                    col.GetComponentInParent<BaseEntity>().SetFlag(BaseEntity.Flags.On, false);
+                                if (!oven.IsInvoking("Cook"))
+                                    oven.SetFlag(BaseEntity.Flags.On, false);
                             }
                         }
                         lightsOn = false;
@@ -272,12 +273,10 @@ namespace Oxide.Plugins
                 {
                     if (!lightsOn)
                     {
-                        foreach (Collider col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
+                        foreach (var col in Physics.OverlapSphere(GetComponent<UnityEngine.Transform>().position, GetComponent<UnityEngine.SphereCollider>().radius, buildingMask))
                         {
-                            if (col.GetComponentInParent<BaseOven>())
-                            {
-                                col.GetComponentInParent<BaseEntity>().SetFlag(BaseEntity.Flags.On, true);
-                            }
+                            var oven = col.GetComponentInParent<BaseOven>();
+                            oven?.SetFlag(BaseEntity.Flags.On, true);
                         }
                         lightsOn = true;
                     }
@@ -285,63 +284,70 @@ namespace Oxide.Plugins
             }
             void CheckCollisions()
             {
-                foreach (Collider col in Physics.OverlapSphere(info.Location.GetPosition(), info.Location.GetRadius(), zoneMask))
+                foreach (var col in Physics.OverlapSphere(info.Location.GetPosition(), info.Location.GetRadius(), zoneMask))
                 {
-                    if (!buildingblocks.Contains(col))
+                    if (buildingblocks.Contains(col)) continue;
+                    buildingblocks.Add(col);
+
+                    var basecombat = col.GetComponentInParent<BaseCombatEntity>();
+                    var npcai = col.GetComponentInParent<BaseNPC>();
+                    var baseresource = col.GetComponentInParent<ResourceDispenser>();
+                    if (baseresource != null)
                     {
-                        buildingblocks.Add(col);
-                        
-                        BaseCombatEntity basecombat = col.GetComponentInParent<BaseCombatEntity>();
-                        ResourceDispenser baseresource = col.GetComponentInParent<ResourceDispenser>();
-                        if (baseresource != null)
+                        List<Zone> zones;
+                        if (!resourceZones.TryGetValue(baseresource, out zones))
+                            resourceZones[baseresource] = zones = new List<Zone>();
+                        if (!zones.Contains(this))
+                            zones.Add(this);
+                    }
+                    else if (npcai != null)
+                    {
+                        if(info.nopve != null)
                         {
-                            if (baseresource == null) return;
-                            if (resourceZones[baseresource] == null)
-                                resourceZones[baseresource] = new List<Zone>();
-                            if (!resourceZones[baseresource].Contains(this))
-                                resourceZones[baseresource].Add(this);
-                        }
-                        else if (basecombat != null)
-                        {
-                            if (buildingZones[basecombat] == null)
-                                buildingZones[basecombat] = new List<Zone>();
-                            if (!buildingZones[basecombat].Contains(this))
-                                buildingZones[basecombat].Add(this);
-                        }
-                        if (info.nodecay != null)
-                        {
-                            Decay decay = col.GetComponentInParent<Decay>();
-                            if (decay != null)
-                            {
-                                GameObject.Destroy(col.GetComponentInParent<Decay>());
-                            }
-                        }
-                        if (info.npcfreeze != null)
-                        {
-                            NPCAI npcai = col.GetComponentInParent<NPCAI>();
-                            if (npcai != null)
-                            {
-                                npcNextTick.SetValue(npcai, 999999999999f);
-                            }
+                            List<Zone> zones;
+                            if (!npcZones.TryGetValue(npcai, out zones))
+                                npcZones[npcai] = zones = new List<Zone>();
+                            if (!zones.Contains(this))
+                                zones.Add(this);
                         }
                     }
+                    else if (basecombat != null)
+                    {
+                        List<Zone> zones;
+                        if (!buildingZones.TryGetValue(basecombat, out zones))
+                            buildingZones[basecombat] = zones = new List<Zone>();
+                        if (!zones.Contains(this))
+                            zones.Add(this);
+                    }
+                    if (info.nodecay != null)
+                    {
+                        var decay = col.GetComponentInParent<Decay>();
+                        if (decay != null)
+                        {
+                            Destroy(decay);
+                        }
+                    }
+                    if (info.npcfreeze != null)
+                        if (npcai != null)
+                            npcNextTick.SetValue(npcai, 999999999999f);
                 }
             }
             void OnTriggerEnter(Collider col)
             {
-                if (col.GetComponentInParent<BasePlayer>())
+                var player = col.GetComponentInParent<BasePlayer>();
+                if (player != null)
                 {
-                    inTrigger.Add(col.GetComponentInParent<BasePlayer>());
-                    OnEnterZone(this, col.GetComponentInParent<BasePlayer>());
+                    inTrigger.Add(player);
+                    OnEnterZone(this, player);
                 }
-                
             }
             void OnTriggerExit(Collider col)
             {
-                if (col.GetComponentInParent<BasePlayer>())
+                var player = col.GetComponentInParent<BasePlayer>();
+                if (player != null)
                 {
-                    inTrigger.Remove(col.GetComponentInParent<BasePlayer>());
-                    OnExitZone(this, col.GetComponentInParent<BasePlayer>());
+                    inTrigger.Remove(player);
+                    OnExitZone(this, player);
                 }
             }
         }
@@ -401,21 +407,21 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         class StoredData
         {
-            public HashSet<ZoneDefinition> ZoneDefinitions = new HashSet<ZoneDefinition>();
+            public readonly HashSet<ZoneDefinition> ZoneDefinitions = new HashSet<ZoneDefinition>();
             public StoredData()
             {
             }
         }
         void SaveData()
         {
-            Interface.GetMod().DataFileSystem.WriteObject("ZoneManager", storedData);
+            Interface.Oxide.DataFileSystem.WriteObject("ZoneManager", storedData);
         }
         void LoadData()
         {
             zonedefinitions.Clear();
             try
             {
-                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("ZoneManager");
+                storedData = Interface.Oxide.DataFileSystem.ReadObject<StoredData>("ZoneManager");
             }
             catch
             {
@@ -437,12 +443,10 @@ namespace Oxide.Plugins
             permission.RegisterPermission("zone", this);
             permission.RegisterPermission("candeploy", this);
             permission.RegisterPermission("canbuild", this);
-            triggerLayer = UnityEngine.LayerMask.NameToLayer("Trigger");
-            playersMask = UnityEngine.LayerMask.GetMask(new string[] { "Player (Server)" });
-            buildingMask = UnityEngine.LayerMask.GetMask(new string[] { "Deployed" });
-            AIMask = UnityEngine.LayerMask.GetMask(new string[] { "AI" });
-            lastPositionValue = typeof(BasePlayer).GetField("lastPositionValue", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            npcNextTick = typeof(NPCAI).GetField("nextTick", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
+            triggerLayer = LayerMask.NameToLayer("Trigger");
+            playersMask = LayerMask.GetMask("Player (Server)");
+            buildingMask = LayerMask.GetMask("Deployed");
+            AIMask = LayerMask.GetMask("AI");
             /* for(int i = 0; i < 25; i ++)
              {
                  Debug.Log(UnityEngine.LayerMask.LayerToName(i));
@@ -456,10 +460,10 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         void Unload()
         {
-            var objects = GameObject.FindObjectsOfType(typeof(Zone));
+            var objects = UnityEngine.Object.FindObjectsOfType<Zone>();
             if (objects != null)
                 foreach (var gameObj in objects)
-                    GameObject.Destroy(gameObj);
+                    UnityEngine.Object.Destroy(gameObj);
         }
         void Unloaded()
         {
@@ -471,12 +475,22 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         void OnServerInitialized()
         {
-            allZoneFields = typeof(ZoneDefinition).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
             emptyDamageType = new DamageTypeList();
             emptyDamageList = new List<DamageTypeEntry>();
-            foreach (KeyValuePair<string, ZoneDefinition> pair in zonedefinitions)
+            foreach (var pair in zonedefinitions)
             {
                 NewZone(pair.Value);
+            }
+        }
+
+        static void CheckSleepers(Zone zone)
+        {
+            foreach(var player in BasePlayer.sleepingPlayerList)
+            {
+                if(Vector3.Distance(player.transform.position, zone.info.Location.GetPosition()) <= zone.info.Location.GetRadius())
+                {
+                    OnEnterZone(zone, player);
+                }
             }
         }
 
@@ -516,7 +530,7 @@ namespace Oxide.Plugins
         void OnRunPlayerMetabolism(PlayerMetabolism metabolism, BaseCombatEntity ownerEntity, float delta)
         {
             if (metabolism.bleeding.value < 0.01f) return;
-            BasePlayer player = ownerEntity.GetComponent<BasePlayer>();
+            var player = ownerEntity.GetComponent<BasePlayer>();
             if (player == null) return;
             if (hasTag(player, "nobleed"))
             {
@@ -530,11 +544,10 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         object OnPlayerChat(ConsoleSystem.Arg arg)
         {
-            if (arg.connection == null) return null;
-            if (arg.connection.player == null) return null;
-            if (hasTag((BasePlayer)arg.connection.player, "nochat"))
+            if (arg.Player() == null) return null;
+            if (hasTag(arg.Player(), "nochat"))
             {
-                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to chat here");
+                SendMessage(arg.Player(), "You are not allowed to chat here");
                 return false;
             }
             return null;
@@ -546,14 +559,11 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         object OnRunCommand(ConsoleSystem.Arg arg)
         {
-            if (arg == null) return null;
-            if (arg.connection == null) return null;
-            if (arg.connection.player == null) return null;
-            if (arg.cmd == null) return null;
-            if (arg.cmd.name == null) return null;
-            if ((string)arg.cmd.name == "kill" && hasTag((BasePlayer)arg.connection.player, "nosuicide"))
+            if (arg.Player() == null) return null;
+            if (arg.cmd?.name == null) return null;
+            if (arg.cmd.name == "kill" && hasTag(arg.Player(), "nosuicide"))
             {
-                SendMessage((BasePlayer)arg.connection.player, "You are not allowed to suicide here");
+                SendMessage(arg.Player(), "You are not allowed to suicide here");
                 return false;
             }
             return null;
@@ -570,12 +580,12 @@ namespace Oxide.Plugins
 
         void OnMeleeAttack(BaseMelee melee, HitInfo hitinfo)
         {
-            if (hitinfo.HitEntity == null) return;
-            if (hitinfo.HitEntity.GetComponent<ResourceDispenser>() != null)
+            var disp = hitinfo.HitEntity?.GetComponent<ResourceDispenser>();
+            if (disp != null)
             {
-                ResourceDispenser disp = hitinfo.HitEntity.GetComponent<ResourceDispenser>();
-                if (resourceZones[disp] == null) return;
-                foreach (Zone zone in resourceZones[disp])
+                List<Zone> resourceZone;
+                if (!resourceZones.TryGetValue(disp, out resourceZone)) return;
+                foreach (var zone in resourceZone)
                 {
                     if (zone.info.nogather != null)
                     {
@@ -593,7 +603,7 @@ namespace Oxide.Plugins
         {
             if (entity is BasePlayer)
             {
-                cachedPlayer = entity as BasePlayer;
+                cachedPlayer = (BasePlayer) entity;
                 if (cachedPlayer.IsSleeping())
                 {
                     if (hasTag(cachedPlayer, "sleepgod"))
@@ -605,17 +615,31 @@ namespace Oxide.Plugins
                     {
                         if (hasTag(cachedPlayer, "pvpgod"))
                             CancelDamage(hitinfo);
+                        else if (hasTag((BasePlayer) hitinfo.Initiator, "pvpgod"))
+                            CancelDamage(hitinfo);
                     }
                     else if (hasTag(cachedPlayer, "pvegod"))
                         CancelDamage(hitinfo);
                 }
             }
+            else if (entity is BaseNPC)
+            {
+                var npcai = (BaseNPC) entity;
+                List<Zone> zones;
+                if (!npcZones.TryGetValue(npcai, out zones)) return;
+                foreach (var zone in zones)
+                {
+                    if (zone.info.nopve != null)
+                    {
+                        CancelDamage(hitinfo);
+                    }
+                }
+            }
             else if (entity is BaseCombatEntity)
             {
-                BaseCombatEntity block = entity as BaseCombatEntity;
-                if (buildingZones[block] == null) return;
-                if (!(block is BuildingBlock || block.GetComponentInParent<Deployable>() != null)) return;
-                foreach (Zone zone in buildingZones[block])
+                List<Zone> zones;
+                if (!buildingZones.TryGetValue(entity, out zones)) return;
+                foreach (var zone in zones)
                 {
                     if (zone.info.undestr != null)
                     {
@@ -644,7 +668,7 @@ namespace Oxide.Plugins
         {
             if (entity is BasePlayer)
             {
-                cachedPlayer = entity as BasePlayer;
+                cachedPlayer = (BasePlayer) entity;
                 if (hasTag(cachedPlayer, "nocorpse"))
                 {
                     timer.Once(0.1f, () => EraseCorpse(entity.transform.position));
@@ -662,12 +686,10 @@ namespace Oxide.Plugins
             {
                 position = cachedRaycasthit.point;
             }
-            foreach (Collider collider in Physics.OverlapSphere(position, 2f))
+            foreach (var collider in Physics.OverlapSphere(position, 2f))
             {
-                BaseCorpse corpse = collider.GetComponentInParent<BaseCorpse>();
-                if (corpse == null)
-                    continue;
-                corpse.Kill(BaseNetworkable.DestroyMode.None);
+                var corpse = collider.GetComponentInParent<BaseCorpse>();
+                corpse?.Kill(BaseNetworkable.DestroyMode.None);
             }
         }
 
@@ -678,8 +700,8 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         void OnEntitySpawned(BaseNetworkable entity)
         {
-            NPCAI npc = entity.GetComponent<NPCAI>();
-            if(npc != null)
+            var npc = entity.GetComponent<NPCAI>();
+            if (npc != null)
             {
                 npcNextTick.SetValue(npc, Time.time + 10f);
             }
@@ -691,26 +713,25 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         void OnPlayerLoot(PlayerLoot lootInventory, object target)
         {
-            BasePlayer targetPlayer = target as BasePlayer;
-            if (targetPlayer != null) { OnLootPlayer(lootInventory, targetPlayer); return; }
-            OnLootBox(lootInventory.GetComponent("BasePlayer") as BasePlayer, target);
-
+            if (target is BasePlayer || target is BaseCorpse)
+                OnLootPlayer(lootInventory.GetComponent<BasePlayer>());
+            else
+                OnLootBox(lootInventory.GetComponent<BasePlayer>(), target);
         }
-        void OnLootPlayer(PlayerLoot lootInventory, BasePlayer targetPlayer)
+        void OnLootPlayer(BasePlayer looter)
         {
-            if (hasTag(targetPlayer, "noplayerloot"))
+            if (hasTag(looter, "noplayerloot"))
             {
-                BasePlayer looter = lootInventory.GetComponent("BasePlayer") as BasePlayer;
-                timer.Once(0.01f, () => looter.EndLooting());
+                timer.Once(0.01f, looter.EndLooting);
             }
         }
         void OnLootBox(BasePlayer looter, object target)
         {
             if (hasTag(looter, "noboxloot"))
             {
-                timer.Once(0.01f, () => looter.EndLooting());
+                timer.Once(0.01f, looter.EndLooting);
             }
-        } 
+        }
 
         /////////////////////////////////////////
         // CanBeWounded(BasePlayer player)
@@ -723,7 +744,7 @@ namespace Oxide.Plugins
         }
 
         /////////////////////////////////////////
-        // Outside Plugin Hooks 
+        // Outside Plugin Hooks
         /////////////////////////////////////////
 
         /////////////////////////////////////////
@@ -770,22 +791,17 @@ namespace Oxide.Plugins
         /////////////////////////////////////////
         bool CreateOrUpdateZone(string ZoneID, string[] args, Vector3 position = default(Vector3))
         {
-            var zonedef = zonedefinitions[ZoneID];
-           
-            if (zonedefinitions[ZoneID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
-            if (zonedef == null)
-            {
-                
-                zonedef = new ZoneDefinition();
-                zonedef.ID = ZoneID;
-                
-            }
-            string editvalue;
-            for (int i = 0; i < args.Length; i = i + 2)
+            ZoneDefinition zonedef;
+            if (!zonedefinitions.TryGetValue(ZoneID, out zonedef))
+                zonedef = new ZoneDefinition { ID = ZoneID };
+            else
+                storedData.ZoneDefinitions.Remove(zonedef);
+            for (var i = 0; i < args.Length; i = i + 2)
             {
                 cachedField = GetZoneField(args[i]);
                 if (cachedField == null) continue;
 
+                string editvalue;
                 switch (args[i + 1].ToLower())
                 {
                     case "true":
@@ -799,7 +815,7 @@ namespace Oxide.Plugins
                         editvalue = null;
                         break;
                     default:
-                        editvalue = (string)args[i + 1];
+                        editvalue = args[i + 1];
                         break;
                 }
                 cachedField.SetValue(zonedef, editvalue);
@@ -809,11 +825,11 @@ namespace Oxide.Plugins
                         zonedef.Location = new ZoneLocation(zonedef.Location.GetPosition(), editvalue);
                 }
             }
-            
-            if (position != default(Vector3)) { zonedef.Location = new ZoneLocation((Vector3)position, (zonedef.radius != null) ? zonedef.radius : "20"); }
+
+            if (position != default(Vector3)) { zonedef.Location = new ZoneLocation(position, zonedef.radius ?? "20"); }
 
             zonedefinitions[ZoneID] = zonedef;
-            storedData.ZoneDefinitions.Add(zonedefinitions[ZoneID]);
+            storedData.ZoneDefinitions.Add(zonedef);
             SaveData();
 
             if (zonedef.Location == null) return false;
@@ -822,31 +838,29 @@ namespace Oxide.Plugins
         }
         bool EraseZone(string ZoneID)
         {
-            if (zonedefinitions[ZoneID] == null) return false;
+            ZoneDefinition zone;
+            if (!zonedefinitions.TryGetValue(ZoneID, out zone)) return false;
 
-            storedData.ZoneDefinitions.Remove(zonedefinitions[ZoneID]);
-            zonedefinitions[ZoneID] = null;
+            storedData.ZoneDefinitions.Remove(zone);
+            zonedefinitions.Remove(ZoneID);
             SaveData();
             RefreshZone(ZoneID);
             return true;
         }
         List<string> ZoneFieldListRaw()
         {
-            List<string> zonefieldlist = new List<string>();
-            foreach (FieldInfo fieldinfo in allZoneFields)
-            {
-                zonefieldlist.Add(fieldinfo.Name);
-            }
-            return zonefieldlist;
+            return allZoneFields.Select(fieldinfo => fieldinfo.Name).ToList();
         }
+
         Dictionary<string, string> ZoneFieldList(string ZoneID)
         {
-            if (zonedefinitions[ZoneID] == null) return null;
-            Dictionary<string, string> fieldlistzone = new Dictionary<string, string>();
+            ZoneDefinition zone;
+            if (!zonedefinitions.TryGetValue(ZoneID, out zone)) return null;
+            var fieldlistzone = new Dictionary<string, string>();
 
-            foreach (FieldInfo fieldinfo in allZoneFields)
+            foreach (var fieldinfo in allZoneFields)
             {
-                var value = fieldinfo.GetValue(zonedefinitions[ZoneID]);
+                var value = fieldinfo.GetValue(zone);
                 switch (fieldinfo.Name)
                 {
                     case "Location":
@@ -856,69 +870,57 @@ namespace Oxide.Plugins
                         if (value == null) value = "false";
                         break;
                 }
-                fieldlistzone.Add( fieldinfo.Name, value.ToString() );
+                fieldlistzone.Add(fieldinfo.Name, value.ToString());
             }
             return fieldlistzone;
         }
         List<BasePlayer> GetPlayersInZone(string ZoneID)
         {
-            List<BasePlayer> baseplayers = new List<BasePlayer>();
-            foreach (KeyValuePair<BasePlayer, List<Zone>> pair in playerZones)
+            var baseplayers = new List<BasePlayer>();
+            foreach (var pair in playerZones)
             {
-                foreach (Zone zone in pair.Value)
-                {
-                    if (zone.info.ID == ZoneID)
-                    {
-                        baseplayers.Add(pair.Key);
-                    }
-                }
+                baseplayers.AddRange(pair.Value.Where(zone => zone.info.ID == ZoneID).Select(zone => pair.Key));
             }
             return baseplayers;
         }
         bool isPlayerInZone(string ZoneID, BasePlayer player)
         {
-            if (playerZones[player] == null) return false;
-            foreach (Zone zone in playerZones[player])
-            {
-                if (zone.info.ID == ZoneID)
-                {
-                    return true;
-                }
-            }
-            return false;
+            List<Zone> zones;
+            if (!playerZones.TryGetValue(player, out zones)) return false;
+            return zones.Any(zone => zone.info.ID == ZoneID);
         }
         bool AddPlayerToZoneWhitelist(string ZoneID, BasePlayer player)
         {
-            Zone targetZone = GetZoneByID(ZoneID);
+            var targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             AddToWhitelist(targetZone, player);
             return true;
         }
         bool AddPlayerToZoneKeepinlist(string ZoneID, BasePlayer player)
         {
-            Zone targetZone = GetZoneByID(ZoneID);
+            var targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             AddToKeepinlist(targetZone, player);
             return true;
         }
         bool RemovePlayerFromZoneWhitelist(string ZoneID, BasePlayer player)
         {
-            Zone targetZone = GetZoneByID(ZoneID);
+            var targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             RemoveFromWhitelist(targetZone, player);
-            return true; 
+            return true;
         }
         bool RemovePlayerFromZoneKeepinlist(string ZoneID, BasePlayer player)
         {
-            Zone targetZone = GetZoneByID(ZoneID);
+            var targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return false;
             RemoveFromKeepinlist(targetZone, player);
-            return true; 
+            return true;
         }
 
         void ShowZone(BasePlayer player, string ZoneID)
         {
-            Zone targetZone = GetZoneByID(ZoneID);
+            var targetZone = GetZoneByID(ZoneID);
             if (targetZone == null) return;
             player.SendConsoleCommand("ddraw.sphere", 5f, UnityEngine.Color.blue, targetZone.info.Location.GetPosition(), targetZone.info.Location.GetRadius());
         }
@@ -933,41 +935,30 @@ namespace Oxide.Plugins
 
         Zone GetZoneByID(string ZoneID)
         {
-            var objects = GameObject.FindObjectsOfType(typeof(Zone));
-            if (objects != null)
-                foreach (Zone gameObj in objects)
-                {
-                    if (gameObj.info.ID == ZoneID) return gameObj;
-                }
-
-            return null;
+            var objects = UnityEngine.Object.FindObjectsOfType<Zone>();
+            return objects?.FirstOrDefault(gameObj => gameObj.info.ID == ZoneID);
         }
 
         void NewZone(ZoneDefinition zonedef)
         {
-            
+
             if (zonedef == null) return;
-            var newgameObject = new UnityEngine.GameObject();
+            var newgameObject = new GameObject();
             var newZone = newgameObject.AddComponent<Zone>();
 
             newZone.SetInfo(zonedef);
         }
         void RefreshZone(string zoneID)
         {
-            var objects = GameObject.FindObjectsOfType(typeof(Zone));
-            if (objects != null)
-                foreach (Zone gameObj in objects)
+            var zone = GetZoneByID(zoneID);
+            if (zone != null)
+            {
+                foreach (var pair in playerZones)
                 {
-                    if (gameObj.info.ID == zoneID)
-                    {
-                        foreach (KeyValuePair<BasePlayer, List<Zone>> pair in playerZones)
-                        {
-                            if (pair.Value.Contains(gameObj)) playerZones[pair.Key].Remove(gameObj);
-                        }
-                        GameObject.Destroy(gameObj);
-                        break;
-                    }
+                    if (pair.Value.Contains(zone)) playerZones[pair.Key].Remove(zone);
                 }
+                UnityEngine.Object.Destroy(zone);
+            }
             if (zonedefinitions[zoneID] != null)
             {
                 NewZone(zonedefinitions[zoneID]);
@@ -979,63 +970,47 @@ namespace Oxide.Plugins
         FieldInfo GetZoneField(string name)
         {
             name = name.ToLower();
-            foreach (FieldInfo fieldinfo in allZoneFields) { if (fieldinfo.Name == name) return fieldinfo; }
-            return null;
+            return allZoneFields.FirstOrDefault(fieldinfo => fieldinfo.Name == name);
         }
         static void UpdateAllPlayers()
         {
-            var players = new List<BasePlayer>();
-            foreach(KeyValuePair<BasePlayer, List<string>> pair in playerTags)
-            {
-                players.Add(pair.Key);
-            }
-            foreach(BasePlayer player in players)
+            var players = playerTags.Select(pair => pair.Key).ToList();
+            foreach (var player in players)
             {
                 UpdateTags(player);
             }
         }
         static void UpdateTags(BasePlayer player)
         {
-            if (playerTags.ContainsKey(player)) playerTags.Remove(player);
-            if (playerZones[player] == null) { return; }
-            if (playerZones[player].Count == 0) { return; }
-            playerTags.Add(player, new List<string>());
-            foreach (Zone zone in playerZones[player])
+            List<string> tags;
+            if (!playerTags.TryGetValue(player, out tags))
+                playerTags[player] = tags = new List<string>();
+            tags.Clear();
+            List<Zone> zones;
+            if (!playerZones.TryGetValue(player, out zones) || zones.Count == 0) return;
+            foreach (var zone in zones)
             {
-                foreach (FieldInfo fieldinfo in allZoneFields)
-                {
-                    if (fieldinfo.GetValue(zone.info) != null)
-                    {
-                        playerTags[player].Add(fieldinfo.Name);
-                    }
-                }
+                tags.AddRange(allZoneFields.Where(fieldinfo => fieldinfo.GetValue(zone.info) != null).Select(fieldinfo => fieldinfo.Name));
             }
         }
         static bool hasTag(BasePlayer player, string tagname)
         {
-            if (!playerTags.ContainsKey(player)) return false;
-            if (playerTags[player].Count == 0) return false;
-            return playerTags[player].Contains(tagname);
+            List<string> tags;
+            if (!playerTags.TryGetValue(player, out tags) || tags.Count == 0) return false;
+            return tags.Contains(tagname);
         }
-
-
 
         BasePlayer FindPlayerByRadius(Vector3 position, float rad)
         {
             cachedColliders = Physics.OverlapSphere(position, rad, playersMask);
-            foreach (Collider collider in cachedColliders)
-            {
-                if (collider.GetComponentInParent<BasePlayer>())
-                    return collider.GetComponentInParent<BasePlayer>();
-            }
-            return null;
+            return cachedColliders.Select(collider => collider.GetComponentInParent<BasePlayer>()).FirstOrDefault(player => player != null);
         }
         void CheckExplosivePosition(TimedExplosive explosive)
         {
             if (explosive == null) return;
-            var objects = GameObject.FindObjectsOfType(typeof(Zone));
+            var objects = UnityEngine.Object.FindObjectsOfType<Zone>();
             if (objects != null)
-                foreach (Zone zone in objects)
+                foreach (var zone in objects)
                 {
                     if (zone.info.undestr != null)
                     {
@@ -1053,8 +1028,10 @@ namespace Oxide.Plugins
         }
         static void OnEnterZone(Zone zone, BasePlayer player)
         {
-            if (playerZones[player] == null) playerZones[player] = new List<Zone>();
-            if (!playerZones[player].Contains(zone)) playerZones[player].Add(zone);
+            List<Zone> zones;
+            if (!playerZones.TryGetValue(player, out zones))
+                playerZones[player] = zones = new List<Zone>();
+            if (!zones.Contains(zone)) zones.Add(zone);
             UpdateTags(player);
             if (zone.info.enter_message != null) SendMessage(player, zone.info.enter_message);
             if (zone.info.eject != null && !isAdmin(player) && !zone.whiteList.Contains(player) && !zone.keepInList.Contains(player)) EjectPlayer(zone, player);
@@ -1062,7 +1039,7 @@ namespace Oxide.Plugins
         }
         static void OnExitZone(Zone zone, BasePlayer player)
         {
-            if (playerZones[player].Contains(zone)) playerZones[player].Remove(zone);
+            playerZones[player].Remove(zone);
             UpdateTags(player);
             if (zone.info.leave_message != null) SendMessage(player, zone.info.leave_message);
             if (zone.keepInList.Contains(player)) AttractPlayer(zone, player);
@@ -1072,25 +1049,21 @@ namespace Oxide.Plugins
         static void EjectPlayer(Zone zone, BasePlayer player)
         {
             cachedDirection = player.transform.position - zone.transform.position;
-            player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius + 1f));
-            lastPositionValue.SetValue(player, player.transform.position);
+            player.MovePosition(zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<SphereCollider>().radius + 1f)));
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
         static void AttractPlayer(Zone zone, BasePlayer player)
         {
             cachedDirection = player.transform.position - zone.transform.position;
-            player.transform.position = zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius - 1f));
-            lastPositionValue.SetValue(player, player.transform.position);
+            player.MovePosition(zone.transform.position + (cachedDirection / cachedDirection.magnitude * (zone.GetComponent<UnityEngine.SphereCollider>().radius - 1f)));
             player.ClientRPCPlayer(null, player, "ForcePositionTo", new object[] { player.transform.position });
             player.TransformChanged();
         }
         static bool isAdmin(BasePlayer player)
         {
-            if (player.net.connection == null) return true;
-            if (player.net.connection.authLevel > 0)
-                return true;
-            return false;
+            if (player.net?.connection == null) return true;
+            return player.net.connection.authLevel > 0;
         }
         bool hasPermission(BasePlayer player, string permname)
         {
@@ -1105,21 +1078,21 @@ namespace Oxide.Plugins
         void cmdChatZoneAdd(BasePlayer player, string command, string[] args)
         {
             if (!hasPermission(player, "zone")) { SendMessage(player, "You don't have access to this command"); return; }
-            var newzoneinfo = new ZoneDefinition(player.transform.position);
-            newzoneinfo.ID = GetRandom(1, 99999999).ToString();
+            var newzoneinfo = new ZoneDefinition(player.transform.position) {ID = GetRandom(1, 99999999).ToString()};
             NewZone(newzoneinfo);
             if (zonedefinitions[newzoneinfo.ID] != null) storedData.ZoneDefinitions.Remove(zonedefinitions[newzoneinfo.ID]);
             zonedefinitions[newzoneinfo.ID] = newzoneinfo;
             LastZone[player] = newzoneinfo.ID;
-            storedData.ZoneDefinitions.Add(zonedefinitions[newzoneinfo.ID]);
+            storedData.ZoneDefinitions.Add(newzoneinfo);
             SaveData();
-            ShowZone(player, LastZone[player]);
+            ShowZone(player, newzoneinfo.ID);
             SendMessage(player, "New Zone created, you may now edit it: " + newzoneinfo.Location.String());
         }
         [ChatCommand("zone_reset")]
         void cmdChatZoneReset(BasePlayer player, string command, string[] args)
         {
             if (!hasPermission(player, "zone")) { SendMessage(player, "You don't have access to this command"); return; }
+
             zonedefinitions.Clear();
             storedData.ZoneDefinitions.Clear();
             SaveData();
@@ -1154,9 +1127,9 @@ namespace Oxide.Plugins
             if (!hasPermission(player, "zone")) { SendMessage(player, "You don't have access to this command"); return; }
             SendMessage(player, "========== Zone list ==========");
             if (zonedefinitions.Count == 0) { SendMessage(player, "empty"); return; }
-            foreach (KeyValuePair<string, ZoneDefinition> pair in zonedefinitions)
+            foreach (var pair in zonedefinitions)
             {
-                SendMessage(player, string.Format("{0} => {1} - {2}", pair.Key, pair.Value.name, pair.Value.Location.String()));
+                SendMessage(player, $"{pair.Key} => {pair.Value.name} - {pair.Value.Location.String()}");
             }
         }
         [ChatCommand("zone")]
@@ -1164,14 +1137,15 @@ namespace Oxide.Plugins
         {
             if (!hasPermission(player, "zone")) { SendMessage(player, "You don't have access to this command"); return; }
             if (LastZone[player] == null) { SendMessage(player, "You must first say: /zone_edit XXXXXID"); return; }
-            object value;
 
+            var zoneId = LastZone[player];
+            var zoneDefinition = zonedefinitions[zoneId];
             if (args.Length < 2)
             {
                 SendMessage(player, "/zone option value/reset");
                 foreach (FieldInfo fieldinfo in allZoneFields)
                 {
-                    value = fieldinfo.GetValue(zonedefinitions[LastZone[player]]);
+                    var value = fieldinfo.GetValue(zoneDefinition);
                     switch (fieldinfo.Name)
                     {
                         case "Location":
@@ -1181,17 +1155,17 @@ namespace Oxide.Plugins
                             if (value == null) value = "false";
                             break;
                     }
-                    SendMessage(player, string.Format("{0} => {1}", fieldinfo.Name, value.ToString()));
+                    SendMessage(player, $"{fieldinfo.Name} => {value}");
                 }
                 return;
             }
-            string editvalue;
-            for (int i = 0; i < args.Length; i = i + 2)
+            for (var i = 0; i < args.Length; i = i + 2)
             {
 
                 cachedField = GetZoneField(args[i]);
                 if (cachedField == null) continue;
 
+                string editvalue;
                 switch (args[i + 1])
                 {
                     case "true":
@@ -1208,14 +1182,14 @@ namespace Oxide.Plugins
                         editvalue = args[i + 1];
                         break;
                 }
-                cachedField.SetValue(zonedefinitions[LastZone[player]], editvalue);
-                if (args[i].ToLower() == "radius") { zonedefinitions[LastZone[player]].Location = new ZoneLocation(zonedefinitions[LastZone[player]].Location.GetPosition(), editvalue); }
-                SendMessage(player, string.Format("{0} set to {1}", cachedField.Name, editvalue));
+                cachedField.SetValue(zoneDefinition, editvalue);
+                if (args[i].ToLower() == "radius") { zoneDefinition.Location = new ZoneLocation(zoneDefinition.Location.GetPosition(), editvalue); }
+                SendMessage(player, $"{cachedField.Name} set to {editvalue}");
             }
-            RefreshZone(LastZone[player]);
+            RefreshZone(zoneId);
             SaveData();
-            ShowZone(player, LastZone[player]);
+            ShowZone(player, zoneId);
         }
-        static void SendMessage(BasePlayer player, string message) { player.SendConsoleCommand("chat.add", new object[] { "0", string.Format("<color=#FA58AC>{0}:</color> {1}", "ZoneManager", message), 1.0 }); }
+        static void SendMessage(BasePlayer player, string message) { if(player.net?.connection != null) player.SendConsoleCommand("chat.add", "0", string.Format("<color=#FA58AC>{0}:</color> {1}", "ZoneManager", message), 1.0); }
     }
 }
