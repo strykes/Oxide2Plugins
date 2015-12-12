@@ -524,18 +524,20 @@ namespace Oxide.Plugins
                             currentnum++;
                         }
                     }
-
-                    var lips = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "IPs") as Dictionary<string, object>;
-                    if (lips != null)
+                    if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), permissionIPs))
                     {
-                        AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Used IPs", "10", "0.6", "1", "0.60", "0.65", "MiddleLeft"));
-                        decimal currentnum = 0m;
-                        foreach (KeyValuePair<string, object> pair in lips)
+                        var lips = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "IPs") as Dictionary<string, object>;
+                        if (lips != null)
                         {
-                            decimal currenty = 0.57m - currentnum * 0.03m;
-                            string iptext = GenerateText("PlayerManagerSelectOverlay", pair.Value.ToString(), "10", "0.63", "1", currenty.ToString(), (currenty + 0.03m).ToString(), "MiddleLeft");
-                            AddUI(player, iptext);
-                            currentnum++;
+                            AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Used IPs", "10", "0.6", "1", "0.60", "0.65", "MiddleLeft"));
+                            decimal currentnum = 0m;
+                            foreach (KeyValuePair<string, object> pair in lips)
+                            {
+                                decimal currenty = 0.57m - currentnum * 0.03m;
+                                string iptext = GenerateText("PlayerManagerSelectOverlay", pair.Value.ToString(), "10", "0.63", "1", currenty.ToString(), (currenty + 0.03m).ToString(), "MiddleLeft");
+                                AddUI(player, iptext);
+                                currentnum++;
+                            }
                         }
                     }
 
@@ -741,6 +743,7 @@ namespace Oxide.Plugins
         static string permissionKICK = "playermanager.kick";
         static string permissionBAN = "playermanager.ban";
         static string permissionTP = "playermanager.tp";
+        static string permissionIPs = "playermanager.ips";
         static string permissionMUTE = "canmute";
         void Loaded()
         {
@@ -749,6 +752,7 @@ namespace Oxide.Plugins
             if (!permission.PermissionExists(permissionBAN)) permission.RegisterPermission(permissionBAN, this);
             if (!permission.PermissionExists(permissionTP)) permission.RegisterPermission(permissionTP, this);
             if (!permission.PermissionExists(permissionMUTE)) permission.RegisterPermission(permissionMUTE, this);
+            if (!permission.PermissionExists(permissionIPs)) permission.RegisterPermission(permissionIPs, this);
         }
         void Unload() 
         {
