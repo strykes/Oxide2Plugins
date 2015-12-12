@@ -627,20 +627,23 @@ namespace Oxide.Plugins
                         string searchtext = GenerateText("PlayerListSubSection", "You need to use /playermanager PARTIALNAME/STEAMID", "10", "0.01", "1.0", "0.90", "0.93", "MiddleLeft");
                         AddUI(player, searchtext);
                     }
-                    var playerLists2 = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
-                    foreach (string playerl in playerLists2)
+                    else
                     {
-                        var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
-                        string name = "Unknown Player";
-                        if (playerdata != null)
+                        var playerLists2 = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
+                        foreach (string playerl in playerLists2)
                         {
-                            if (playerdata["name"] != null)
+                            var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
+                            string name = "Unknown Player";
+                            if (playerdata != null)
                             {
-                                name = playerdata["name"] as string;
+                                if (playerdata["name"] != null)
+                                {
+                                    name = playerdata["name"] as string;
+                                }
                             }
+                            if (name.ToLower().Contains(playerGUI[player.userID].search))
+                                playerList.Add(playerl, name);
                         }
-                        if (name.ToLower().Contains(playerGUI[player.userID].search))
-                            playerList.Add(playerl, name);
                     }
                     break;
                 case "sleepers":
