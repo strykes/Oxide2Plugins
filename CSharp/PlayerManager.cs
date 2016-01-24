@@ -89,7 +89,7 @@ namespace Oxide.Plugins
             return new List<object>
             {
                 new Dictionary<string,object> {
-                    { "permission" , "canmute" },
+                    { "permission" , "playermanager.canmute" },
                     { "commands" , new List<object> {
                             new Dictionary<string,object> {
                                 { "color", "1 0 0 0.4" },
@@ -105,7 +105,7 @@ namespace Oxide.Plugins
                     { "name" , "Mute" }
                 },
                  new Dictionary<string,object> {
-                    { "permission" , "canjail" },
+                    { "permission" , "playermanager.canjail" },
                     { "commands" , new List<object> {
                             new Dictionary<string,object> {
                                 { "color", "1 0 0 0.4" },
