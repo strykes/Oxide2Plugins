@@ -12,7 +12,7 @@ using Rust;
 
 namespace Oxide.Plugins
 {
-    [Info("PlayerManager", "Reneb", "1.0.0")]
+    [Info("PlayerManager", "Reneb", "1.0.5", ResourceId= 1535)]
     class PlayerManager : RustPlugin
     {
         [PluginReference]
@@ -23,6 +23,105 @@ namespace Oxide.Plugins
 
         [PluginReference]
         Plugin chatmute;
+
+        static string permissionPM = "playermanager.gui";
+        static string permissionKICK = "playermanager.kick";
+        static string permissionBAN = "playermanager.ban";
+        static string permissionTP = "playermanager.tp";
+        static string permissionIPs = "playermanager.ips";
+        static List<object> ExternalCommandsList = DefaultExternalCommands();
+        void Loaded()
+        {
+            if (!permission.PermissionExists(permissionPM)) permission.RegisterPermission(permissionPM, this);
+            if (!permission.PermissionExists(permissionKICK)) permission.RegisterPermission(permissionKICK, this);
+            if (!permission.PermissionExists(permissionBAN)) permission.RegisterPermission(permissionBAN, this);
+            if (!permission.PermissionExists(permissionTP)) permission.RegisterPermission(permissionTP, this);
+            if (!permission.PermissionExists(permissionIPs)) permission.RegisterPermission(permissionIPs, this);
+            foreach (object ecmdsRAW in ExternalCommandsList)
+            {
+                var ecmds = ecmdsRAW as Dictionary<string,object>;
+                if (!permission.PermissionExists(ecmds["permission"].ToString())) permission.RegisterPermission(ecmds["permission"].ToString(), this);
+            }
+        }
+
+        void Unload()
+        {
+            foreach (BasePlayer player in BasePlayer.activePlayerList)
+            {
+                DestroyGUI(player, "PlayerManagerOverlay");
+                DestroyGUI(player, "DialogOverlay");
+            }
+        }
+         
+        protected override void LoadDefaultConfig() { }
+
+        private void CheckCfg<T>(string Key, ref T var)
+        {
+            if (Config[Key] is T)
+                var = (T)Config[Key];
+            else
+                Config[Key] = var;
+        }
+        void Init() 
+        {
+            CheckCfg<string>("Permission - GUI", ref permissionPM);
+            CheckCfg<string>("Permission - GUI - Kick", ref permissionKICK);
+            CheckCfg<string>("Permission - GUI - Ban", ref permissionBAN);
+            CheckCfg<string>("Permission - GUI - TP", ref permissionTP);
+            CheckCfg<string>("Permission - GUI - IPs", ref permissionIPs);
+            CheckCfg<List<object>>("External Commands", ref ExternalCommandsList);
+            CheckCfg<Dictionary<string, object>>("Options", ref dialogActions);
+            var messages = new Dictionary<string, string>
+            {
+                {"PlayerKicked","<color=orange>SERVER:</color> {0} was kicked from the server ({1})" },
+                { "YouKicked","You were kicked from the server ({0})" },
+                { "PlayerBanned","<color=orange>SERVER:</color> {0} - {1} was banned from the server ({2})" },
+                { "YouBanned","You were banned from the server ({0})" }
+            };
+            lang.RegisterMessages(messages, this);
+
+            SaveConfig();
+        }
+
+         
+        static List<object> DefaultExternalCommands()
+        {
+            return new List<object>
+            {
+                new Dictionary<string,object> {
+                    { "permission" , "canmute" },
+                    { "commands" , new List<object> {
+                            new Dictionary<string,object> {
+                                { "color", "1 0 0 0.4" },
+                                { "text", "mute" },
+                                { "cmd" , "player.mute {steamid}" }
+                            },
+                            new Dictionary<string,object> {
+                                { "color", "0 1 0 0.4" },
+                                { "text", "unmute" },
+                                { "cmd" , "player.unmute {steamid}" }
+                            }
+                        } },
+                    { "name" , "Mute" }
+                },
+                 new Dictionary<string,object> {
+                    { "permission" , "canjail" },
+                    { "commands" , new List<object> {
+                            new Dictionary<string,object> {
+                                { "color", "1 0 0 0.4" },
+                                { "text", "Jail" },
+                                { "cmd" , "player.jail {steamid}" }
+                            },
+                            new Dictionary<string,object> {
+                                { "color", "0 1 0 0.4" },
+                                { "text", "Free" },
+                                { "cmd" , "player.free {steamid}" }
+                            }
+                        } },
+                    { "name" , "Jail" }
+                }
+            };
+        }
 
         Hash<ulong, PlayerMGUI> playerGUI = new Hash<ulong, PlayerMGUI>();
 
@@ -41,6 +140,18 @@ namespace Oxide.Plugins
             public string action;
         }
 
+        class ExternalCommands
+        {
+            public string permission;
+            public List<ExternalCommand> commands;
+            public string name;
+        }
+        class ExternalCommand
+        {
+            public string color;
+            public string text;
+            public string cmd;
+        }
 
         void RefreshFullUI(BasePlayer player)
         {
@@ -415,7 +526,9 @@ namespace Oxide.Plugins
                     if (playerGUI[player.userID].select == string.Empty) return;
                     string steamid = GenerateText("PlayerManagerSelectOverlay", playerGUI[player.userID].select, "20", "0", "0.40", "0.90", "0.95");
                     AddUI(player, steamid);
-                    var playerdata = (PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "default") as Dictionary<string, object>);
+
+                    var playerdata = (PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "default") as Dictionary<string, object>);
+                    BasePlayer targetplayer = FindBasePlayerPlayer(playerGUI[player.userID].select);
 
                     string name = "Unknown Player";
                     if (playerdata != null)
@@ -429,7 +542,7 @@ namespace Oxide.Plugins
                     }
                     else
                     {
-                        string text = GenerateText("PlayerManagerSelectOverlay", "Unknown Player Data", "20", "0.40", "0.80", "0.90", "0.95");
+                        string text = GenerateText("PlayerManagerSelectOverlay", targetplayer != null ? targetplayer.displayName : "Unknown Player Data", "20", "0.40", "0.80", "0.90", "0.95");
                         AddUI(player, text);
                     }
                     if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), permissionKICK))
@@ -447,7 +560,6 @@ namespace Oxide.Plugins
                         AddUI(player, banbutton);
                     }
 
-                    BasePlayer targetplayer = FindBasePlayerPlayer(playerGUI[player.userID].select);
                     string tptext = string.Empty;
                     string tpbutton = string.Empty;
                     if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), permissionTP))
@@ -459,7 +571,7 @@ namespace Oxide.Plugins
                         }
                         if (targetplayer == null || tptext == string.Empty)
                         {
-                            var playertpdata = (PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "Last Position") as Dictionary<string, object>);
+                            var playertpdata = (PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "Last Position") as Dictionary<string, object>);
                             if (playertpdata != null)
                             {
                                 tptext = GenerateText("PlayerManagerSelectOverlay", string.Format("Last Position {0} {1} {2}", playertpdata["x"].ToString(), playertpdata["y"].ToString(), playertpdata["z"].ToString()), "12", "0.10", "0.60", "0.75", "0.85");
@@ -477,7 +589,7 @@ namespace Oxide.Plugins
                         AddUI(player, tpbutton);
                     }
 
-                    var fc = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "First Connection") as Dictionary<string, object>;
+                    var fc = PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "First Connection") as Dictionary<string, object>;
                     if (fc != null)
                     {
                         string fctext = GenerateText("PlayerManagerSelectOverlay", string.Format("First Connection: {0}", TimeMinToString(fc["0"].ToString())), "10", "0.01", "0.30", "0.70", "0.75");
@@ -491,7 +603,7 @@ namespace Oxide.Plugins
                     }
                     else
                     {
-                        var ls = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "Last Seen") as Dictionary<string, object>;
+                        var ls = PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "Last Seen") as Dictionary<string, object>;
                         if (ls != null)
                         {
                             string lstext = GenerateText("PlayerManagerSelectOverlay", string.Format("Last Seen: {0}", TimeMinToString(ls["0"].ToString())), "10", "0.31", "0.60", "0.70", "0.75");
@@ -499,19 +611,18 @@ namespace Oxide.Plugins
                         }
                     }
 
-                    var tp = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "Time Played") as Dictionary<string, object>;
+                    var tp = PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "Time Played") as Dictionary<string, object>;
                     if (tp != null)
                     {
                         string playedtext = GenerateText("PlayerManagerSelectOverlay", string.Format("Time Played: {0}", SecondsToString(tp["0"].ToString())), "10", "0.61", "1", "0.70", "0.75");
                         AddUI(player, playedtext);
                     }
                     string banreason = string.Empty;
-                    Debug.Log(playerGUI[player.userID].select);
                     if (isBanned(ulong.Parse(playerGUI[player.userID].select), out banreason))
                     {
                         AddUI(player, GenerateText("PlayerManagerSelectOverlay", string.Format("BANNED: {0}", banreason), "15", "0.01", "0.6", "0.65", "0.70", "MiddleLeft"));
                     }
-                    var lnames = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "Names") as Dictionary<string, object>;
+                    var lnames = PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "Names") as Dictionary<string, object>;
                     if (lnames != null)
                     {
                         AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Used Names", "10", "0.01", "0.4", "0.60", "0.65", "MiddleLeft"));
@@ -526,7 +637,7 @@ namespace Oxide.Plugins
                     }
                     if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), permissionIPs))
                     {
-                        var lips = PlayerDatabase.Call("GetPlayerData", playerGUI[player.userID].select, "IPs") as Dictionary<string, object>;
+                        var lips = PlayerDatabase?.Call("GetPlayerData", playerGUI[player.userID].select, "IPs") as Dictionary<string, object>;
                         if (lips != null)
                         {
                             AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Used IPs", "10", "0.6", "1", "0.60", "0.65", "MiddleLeft"));
@@ -542,15 +653,24 @@ namespace Oxide.Plugins
                     }
 
                     AddUI(player, GenerateText("PlayerManagerSelectOverlay", "External Plugins", "15", "0.1", "1", "0.30", "0.35", "MiddleLeft"));
-                    if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), permissionMUTE))
+                    decimal epy = 0m;
+                    foreach(var ecmdsRAW in ExternalCommandsList)
                     {
-                        AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Chat Mute", "10", "0.1", "0.5", "0.27", "0.29", "MiddleLeft"));
-                        if (chatmute != null)
+                        var ecmds = ecmdsRAW as Dictionary<string, object>;
+                        if (player.net.connection.authLevel > 1 || permission.UserHasPermission(player.userID.ToString(), ecmds["permission"].ToString()))
                         {
-                            AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Mute", "10", "0.6", "0.7", "0.27", "0.29"));
-                            AddUI(player, GenerateButton("PlayerManagerSelectOverlay", string.Format("player.mute {0}", playerGUI[player.userID].select), "1 0 0 0.2", "0.6", "0.7", "0.27", "0.29"));
-                            AddUI(player, GenerateText("PlayerManagerSelectOverlay", "Unmute", "10", "0.7", "0.8", "0.27", "0.29"));
-                            AddUI(player, GenerateButton("PlayerManagerSelectOverlay", string.Format("player.unmute {0}", playerGUI[player.userID].select), "0 1 0 0.2", "0.7", "0.8", "0.27", "0.29"));
+                            decimal yeppos = 0.29m - epy * 0.04m;
+                            AddUI(player, GenerateText("PlayerManagerSelectOverlay", ecmds["name"].ToString(), "10", "0.1", "0.5", (yeppos - 0.04m).ToString(), yeppos.ToString(), "MiddleLeft"));
+                            decimal epx = 0m;
+                            foreach(var ecmdRAW in (ecmds["commands"] as List<object>))
+                            {
+                                var ecmd = ecmdRAW as Dictionary<string, object>;
+                                decimal xeppos = 0.6m + epx * 0.05m;
+                                AddUI(player, GenerateText("PlayerManagerSelectOverlay", ecmd["text"].ToString(), "10", xeppos.ToString(), (xeppos + 0.05m).ToString(), (yeppos - 0.04m).ToString(), yeppos.ToString()));
+                                AddUI(player, GenerateButton("PlayerManagerSelectOverlay", ecmd["cmd"].ToString().Replace("{steamid}", playerGUI[player.userID].select).Replace("{name}", name), ecmd["color"].ToString(), xeppos.ToString(), (xeppos + 0.05m).ToString(), (yeppos - 0.04m).ToString(), yeppos.ToString()));
+                                epx++;
+                            }
+                            epy++;
                         }
                     }
                     break;
@@ -601,19 +721,35 @@ namespace Oxide.Plugins
             switch(playerGUI[player.userID].subsection)
             {
                 case "all":
-                    var playerLists = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
-                    foreach(string playerl in playerLists)
+                    if (PlayerDatabase != null)
                     {
-                        var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
-                        string name = "Unknown Player";
-                        if (playerdata != null)
+                        var playerLists = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
+                        foreach (string playerl in playerLists)
                         {
-                            if(playerdata["name"] != null)
+                            var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
+                            string name = "Unknown Player";
+                            if (playerdata != null)
                             {
-                                name = playerdata["name"] as string;
+                                if (playerdata["name"] != null)
+                                {
+                                    name = playerdata["name"] as string;
+                                }
                             }
+                            playerList.Add(playerl, name);
                         }
-                        playerList.Add(playerl, name);
+                    }
+                    else
+                    {
+                        foreach (BasePlayer tplayer in BasePlayer.activePlayerList)
+                        {
+                            if (!playerList.ContainsKey(tplayer.userID.ToString()))
+                                playerList.Add(tplayer.userID.ToString(), tplayer.displayName);
+                        }
+                        foreach (BasePlayer tplayer in BasePlayer.sleepingPlayerList)
+                        {
+                            if (!playerList.ContainsKey(tplayer.userID.ToString()))
+                                playerList.Add(tplayer.userID.ToString(), tplayer.displayName);
+                        }
                     }
                     break;
                 case "online":
@@ -631,20 +767,36 @@ namespace Oxide.Plugins
                     }
                     else
                     {
-                        var playerLists2 = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
-                        foreach (string playerl in playerLists2)
+                        if (PlayerDatabase != null)
                         {
-                            var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
-                            string name = "Unknown Player";
-                            if (playerdata != null)
+                            var playerLists2 = (PlayerDatabase.Call("GetAllKnownPlayers") as HashSet<string>).ToList();
+                            foreach (string playerl in playerLists2)
                             {
-                                if (playerdata["name"] != null)
+                                var playerdata = (PlayerDatabase.Call("GetPlayerData", playerl, "default") as Dictionary<string, object>);
+                                string name = "Unknown Player";
+                                if (playerdata != null)
                                 {
-                                    name = playerdata["name"] as string;
+                                    if (playerdata["name"] != null)
+                                    {
+                                        name = playerdata["name"] as string;
+                                    }
                                 }
+                                if (name.ToLower().Contains(playerGUI[player.userID].search))
+                                    playerList.Add(playerl, name);
                             }
-                            if (name.ToLower().Contains(playerGUI[player.userID].search))
-                                playerList.Add(playerl, name);
+                        }
+                        else
+                        {
+                            foreach (BasePlayer tplayer in BasePlayer.activePlayerList)
+                            {
+                                if (!playerList.ContainsKey(tplayer.userID.ToString()) && tplayer.displayName.ToLower().Contains(playerGUI[player.userID].search))
+                                    playerList.Add(tplayer.userID.ToString(), tplayer.displayName);
+                            }
+                            foreach (BasePlayer tplayer in BasePlayer.sleepingPlayerList)
+                            {
+                                if (!playerList.ContainsKey(tplayer.userID.ToString()) && tplayer.displayName.ToLower().Contains(playerGUI[player.userID].search))
+                                    playerList.Add(tplayer.userID.ToString(), tplayer.displayName);
+                            }
                         }
                     }
                     break;
@@ -658,7 +810,7 @@ namespace Oxide.Plugins
                 case "banned":
                     foreach (ServerUsers.User user in ServerUsers.GetAll(ServerUsers.UserGroup.Banned))
                     {
-                        var playerdata = (PlayerDatabase.Call("GetPlayerData", user.steamid.ToString(), "default") as Dictionary<string, object>);
+                        var playerdata = (PlayerDatabase?.Call("GetPlayerData", user.steamid.ToString(), "default") as Dictionary<string, object>);
                         string name = user.username;
                         if (playerdata != null)
                         {
@@ -669,7 +821,37 @@ namespace Oxide.Plugins
                         }
                         playerList.Add(user.steamid.ToString(), name);
                     }
-
+                    if(EnhancedBanSystem != null)
+                    {
+                        var banlist = EnhancedBanSystem.Call("BannedPlayers") as List<string>;
+                        if(banlist != null)
+                        {
+                            foreach(string userid in banlist)
+                            {
+                                if (playerList.ContainsKey(userid)) continue;
+                                var name = "Unknown Player";
+                                var bandata = EnhancedBanSystem.Call("GetBanData", userid) as Dictionary<string,object>;
+                                if(bandata != null)
+                                {
+                                    if (bandata.ContainsKey("name"))
+                                        name = bandata["name"].ToString();
+                                    if (name == "Unknown Player")
+                                    {
+                                        var playerdata = (PlayerDatabase?.Call("GetPlayerData", userid, "default") as Dictionary<string, object>);
+                                        if (playerdata != null)
+                                        {
+                                            if (playerdata["name"] != null)
+                                            {
+                                                name = playerdata["name"] as string;
+                                            }
+                                        }
+                                    }
+                                }
+                                playerList.Add(userid, name);
+                            }
+                        }
+                    }
+                    /*
                     DynamicConfigFile ebslist = Interface.Oxide.DataFileSystem.GetFile("ebsbanlist");
                     foreach(KeyValuePair<string,object> pair in ebslist)
                     {
@@ -690,7 +872,7 @@ namespace Oxide.Plugins
                             }
                         }
                         playerList.Add(pair.Key.ToString(), name);
-                    }
+                    }*/
                     break;
                 default:
                      
@@ -727,6 +909,19 @@ namespace Oxide.Plugins
                     return true;
                 }
             }
+            if(EnhancedBanSystem != null)
+            {
+                var bandata = EnhancedBanSystem.Call("GetBanData", steamid) as Dictionary<string, object>;
+                if (bandata != null)
+                {
+                    if (bandata.ContainsKey("reason"))
+                    {
+                        reason = bandata["reason"].ToString();
+                        return true;
+                    }
+                }
+            }
+            /*
             DynamicConfigFile ebslist = Interface.Oxide.DataFileSystem.GetFile("ebsbanlist");
             if(ebslist[steamid.ToString()] != null)
             {
@@ -736,33 +931,10 @@ namespace Oxide.Plugins
                     reason = bandata.ContainsKey("reason") ? bandata["reason"].ToString() : "Unknown";
                     return true;
                 }
-            }
+            }*/
             return false;
         }
-        static string permissionPM = "playermanager.gui";
-        static string permissionKICK = "playermanager.kick";
-        static string permissionBAN = "playermanager.ban";
-        static string permissionTP = "playermanager.tp";
-        static string permissionIPs = "playermanager.ips";
-        static string permissionMUTE = "canmute";
-        void Loaded()
-        {
-            if (!permission.PermissionExists(permissionPM)) permission.RegisterPermission(permissionPM, this);
-            if (!permission.PermissionExists(permissionKICK)) permission.RegisterPermission(permissionKICK, this);
-            if (!permission.PermissionExists(permissionBAN)) permission.RegisterPermission(permissionBAN, this);
-            if (!permission.PermissionExists(permissionTP)) permission.RegisterPermission(permissionTP, this);
-            if (!permission.PermissionExists(permissionMUTE)) permission.RegisterPermission(permissionMUTE, this);
-            if (!permission.PermissionExists(permissionIPs)) permission.RegisterPermission(permissionIPs, this);
-        }
-        void Unload() 
-        {
-            foreach(BasePlayer player in BasePlayer.activePlayerList)
-            {
-                DestroyGUI(player, "PlayerManagerOverlay");
-                DestroyGUI(player, "DialogOverlay");
-            }
-        }
-
+        
         string parentoverlay = @"[
 			{
 				""name"": ""PlayerManagerOverlay"",
@@ -1062,7 +1234,7 @@ namespace Oxide.Plugins
         }
         string GenerateText(string overlay, string text, string textsize, string xmin, string xmax, string ymin, string ymax, string pos = "MiddleCenter")
         {
-            return jsontext.Replace("{0}", overlay).Replace("{1}", text).Replace("{2}", textsize).Replace("{3}", xmin).Replace("{4}", xmax).Replace("{5}", ymin).Replace("{6}", ymax).Replace("{7}", pos);
+            return jsontext.Replace("{0}", overlay).Replace("{1}", text).Replace("{2}", textsize).Replace("{3}", xmin).Replace("{4}", xmax).Replace("{5}", ymin).Replace("{6}", ymax).Replace("{7}", pos).Replace("'","");
         }
         [ChatCommand("playermanager")]
         void cmdChatPlayermanage(BasePlayer player, string command, string[] args)
@@ -1161,8 +1333,8 @@ namespace Oxide.Plugins
                 SendReply(player, string.Format("The player {0} isnt online", steamidstring));
                 return;
             }
-            ConsoleSystem.Broadcast("chat.add", new object[] { 0, string.Format("<color=orange>SERVER:</color> {0} was kicked from the server ({1})", targetplayer.displayName, playerDialog[player.userID].option.ContainsKey("kick") ? playerDialog[player.userID].option["kick"] : "Unknown") });
-            targetplayer.Kick(string.Format("You were kicked from the server ({0})", playerDialog[player.userID].option.ContainsKey("kick") ? playerDialog[player.userID].option["kick"] : "Unknown"));
+            ConsoleSystem.Broadcast("chat.add", new object[] { 0, string.Format(lang.GetMessage("PlayerKicked", this), targetplayer.displayName, playerDialog[player.userID].option.ContainsKey("kick") ? playerDialog[player.userID].option["kick"] : "Unknown") });
+            targetplayer.Kick(string.Format(lang.GetMessage("YouKicked", this), playerDialog[player.userID].option.ContainsKey("kick") ? playerDialog[player.userID].option["kick"] : "Unknown"));
         }
         [ConsoleCommand("playermanager.teleport")]
         void cmdConsolePlayermanagerTeleport(ConsoleSystem.Arg arg)
@@ -1174,7 +1346,7 @@ namespace Oxide.Plugins
             if (arg.Player().net.connection.authLevel < 2 && !permission.UserHasPermission(arg.Player().userID.ToString(), permissionTP)) return;
             Vector3 destination = new Vector3(float.Parse(arg.Args[0]), float.Parse(arg.Args[1]), float.Parse(arg.Args[2]));
             arg.Player().MovePosition(destination);
-            arg.Player().ClientRPCPlayer(null, arg.Player(), "ForcePositionTo", destination);
+           // arg.Player().ClientRPCPlayer(null, arg.Player(), "ForcePositionTo", destination);
         }
         void PlayerManagerBan(BasePlayer player, string steamidstring)
         {
@@ -1195,35 +1367,31 @@ namespace Oxide.Plugins
                     name = playerdata["name"] as string;
                 }
             }
-
             ServerUsers.User user = ServerUsers.Get(steamid);
-            if(user != null && (user.group == ServerUsers.UserGroup.Banned))
+            if (user != null && (user.group == ServerUsers.UserGroup.Banned))
             {
                 SendReply(player, string.Format("The user {0} is already in the banlist", steamid.ToString()));
             }
             else
             {
-                ServerUsers.Set(steamid, ServerUsers.UserGroup.Banned, name, "Banned");
-                ConsoleSystem.Broadcast("chat.add", new object[] { 0, string.Format("<color=orange>SERVER:</color> {0} - {1} was banned from the server ({2})", steamid.ToString(), name, playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown") });
-            }
-            
-            BasePlayer targetplayer = BasePlayer.Find(steamidstring);
-            if (targetplayer != null)
-            {
+                ConsoleSystem.Broadcast("chat.add", new object[] { 0, string.Format(lang.GetMessage("PlayerBanned", this), steamid.ToString(), name, playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown") });
                 if (EnhancedBanSystem != null)
                 {
-                    EnhancedBanSystem.Call("Ban", null, targetplayer, playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown", false);
+                    EnhancedBanSystem.Call("BanID", null, steamid, playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown", playerDialog[player.userID].option.ContainsKey("timelimit") ? int.Parse(playerDialog[player.userID].option["timelimit"]) : 0);
                 }
                 else
                 {
-                    targetplayer.Kick(string.Format("You were banned from the server ({0})", playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown"));
+                    ServerUsers.Set(steamid, ServerUsers.UserGroup.Banned, name, playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown");
                 }
+            }
+                       
+            BasePlayer targetplayer = BasePlayer.Find(steamidstring);
+            if (targetplayer != null)
+            {
+                targetplayer.Kick(string.Format(lang.GetMessage("YouBanned", this), playerDialog[player.userID].option.ContainsKey("ban") ? playerDialog[player.userID].option["ban"] : "Unknown"));
                 return;
             }
-            
         }
-
-
         [ConsoleCommand("playermanager.page")]
         void cmdConsolePlayermanagerPage(ConsoleSystem.Arg arg)
         {
