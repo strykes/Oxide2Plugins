@@ -29,25 +29,18 @@ namespace Oxide.Plugins
                 return null;
             BasePlayer.SpawnPoint point = new BasePlayer.SpawnPoint();
             point.pos = (Vector3)targetpos;
-            point.rot = new Quaternion(1f,0f,0f,0f);
-            RaycastHit hit;
-            if (checkDown != 0f)
-            {
-                if (Physics.Raycast(new Ray(point.pos + vectorUp, Vector3.down), out hit, checkDown, -1063190271))
-                {
-                    point.pos = hit.point;
-                }
-            }
+            point.rot = new Quaternion(0f, 0f, 0f, 0f);
             return point;
         }
+
 
         /////////////////////////////////////////
         // Config Manager
         /////////////////////////////////////////
         private static string spawnsname = "spawnfile";
         static string MessagesPermissionsNotAllowed = "You are not allowed to use this command";
-        static string CheckUp = "1.0";
-        static string CheckDown = "1.0";
+        static string CheckUp = "0.0";
+        static string CheckDown = "0.0";
         Vector3 vectorUp = new Vector3(0f, 1f, 0f);
         float checkDown = 2f;
 
@@ -83,21 +76,21 @@ namespace Oxide.Plugins
             object success = Spawns.Call("GetSpawnsCount", new object[] { spawnsname });
             if (success is string)
             {
-                Debug.Log("Custom Spawn Points - ERROR:" + (string)success);
+                Debug.Log("CustomSpawnPoints - ERROR:" + (string)success);
                 return;
             }
             int count = 0;
             if (!int.TryParse(success.ToString(), out count))
             {
-                Debug.Log(string.Format("Custom Spawn Points - ERROR: {0} is not a valid spawnfile",spawnsname));
+                Debug.Log(string.Format("CustomSpawnPoints - ERROR: {0} is not a valid spawnfile",spawnsname));
                 return;
             }
             if (count < 1)
             {
-                Debug.Log("Custom Spawn Points - ERROR: You must have at least 1 spawn in your spawnfile");
+                Debug.Log("CustomSpawnPoints - ERROR: You must have at least 1 spawn in your spawnfile");
                 return;
             }
-            Debug.Log(string.Format("Custom Spawn Points: {0} spawn points loaded", count.ToString()));
+            Debug.Log(string.Format("CustomSpawnPoints: {0} spawn points loaded", count.ToString()));
             activated = true;
         }
 
