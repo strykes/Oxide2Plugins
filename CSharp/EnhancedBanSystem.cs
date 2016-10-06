@@ -17,9 +17,15 @@ namespace Oxide.Plugins
         static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
         char[] ipChrArray = new char[] { '.' };
 
+        BanSystem banSystem = BanSystem.PlayerDatabase | BanSystem.SQLite;
+
         ////////////////////////////////////////////////////////////
         // Config fields
         ////////////////////////////////////////////////////////////
+
+        static string Platform = "Steam";
+        static string Server = "1.1.1.1:28015";
+        static string Game = "Rust";
 
         string PermissionBan = "enhancedbansystem.ban";
         string PermissionUnban = "enhancedbansystem.unban";
@@ -49,6 +55,7 @@ namespace Oxide.Plugins
 
         enum BanSystem
         {
+            Files,
             PlayerDatabase,
             WebAPI,
             SQLite,
@@ -64,17 +71,33 @@ namespace Oxide.Plugins
             public string game;
             public string server;
             public string source;
-            public int date;
-            public int limit;
+            public double date;
+            public double limit;
             public string reason;
             public string platform;
 
             public BanData() { }
+
+            public BanData(object source, string userID, string name, string ip, string reason, double duration)
+            {
+                this.source = source is IPlayer ? ((IPlayer)source).Name : source is string ? (string)source : "Console";
+                this.steamid = userID;
+                this.name = name;
+                this.ip = ip;
+                this.reason = reason;
+                this.limit = duration != 0.0 ? LogTime() + duration : 0.0;
+                this.date = LogTime();
+                this.platform = Platform;
+                this.game = Game;
+                this.server = Server;
+            }
         }
 
         ////////////////////////////////////////////////////////////
         // General Methods
         ////////////////////////////////////////////////////////////
+
+        static double LogTime() { return DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
 
         string GetMsg(string key, object steamid = null) { return lang.GetMessage(key, this, steamid == null ? null : steamid.ToString()); }
 
@@ -128,6 +151,69 @@ namespace Oxide.Plugins
             return FoundPlayers;
         }
 
+        string GetPlayerIP(IPlayer iplayer)
+        {
+            if (iplayer.IsConnected) return iplayer.Address;
+
+            return GetPlayerIP(iplayer.Id);
+        }
+
+        string GetPlayerIP(string userID)
+        {
+            if(PlayerDatabase != null)
+            {
+                return (string)PlayerDatabase.Call("GetPlayerData", userID, "ip") ?? string.Empty;
+            }
+            return string.Empty;
+        }
+
+        ////////////////////////////////////////////////////////////
+        // Files
+        ////////////////////////////////////////////////////////////
+        void ExecuteBan_Files(BanData bandata)
+        {
+
+        }
+
+        ////////////////////////////////////////////////////////////
+        // PlayerDatabase
+        ////////////////////////////////////////////////////////////
+        void ExecuteBan_PlayerDatabase(BanData bandata)
+        {
+            if(bandata.steamid != string.Empty)
+            {
+                PlayerDatabase.Call("SetPlayerData", bandata.steamid, "Banned", bandata);
+            }
+            else
+            {
+                // Need to make a file for ips only
+            }
+        }
+
+        ////////////////////////////////////////////////////////////
+        // WebAPI
+        ////////////////////////////////////////////////////////////
+        void ExecuteBan_WebAPI(BanData bandata)
+        {
+
+        }
+
+        ////////////////////////////////////////////////////////////
+        // SQLite
+        ////////////////////////////////////////////////////////////
+        void ExecuteBan_SQLite(BanData bandata)
+        {
+
+        }
+
+        ////////////////////////////////////////////////////////////
+        // MySQL
+        ////////////////////////////////////////////////////////////
+        void ExecuteBan_MySQL(BanData bandata)
+        {
+
+        }
+
         ////////////////////////////////////////////////////////////
         // IsBanned
         ////////////////////////////////////////////////////////////
@@ -146,8 +232,8 @@ namespace Oxide.Plugins
             string errorreason = string.Empty;
 
             string reason = args.Length > 1 ? args[1] : BanDefaultReason;
-            int duration = 0;
-            if (args.Length > 2) int.TryParse(args[2], out duration);
+            double duration = 0.0;
+            if (args.Length > 2) double.TryParse(args[2], out duration);
 
             
             if (ipaddress != string.Empty)
@@ -165,12 +251,49 @@ namespace Oxide.Plugins
             }
         }
 
-        string BanPlayer(object source, IPlayer player, string reason, int duration)
+        string BanPlayer(object source, IPlayer player, string reason, double duration)
         {
+            var returnstring = string.Empty;
             BanData bandata;
-            if(isBannedPlayer(player.Id, player.Address, out bandata))
+            var address = GetPlayerIP(player);
+            bool flag = isBannedPlayer(player.Id, address, out bandata);
+            if(flag)
             {
-                return GetMsg(string.Format("Player is already banned: {0} - {1} - {2}", bandata.id, bandata.name, bandata.ip), source is IPlayer ? ((IPlayer)source).Id.ToString() : null);
+                if (bandata.ip == address && player.Id == bandata.steamid)
+                {
+                    return GetMsg(string.Format("Player is already banned: {0} - {1} - {2}", bandata.steamid, bandata.name, bandata.ip), source is IPlayer ? ((IPlayer)source).Id.ToString() : null);
+                }
+                else
+                {
+                    returnstring = string.Format(GetMsg("Player was already banned as: {0} - {1} - {2}\n", source is IPlayer ? ((IPlayer)source).Id.ToString() : null), bandata.steamid, bandata.name, bandata.ip);
+                }
+            }
+            returnstring += ExecuteBan(source, player.Id, player.Name, address, reason, duration);
+            return returnstring;
+        }
+
+        string ExecuteBan(object source, string userID, string name, string ip, string reason, double duration)
+        {
+            var bandata = new BanData(source, userID, name, ip, reason, duration);
+            if(banSystem.HasFlag(BanSystem.PlayerDatabase))
+            {
+                ExecuteBan_PlayerDatabase(bandata);
+            }
+            if(banSystem.HasFlag(BanSystem.Files))
+            {
+                ExecuteBan_Files(bandata);
+            }
+            if(banSystem.HasFlag(BanSystem.MySQL))
+            {
+                ExecuteBan_MySQL(bandata);
+            }
+            if(banSystem.HasFlag(BanSystem.SQLite))
+            {
+                ExecuteBan_SQLite(bandata);
+            }
+            if(banSystem.HasFlag(BanSystem.WebAPI))
+            {
+                ExecuteBan_WebAPI(bandata);
             }
         }
 
