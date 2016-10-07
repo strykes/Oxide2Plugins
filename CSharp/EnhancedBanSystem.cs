@@ -323,13 +323,13 @@ namespace Oxide.Plugins
 
         string ExecuteBan_PlayerDatabase(BanData bandata)
         {
-            if(bandata.steamid != string.Empty)
+            cachedBans.Add(bandata);
+            if (bandata.steamid != string.Empty)
             {
                 PlayerDatabase.Call("SetPlayerData", bandata.steamid, "Banned", bandata);
             }
             else
             {
-                cachedBans.Add(bandata);
                 storedIPData.Banlist.Add(bandata.ToJson());
             }
             return string.Format("Successfully added {0} to the banlist", bandata.ToString());
@@ -516,7 +516,8 @@ namespace Oxide.Plugins
             try
             {
                 player.Reply(TryBan(player, args));
-            } catch(Exception e)
+            }
+            catch (Exception e)
             {
                 player.Reply("ERROR:" + e.Message);
             }
