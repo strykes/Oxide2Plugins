@@ -294,6 +294,33 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // PlayerDatabase
         ////////////////////////////////////////////////////////////
+
+        static StoredIPData storedIPData;
+
+        class StoredIPData
+        {
+            public HashSet<string> Banlist = new HashSet<string>();
+
+            public StoredIPData() { }
+        }
+
+        void Load_PlayerDatabaseIP()
+        {
+            try
+            {
+                storedIPData = Interface.GetMod().DataFileSystem.ReadObject<StoredIPData>("EnhancedBanSystem_IPs");
+            }
+            catch
+            {
+                storedIPData = new StoredIPData();
+            }
+            foreach (var b in storedIPData.Banlist)
+            {
+                cachedBans.Add(JsonConvert.DeserializeObject<BanData>(b));
+            }
+        }
+
+
         string ExecuteBan_PlayerDatabase(BanData bandata)
         {
             if(bandata.steamid != string.Empty)
@@ -302,8 +329,10 @@ namespace Oxide.Plugins
             }
             else
             {
-                // Need to make a file for ips only
+                cachedBans.Add(bandata);
+                storedIPData.Banlist.Add(bandata.ToJson());
             }
+            return string.Format("Successfully added {0} to the banlist", bandata.ToString());
         }
 
         ////////////////////////////////////////////////////////////
