@@ -272,6 +272,10 @@ namespace Oxide.Plugins
             {
                 storedData = new StoredData();
             }
+            foreach(var b in storedData.Banlist)
+            {
+                cachedBans.Add(JsonConvert.DeserializeObject<BanData>(b));
+            }
         }
 
         void Save_Files()
