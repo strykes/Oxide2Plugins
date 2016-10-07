@@ -1,3 +1,5 @@
+using Newtonsoft.Json;
+using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Core.Plugins;
 using System;
@@ -17,7 +19,9 @@ namespace Oxide.Plugins
         static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
         char[] ipChrArray = new char[] { '.' };
 
-        BanSystem banSystem = BanSystem.PlayerDatabase | BanSystem.SQLite;
+        static BanSystem banSystem = BanSystem.PlayerDatabase | BanSystem.SQLite;
+
+        static HashSet<BanData> cachedBans = new HashSet<BanData>();
 
         ////////////////////////////////////////////////////////////
         // Config fields
@@ -48,6 +52,13 @@ namespace Oxide.Plugins
         static string WebAPI_Banlist = "http://webpage.com/banlist.php";
 
         static string BanDefaultReason = "Banned";
+
+        static bool Kick_Broadcast = true;
+        static bool Kick_Log = true;
+        static bool Kick_OnBan = true;
+
+        static bool Ban_Broadcast = true;
+        static bool Ban_Log = true;
 
         ////////////////////////////////////////////////////////////
         // Enum & Class
@@ -91,6 +102,16 @@ namespace Oxide.Plugins
                 this.game = Game;
                 this.server = Server;
             }
+
+            public string ToJson()
+            {
+                return JsonConvert.SerializeObject(this);
+            }
+
+            public override string ToString()
+            {
+                return string.Format("{0} - {1} - {2} - {3} - {4}", steamid, name, ip, reason, limit == 0.0 ? "Permanent" : string.Format("Temporary: {0}s", (limit - LogTime()).ToString()));
+            }
         }
 
         ////////////////////////////////////////////////////////////
@@ -99,7 +120,7 @@ namespace Oxide.Plugins
 
         static double LogTime() { return DateTime.UtcNow.Subtract(epoch).TotalSeconds; }
 
-        string GetMsg(string key, object steamid = null) { return lang.GetMessage(key, this, steamid == null ? null : steamid.ToString()); }
+        string GetMsg(string key, object steamid = null) { return lang.GetMessage(key, this, steamid is IPlayer ? ((IPlayer)steamid).Id : steamid == null ? null : steamid.ToString()); }
 
         bool hasPermission(IPlayer player, string permissionName)
         {
@@ -133,11 +154,51 @@ namespace Oxide.Plugins
             return true;
         }
 
-        List<IPlayer> FindPlayers(string userIDorIP, object source, out string reason)
+        bool IPRange(string sourceIP, string targetIP)
+        {
+            string[] srcArray = sourceIP.Split(ipChrArray);
+            string[] trgArray = targetIP.Split(ipChrArray);
+            for(int i = 0; i < 4; i++)
+            {
+                if(srcArray[i] != trgArray[i] && srcArray[i] != "*")
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        List<IPlayer> FindPlayers(string userIDorNameorIP, object source, out string reason)
         {
             reason = string.Empty;
-            var FoundPlayers = players.FindPlayers(userIDorIP).ToList();
+            var FoundPlayers = players.FindPlayers(userIDorNameorIP).ToList();
             if(FoundPlayers.Count == 0)
+            {
+                reason = GetMsg("No player matching this name was found.", source is IPlayer ? ((IPlayer)source).Id.ToString() : null);
+            }
+            if (FoundPlayers.Count > 1)
+            {
+                foreach (var iplayer in FoundPlayers)
+                {
+                    reason += string.Format("{0} {1}\r\n", iplayer.Id, iplayer.Name);
+                }
+            }
+            return FoundPlayers;
+        }
+
+        List<IPlayer> FindConnectedPlayers(string userIDorNameorIP, object source, out string reason)
+        {
+            reason = string.Empty;
+            var FoundPlayers = new List<IPlayer>();
+            if (isIPAddress(userIDorNameorIP))
+            {
+                FoundPlayers = players.GetAllPlayers().Where(x => x.IsConnected).Where(w => IPRange(userIDorNameorIP, w.Address)).ToList();
+            }
+            else
+            {
+                FoundPlayers = players.FindConnectedPlayers(userIDorNameorIP).ToList();
+            }
+            if (FoundPlayers.Count == 0)
             {
                 reason = GetMsg("No player matching this name was found.", source is IPlayer ? ((IPlayer)source).Id.ToString() : null);
             }
@@ -167,18 +228,69 @@ namespace Oxide.Plugins
             return string.Empty;
         }
 
+
+        void OnServerSave()
+        {
+            if (banSystem.HasFlag(BanSystem.PlayerDatabase))
+            {
+            }
+            if (banSystem.HasFlag(BanSystem.Files))
+            {
+                Save_Files();
+            }
+            if (banSystem.HasFlag(BanSystem.MySQL))
+            {
+            }
+            if (banSystem.HasFlag(BanSystem.SQLite))
+            {
+            }
+            if (banSystem.HasFlag(BanSystem.WebAPI))
+            {
+            }
+        }
+
         ////////////////////////////////////////////////////////////
         // Files
         ////////////////////////////////////////////////////////////
-        void ExecuteBan_Files(BanData bandata)
-        {
 
+        static StoredData storedData;
+
+        class StoredData
+        {
+            public HashSet<string> Banlist = new HashSet<string>();
+
+            public StoredData() { }
+        }
+
+        void Load_Files()
+        {
+            try
+            {
+                storedData = Interface.GetMod().DataFileSystem.ReadObject<StoredData>("EnhancedBanSystem");
+            }
+            catch
+            {
+                storedData = new StoredData();
+            }
+        }
+
+        void Save_Files()
+        {
+            Interface.GetMod().DataFileSystem.SaveDatafile("EnhancedBanSystem");
+        }
+
+        string ExecuteBan_Files(BanData bandata)
+        {
+            cachedBans.Add(bandata);
+            storedData.Banlist.Add(bandata.ToJson());
+
+            return string.Format("Successfully added {0} to the banlist", bandata.ToString());
         }
 
         ////////////////////////////////////////////////////////////
         // PlayerDatabase
         ////////////////////////////////////////////////////////////
-        void ExecuteBan_PlayerDatabase(BanData bandata)
+        string ExecuteBan_PlayerDatabase(BanData bandata)
         {
             if(bandata.steamid != string.Empty)
             {
@@ -193,7 +305,7 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // WebAPI
         ////////////////////////////////////////////////////////////
-        void ExecuteBan_WebAPI(BanData bandata)
+        string ExecuteBan_WebAPI(BanData bandata)
         {
 
         }
@@ -201,7 +313,7 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // SQLite
         ////////////////////////////////////////////////////////////
-        void ExecuteBan_SQLite(BanData bandata)
+        string ExecuteBan_SQLite(BanData bandata)
         {
 
         }
@@ -209,10 +321,53 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // MySQL
         ////////////////////////////////////////////////////////////
-        void ExecuteBan_MySQL(BanData bandata)
+        string ExecuteBan_MySQL(BanData bandata)
         {
 
         }
+
+
+        ////////////////////////////////////////////////////////////
+        // Kick
+        ////////////////////////////////////////////////////////////
+
+        string Kick(object source, string target, string reason)
+        {
+            string r = string.Empty;
+            var foundplayers = FindConnectedPlayers(target, source, out r);
+            if(foundplayers.Count == 0)
+            {
+                return r;
+            }
+            
+            var returnkick = string.Empty;
+            foreach (var iplayer in foundplayers)
+            {
+                returnkick += ExecuteKick(source, iplayer, reason) + "\r\n";
+            }
+
+            return returnkick;
+        }
+        string Kick(object source, string[] args)
+        {
+            string target = args[0];
+            string reason = args.Length > 1 ? args[1] : "Kicked";
+            return Kick(source, target, reason);
+        }
+
+        string ExecuteKick(object source, IPlayer player, string reason)
+        {
+            if(Kick_Broadcast)
+                server.Broadcast(string.Format(GetMsg("{0} was kicked from the server ({1})", null), player.Name.ToString(), reason));
+
+            if (Kick_Log)
+                Interface.Oxide.LogWarning(string.Format(GetMsg("{0} was kicked from the server ({1})", null), player.Name.ToString(), reason));
+
+            player.Kick(reason);
+
+            return string.Format(GetMsg("{0} was kicked from the server ({1})", source), player.Name.ToString(), reason);
+        }
+
 
         ////////////////////////////////////////////////////////////
         // IsBanned
@@ -274,27 +429,38 @@ namespace Oxide.Plugins
 
         string ExecuteBan(object source, string userID, string name, string ip, string reason, double duration)
         {
+            string returnstring = string.Empty;
             var bandata = new BanData(source, userID, name, ip, reason, duration);
             if(banSystem.HasFlag(BanSystem.PlayerDatabase))
             {
-                ExecuteBan_PlayerDatabase(bandata);
+                returnstring += ExecuteBan_PlayerDatabase(bandata);
             }
             if(banSystem.HasFlag(BanSystem.Files))
             {
-                ExecuteBan_Files(bandata);
+                returnstring += ExecuteBan_Files(bandata);
             }
             if(banSystem.HasFlag(BanSystem.MySQL))
             {
-                ExecuteBan_MySQL(bandata);
+                returnstring += ExecuteBan_MySQL(bandata);
             }
             if(banSystem.HasFlag(BanSystem.SQLite))
             {
-                ExecuteBan_SQLite(bandata);
+                returnstring += ExecuteBan_SQLite(bandata);
             }
             if(banSystem.HasFlag(BanSystem.WebAPI))
             {
-                ExecuteBan_WebAPI(bandata);
+                returnstring += ExecuteBan_WebAPI(bandata);
             }
+            if (Ban_Broadcast && name != string.Empty)
+                server.Broadcast(string.Format(GetMsg("{0} was {2} banned from the server ({1})"), name, reason, duration == 0.0 ? GetMsg("permanently") : GetMsg("temporarily")));
+
+            if (Ban_Log)
+                Interface.Oxide.LogWarning(string.Format("{0} {1} was {2} banned from the server ({3})", userID != string.Empty ? userID : string.Empty, name != string.Empty ? name : ip, duration == 0.0 ? "permanently" : "temporarily", reason));
+
+            if (Kick_OnBan)
+                Kick(source, userID != string.Empty ? userID : ip, "Banned");
+
+            return returnstring == string.Empty ? "FATAL ERROR 1" : returnstring;
         }
 
         ////////////////////////////////////////////////////////////
@@ -311,13 +477,36 @@ namespace Oxide.Plugins
             }
             if (args == null || (args.Length < 1))
             {
-                player.Reply(GetMsg("Syntax: ban < Name | SteamID > < reason(optional) > < time in secondes(optional > ", player.Id.ToString()));
+                player.Reply(GetMsg("Syntax: ban < Name | SteamID | IP | IP Range > < reason(optional) > < time in secondes(optional > ", player.Id.ToString()));
                 return;
             }
             try
             {
                 player.Reply(TryBan(player, args));
             } catch(Exception e)
+            {
+                player.Reply("ERROR:" + e.Message);
+            }
+        }
+
+        [Command("kick", "player.kick")]
+        void cmdKick(IPlayer player, string command, string[] args)
+        {
+            if (!hasPermission(player, PermissionKick))
+            {
+                player.Reply(GetMsg("You don't have the permission to use this command.", player.Id.ToString()));
+                return;
+            }
+            if (args == null || (args.Length < 1))
+            {
+                player.Reply(GetMsg("Syntax: kick < Name | SteamID | IP | IP Range > < reason(optional) >", player.Id.ToString()));
+                return;
+            }
+            try
+            {
+                player.Reply(Kick(player, args));
+            }
+            catch (Exception e)
             {
                 player.Reply("ERROR:" + e.Message);
             }
