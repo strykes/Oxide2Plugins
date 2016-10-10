@@ -1,5 +1,7 @@
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Ext.MySql;
+using Oxide.Ext.SQLite;
 using Oxide.Core.Configuration;
 using Oxide.Core.Database;
 using Oxide.Core.Libraries.Covalence;
@@ -21,7 +23,7 @@ namespace Oxide.Plugins
         static DateTime epoch = new DateTime(1970, 1, 1, 0, 0, 0);
         char[] ipChrArray = new char[] { '.' };
 
-        static BanSystem banSystem = BanSystem.PlayerDatabase | BanSystem.SQLite;
+        static BanSystem banSystem;
 
         static Hash<int, BanData> cachedBans = new Hash<int, BanData>();
 
@@ -57,12 +59,18 @@ namespace Oxide.Plugins
 
         static string BanDefaultReason = "Banned";
 
+        static string BanEvadeReason = "Ban Evade";
+
         static bool Kick_Broadcast = true;
         static bool Kick_Log = true;
         static bool Kick_OnBan = false;
 
         static bool Ban_Broadcast = true;
         static bool Ban_Log = true;
+
+        static bool Ban_Escape = true;
+
+        static bool Log_Denied = true;
 
         ////////////////////////////////////////////////////////////
         // ID Save
@@ -73,8 +81,18 @@ namespace Oxide.Plugins
 
         void Load_ID()
         {
-            Ban_ID_File = Interface.GetMod().DataFileSystem.GetDatafile("EnhancedBanSystem_ID");
-            Ban_ID = (int)Ban_ID_File["id"];
+            try
+            {
+                Ban_ID_File = Interface.GetMod().DataFileSystem.GetDatafile("EnhancedBanSystem_ID");
+
+                Ban_ID = (int)Ban_ID_File["id"];
+            }
+            catch
+            {
+                Ban_ID = 0;
+                Ban_ID_File["id"] = Ban_ID;
+                Save_ID();
+            }
         }
 
         void Save_ID()
@@ -95,12 +113,12 @@ namespace Oxide.Plugins
 
         enum BanSystem
         {
-            Files,
-            PlayerDatabase,
-            WebAPI,
-            SQLite,
-            MySQL,
-            Native
+            Files = 0x20,
+            PlayerDatabase = 0x10,
+            WebAPI = 8,
+            SQLite = 4,
+            MySQL = 2,
+            Native =1
         }
 
         class BanData
@@ -113,7 +131,7 @@ namespace Oxide.Plugins
             public string server;
             public string source;
             public double date;
-            public double limit;
+            public double expire;
             public string reason;
             public string platform;
 
@@ -127,7 +145,7 @@ namespace Oxide.Plugins
                 this.name = name;
                 this.ip = ip;
                 this.reason = reason;
-                this.limit = duration != 0.0 ? LogTime() + duration : 0.0;
+                this.expire = duration != 0.0 ? LogTime() + duration : 0.0;
                 this.date = LogTime();
                 this.platform = Platform;
                 this.game = Game;
@@ -142,7 +160,7 @@ namespace Oxide.Plugins
                 this.name = name;
                 this.ip = ip;
                 this.reason = reason;
-                this.limit = double.Parse(duration);
+                this.expire = double.Parse(duration);
                 this.date = LogTime();
                 this.platform = Platform;
                 this.game = Game;
@@ -156,7 +174,7 @@ namespace Oxide.Plugins
 
             public override string ToString()
             {
-                return string.Format("{0} - {1} - {2} - {3} - {4}", steamid, name, ip, reason, limit == 0.0 ? "Permanent" : string.Format("Temporary: {0}s", (limit - LogTime()).ToString()));
+                return string.Format("{0} - {1} - {2} - {3} - {4}", steamid, name, ip, reason, expire == 0.0 ? "Permanent" : string.Format("Temporary: {0}s", (expire - LogTime()).ToString()));
             }
         }
 
@@ -277,7 +295,12 @@ namespace Oxide.Plugins
 
         bool HasDelayedAnswer()
         {
-            return banSystem.HasFlag(BanSystem.MySQL) || banSystem.HasFlag(BanSystem.SQLite) || (banSystem.HasFlag(BanSystem.WebAPI));
+            return BanSystemHasFlag(banSystem, BanSystem.MySQL) || BanSystemHasFlag(banSystem,BanSystem.SQLite) || (BanSystemHasFlag(banSystem,BanSystem.WebAPI));
+        }
+
+        bool BanSystemHasFlag(BanSystem b, BanSystem t)
+        {
+            return (b & t) == t;
         }
 
         ////////////////////////////////////////////////////////////
@@ -287,25 +310,34 @@ namespace Oxide.Plugins
 
         void Loaded()
         {
+            banSystem  |= BanSystem.PlayerDatabase;
+            banSystem |= BanSystem.SQLite;
+
             Load_ID();
-            if (banSystem.HasFlag(BanSystem.PlayerDatabase))
+            if (BanSystemHasFlag(banSystem,BanSystem.PlayerDatabase))
             {
-                Load_PlayerDatabaseIP();
+                Load_PlayerDatabase();
             }
-            if (banSystem.HasFlag(BanSystem.Files))
+            if (BanSystemHasFlag(banSystem,BanSystem.Files))
             {
                 Load_Files();
             }
-            if (banSystem.HasFlag(BanSystem.MySQL))
+            if (BanSystemHasFlag(banSystem,BanSystem.MySQL))
             {
                 LoadMySQL();
             }
-            if (banSystem.HasFlag(BanSystem.SQLite))
+            if (BanSystemHasFlag(banSystem,BanSystem.SQLite))
             {
                 Load_SQLite();
             }
-            if (banSystem.HasFlag(BanSystem.WebAPI))
+            if (BanSystemHasFlag(banSystem,BanSystem.WebAPI))
             {
+                Interface.Oxide.LogWarning("webapi");
+                // Nothing to load
+            }
+            if (BanSystemHasFlag(banSystem, BanSystem.Native))
+            {
+                Interface.Oxide.LogWarning("natuve");
                 // Nothing to load
             }
         }
@@ -314,26 +346,53 @@ namespace Oxide.Plugins
         void OnServerSave()
         {
             Save_ID();
-            if (banSystem.HasFlag(BanSystem.PlayerDatabase))
+            if (BanSystemHasFlag(banSystem,BanSystem.PlayerDatabase))
             {
                 Save_PlayerDatabaseIP();
             }
-            if (banSystem.HasFlag(BanSystem.Files))
+            if (BanSystemHasFlag(banSystem,BanSystem.Files))
             {
                 Save_Files();
             }
-            if (banSystem.HasFlag(BanSystem.MySQL))
+            if (BanSystemHasFlag(banSystem,BanSystem.MySQL))
             {
                 // Nothing to save
             }
-            if (banSystem.HasFlag(BanSystem.SQLite))
+            if (BanSystemHasFlag(banSystem,BanSystem.SQLite))
             {
                 // Nothing to save
             }
-            if (banSystem.HasFlag(BanSystem.WebAPI))
+            if (BanSystemHasFlag(banSystem,BanSystem.WebAPI))
             {
                 // Nothing to save
             }
+        }
+
+        object CanUserLogin(string name, string steamid, string ip)
+        {
+            BanData bd = null;
+#if RUST
+            using (TimeWarning.New("CanUserLogin", 0.1f))
+            {
+#endif
+                if (isBanned_NonDelayed(name, steamid, ip, Ban_Escape, out bd))
+                {
+                    return string.Format("You are banned from this server {0}", bd == null ? string.Empty : string.Format("({0})", bd.reason));
+                }
+#if RUST
+            }
+#endif
+            return null;
+        }
+
+        void OnUserConnected(IPlayer player)
+        {
+            if (player == null) return;
+            string ip = player.Address;
+            string name = player.Name;
+            string steamid = player.Id;
+
+            isBanned_Delayed(name, steamid, ip, Ban_Escape);
         }
 
         ////////////////////////////////////////////////////////////
@@ -382,7 +441,10 @@ namespace Oxide.Plugins
             }
             storedData.Banlist.Add(bandata.ToJson());
 
-            return string.Format("Successfully added {0} to the banlist", bandata.ToString());
+            if (!cachedBans.ContainsKey(bandata.id))
+                cachedBans.Add(bandata.id, bandata);
+
+            return string.Format("Files: Successfully added {0} to the banlist", bandata.ToString());
         }
 
         string Files_ExecuteUnban(string steamid, string name, string ip, out List<BanData> unbanList)
@@ -406,7 +468,7 @@ namespace Oxide.Plugins
                     unbanList = cachedBans.Values.Where(x => x.name.ToLower().Contains(lname)).ToList();
                     if (unbanList.Count > 1)
                     {
-                        var ret = "Multiple Bans Found:\n";
+                        var ret = "Files: Multiple Bans Found:\n";
                         foreach (var b in unbanList)
                         {
                             ret += string.Format("{0} - {1} - {2}", b.steamid, b.name, b.reason);
@@ -427,6 +489,35 @@ namespace Oxide.Plugins
             return string.Format("Files: {0} matching bans were removed", i.ToString());
         }
 
+        bool Files_IsBanned(string steamid, string ip, out BanData bandata)
+        {
+            bandata = null;
+            List<BanData> list = new List<BanData>();
+            {
+                // check by ID then IP
+                var b_steamid = cachedBans.Values.Where(x => x.steamid == steamid).ToList();
+                var b_steamid_ip = b_steamid.Where(w => w.ip == ip).ToList();
+                if(b_steamid_ip.Count > 0)
+                {
+                    bandata = b_steamid_ip[0];
+                }
+                else if(b_steamid.Count > 0)
+                {
+                    bandata = b_steamid[0];
+                }
+            }
+            if (bandata == null)
+            {
+                // check by IP & IP Range
+                list = cachedBans.Values.Where(x => IPRange(x.ip, ip)).ToList();
+                if (list.Count > 0)
+                {
+                    bandata = list[0];
+                }
+            }
+            return bandata != null;
+        }
+
         ////////////////////////////////////////////////////////////
         // PlayerDatabase
         ////////////////////////////////////////////////////////////
@@ -440,8 +531,9 @@ namespace Oxide.Plugins
             public StoredIPData() { }
         }
 
-        void Load_PlayerDatabaseIP()
+        void Load_PlayerDatabase()
         {
+            if (PlayerDatabase == null) return;
             try
             {
                 storedIPData = Interface.GetMod().DataFileSystem.ReadObject<StoredIPData>("EnhancedBanSystem_IPs");
@@ -455,6 +547,22 @@ namespace Oxide.Plugins
                 var bd = JsonConvert.DeserializeObject<BanData>(b);
                 if(!cachedBans.ContainsKey(bd.id))
                     cachedBans.Add(bd.id, bd);
+            }
+            var getKnownPlayers = (List<string>)PlayerDatabase.Call("GetAllKnownPlayers");
+            if (getKnownPlayers == null) return;
+
+            List<BanData> list = new List<BanData>();
+            foreach (var steamid in getKnownPlayers)
+            {
+                var success = PlayerDatabase.Call("GetPlayerDataRaw", steamid, "Banned");
+                if (!(success is string)) continue;
+                list = JsonConvert.DeserializeObject<List<BanData>>((string)success);
+                foreach(var b in list)
+                {
+                    if(!cachedBans.ContainsKey(b.id))
+                        cachedBans.Add(b.id, b);
+                }
+                
             }
         }
 
@@ -474,6 +582,7 @@ namespace Oxide.Plugins
                 {
                     list = JsonConvert.DeserializeObject<List<BanData>>((string)success);
                 }
+
                 var f = list.Where(x => x.ip == bandata.ip).ToList();
                 if (f.Count > 0)
                 {
@@ -491,7 +600,9 @@ namespace Oxide.Plugins
                 }
                 storedIPData.Banlist.Add(bandata.ToJson());
             }
-            return string.Format("Successfully added {0} to the PlayerDatabase banlist", bandata.ToString());
+            if (!cachedBans.ContainsKey(bandata.id))
+                cachedBans.Add(bandata.id, bandata);
+            return string.Format("PlayerDatabase: Successfully added {0} to the banlist", bandata.ToString());
         }
 
         string PlayerDatabase_ExecuteUnban(string steamid, string name, string ip, out List<BanData> unbanList)
@@ -515,7 +626,7 @@ namespace Oxide.Plugins
                     unbanList = cachedBans.Values.Where(x => x.name.ToLower().Contains(lname)).ToList();
                     if(unbanList.Count > 1)
                     {
-                        var ret = "Multiple Bans Found:\n";
+                        var ret = "PlayerDatabase: Multiple Bans Found:\n";
                         foreach(var b in unbanList)
                         {
                             ret += string.Format("{0} - {1} - {2}", b.steamid, b.name, b.reason);
@@ -544,6 +655,42 @@ namespace Oxide.Plugins
             return string.Format("PlayerDatabase: {0} matching bans were removed", i.ToString());
         }
 
+        bool PlayerDatabase_IsBanned(string steamid, string ip, out BanData bandata)
+        {
+            bandata = null;
+            List<BanData> list = new List<BanData>();
+            {
+                // check by ID then IP
+                var b_steamid = PlayerDatabase.Call("GetPlayerDataRaw", steamid, "Banned");
+                if (b_steamid is string)
+                {
+                    list = JsonConvert.DeserializeObject<List<BanData>>((string)b_steamid);
+                }
+                foreach(var b in list)
+                {
+                    if(b.ip == ip)
+                    {
+                        bandata = b;
+                        return true;
+                    }
+                }
+                if(list.Count > 0)
+                {
+                    bandata = list[0];
+                }
+            }
+            if(bandata == null)
+            {
+                // check by IP & IP Range
+                list = cachedBans.Values.Where(x => IPRange(x.ip, ip)).ToList();
+                if(list.Count > 0)
+                {
+                    bandata = list[0];
+                }
+            }
+            return bandata != null;
+        }
+
         ////////////////////////////////////////////////////////////
         // WebAPI
         ////////////////////////////////////////////////////////////
@@ -559,11 +706,11 @@ namespace Oxide.Plugins
 
         string ExecuteBan_WebAPI(object source, BanData bandata)
         {
-            webrequest.EnqueueGet(FormatOnlineBansystem(WebAPI_Ban, new Dictionary<string, string> { { "{id}", bandata.id.ToString() }, { "{steamid}", bandata.steamid }, { "{name}", bandata.name }, { "{ip}", bandata.ip }, { "{reason}", bandata.reason }, { "{source}", bandata.source }, { "{expiration}", bandata.limit.ToString() }, { "{game}", bandata.game }, { "{platform}", bandata.platform }, { "{server}", bandata.server } }), (code, response) =>
+            webrequest.EnqueueGet(FormatOnlineBansystem(WebAPI_Ban, new Dictionary<string, string> { { "{id}", bandata.id.ToString() }, { "{steamid}", bandata.steamid }, { "{name}", bandata.name }, { "{ip}", bandata.ip }, { "{reason}", bandata.reason }, { "{source}", bandata.source }, { "{expiration}", bandata.expire.ToString() }, { "{game}", bandata.game }, { "{platform}", bandata.platform }, { "{server}", bandata.server } }), (code, response) =>
             {
                 if (response == null && code == 200)
                 {
-                    response = "Couldn't contact the WebAPI";
+                    response = "WebAPI: Couldn't contact the WebAPI";
                 }
                 if (source is IPlayer) ((IPlayer)source).Reply(response);
                 else Interface.Oxide.LogInfo(response);
@@ -578,7 +725,7 @@ namespace Oxide.Plugins
             {
                 if (response == null && code == 200)
                 {
-                    response = "Couldn't contact the WebAPI";
+                    response = "WebAPI: Couldn't contact the WebAPI";
                 }
                 if (source is IPlayer) ((IPlayer)source).Reply(response);
                 else Interface.Oxide.LogInfo(response);
@@ -601,10 +748,10 @@ namespace Oxide.Plugins
                 Sqlite_conn = Sqlite.OpenDb(SQLite_DB, this);
                 if (Sqlite_conn == null)
                 {
-                    Interface.Oxide.LogError("Couldn't open the SQLite PlayerDatabase. ");
+                    Interface.Oxide.LogError("PlayerDatabase: Couldn't open the SQLite PlayerDatabase. ");
                     return;
                 }
-                Sqlite.Insert(Core.Database.Sql.Builder.Append("CREATE TABLE IF NOT EXISTS EnhancedBanSystem ( id INTEGER NOT NULL PRIMARY KEY UNIQUE, steamid TEXT, name TEXT, ip TEXT, reason TEXT, source TEXT, game TEXT, platform TEXT, server TEXT, limit INTEGER);"), Sqlite_conn);
+                Sqlite.Insert(Core.Database.Sql.Builder.Append("CREATE TABLE IF NOT EXISTS EnhancedBanSystem ( id INTEGER NOT NULL PRIMARY KEY UNIQUE, steamid TEXT, name TEXT, ip TEXT, reason TEXT, source TEXT, game TEXT, platform TEXT, server TEXT, expire INTEGER );"), Sqlite_conn);
 
                 /*if (SQLite_Cache)
                 {
@@ -614,7 +761,7 @@ namespace Oxide.Plugins
                         foreach (var entry in list)
                         {
                             if (cachedBans.ContainsKey((int)entry["id"])) continue;
-                            var bd = new BanData((int)entry["id"], (string)entry["source"], (string)entry["steamid"], (string)entry["name"], (string)entry["ip"], (string)entry["reason"], (string)entry["limit"]);
+                            var bd = new BanData((int)entry["id"], (string)entry["source"], (string)entry["steamid"], (string)entry["name"], (string)entry["ip"], (string)entry["reason"], (string)entry["expire"]);
                             cachedBans.Add(bd.id, bd);
                         }
                     });
@@ -631,13 +778,13 @@ namespace Oxide.Plugins
         {
             try
             {
-                Sqlite.Insert(Core.Database.Sql.Builder.Append(string.Format("INSERT OR REPLACE INTO EnhancedBanSystem ( id, steamid, name, ip, reason, source, game, platform, server, limit ) VALUES ( @0, @1, @2, @3, @4, @5, @6, @7, @8, @9 )", bandata.id, bandata.steamid, bandata.name, bandata.ip, bandata.reason, bandata.source, bandata.game, bandata.platform, bandata.server, (int)bandata.limit)), Sqlite_conn);
+                Sqlite.Insert(Core.Database.Sql.Builder.Append("INSERT OR REPLACE INTO EnhancedBanSystem ( id, steamid, name, ip, reason, source, game, platform, server, expire ) VALUES ( @0, @1, @2, @3, @4, @5, @6, @7, @8, @9 )", bandata.id, bandata.steamid, bandata.name, bandata.ip, bandata.reason, bandata.source, bandata.game, bandata.platform, bandata.server, (int)bandata.expire), Sqlite_conn);
             }
             catch (Exception e)
             {
                 return e.Message;
             }
-            return string.Format("Successfully added {0} to the SQLite banlist", bandata.ToString());
+            return string.Format("SQLite: Successfully added {0} to the banlist", bandata.ToString());
         }
 
         string SQLite_ExecuteBan(object source, BanData bandata)
@@ -683,6 +830,114 @@ namespace Oxide.Plugins
             return string.Empty;
         }
 
+        string SQLite_ExecuteUnban(object source, string steamid, string name, string ip)
+        {
+            List<long> unbanList = new List<long>();
+            if (ip != string.Empty)
+            {
+                Sqlite.Query(Core.Database.Sql.Builder.Append("SELECT * from EnhancedBanSystem WHERE `ip` == @0 ", ip), Sqlite_conn, list =>
+                {
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            unbanList.Add((long)entry["id"]);
+                        }
+                    }
+                    foreach (var id in unbanList)
+                    {
+                        Sqlite.Insert(Core.Database.Sql.Builder.Append("DELETE from EnhancedBanSystem WHERE `id` = @0", id), Sqlite_conn);
+                    }
+                    var returnstring = string.Format("SQLite: {0} bans were removed", unbanList.Count);
+                    if (source is IPlayer) ((IPlayer)source).Reply(returnstring);
+                    else Interface.Oxide.LogInfo(returnstring);
+                });
+            }
+            else if(steamid != string.Empty)
+            {
+                Sqlite.Query(Core.Database.Sql.Builder.Append("SELECT * from EnhancedBanSystem WHERE `steamid` == @0", steamid), Sqlite_conn, list =>
+                {
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            unbanList.Add((int)entry["id"]);
+                        }
+                    }
+                    foreach (var id in unbanList)
+                    {
+                        Sqlite.Insert(Core.Database.Sql.Builder.Append("DELETE from EnhancedBanSystem WHERE `id` = @0", id), Sqlite_conn);
+                    }
+                    var returnstring = string.Format("SQLite: {0} bans were removed", unbanList.Count);
+                    if (source is IPlayer) ((IPlayer)source).Reply(returnstring);
+                    else Interface.Oxide.LogInfo(returnstring);
+                });
+            }
+            else
+            {
+                Sqlite.Query(Core.Database.Sql.Builder.Append("SELECT * from EnhancedBanSystem WHERE `name` LIKE @0", "%" + name + "%"), Sqlite_conn, list =>
+                {
+                    List<Dictionary<string, object>> f = new List<Dictionary<string, object>>();
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            f.Add(entry);
+                            unbanList.Add((long)entry["id"]);
+                        }
+                    }
+                    if (unbanList.Count > 1)
+                    {
+                        string ret = "SQLite: Multiple bans found:";
+                        foreach(var e in f)
+                        {
+                            ret += string.Format("{0} - {1} - {2}\n\r", (string)e["steamid"], (string)e["name"], (string)e["reason"]);
+                        }
+                        if (source is IPlayer) ((IPlayer)source).Reply(ret);
+                        else Interface.Oxide.LogInfo(ret);
+                        return;
+                    }
+                    foreach (var id in unbanList)
+                    {
+                        Sqlite.Insert(Core.Database.Sql.Builder.Append("DELETE from EnhancedBanSystem WHERE `id` = @0", id), Sqlite_conn);
+                    }
+                    var returnstring = string.Format("SQLite: {0} bans were removed", unbanList.Count);
+                    if (source is IPlayer) ((IPlayer)source).Reply(returnstring);
+                    else Interface.Oxide.LogInfo(returnstring);
+                });
+            }
+
+            return string.Empty;
+        }
+
+        void SQLite_IsBanned(string name, string steamid, string ip, bool update)
+        {
+            Sqlite.Query(Core.Database.Sql.Builder.Append("SELECT * from EnhancedBanSystem WHERE `steamid` == @0", steamid), Sqlite_conn, list =>
+            {
+            var l = new List<Dictionary<string, object>>();
+            if (list != null)
+            {
+                foreach (var entry in list)
+                {
+                    if ((string)entry["ip"] == ip)
+                    {
+                        timer.Once(0.1f, () => Kick(null, steamid, string.Format("You are banned from this server ({0})", (string)entry["reason"])));
+                        return;
+                    }
+                    l.Add(entry);
+                }
+            }
+            if (l.Count == 0)
+            {
+                Sqlite.Query(Core.Database.Sql.Builder.Append("SELECT * from EnhancedBanSystem WHERE `ip` == @0", ip), Sqlite_conn, list2 =>
+                {
+                    // Need to find a way to include range ban in here.
+                });
+            }
+            
+            });
+        }
+
         ////////////////////////////////////////////////////////////
         // MySQL
         ////////////////////////////////////////////////////////////
@@ -697,10 +952,10 @@ namespace Oxide.Plugins
                 Sql_conn = Sql.OpenDb(MySQL_Host, MySQL_Port, MySQL_DB, MySQL_User, MySQL_Pass, this);
                 if (Sql_conn == null || Sql_conn.Con == null)
                 {
-                    Interface.Oxide.LogError("Couldn't open the SQLite PlayerDatabase: " + Sql_conn.Con.State.ToString());
+                    Interface.Oxide.LogError("Couldn't open the MySQL PlayerDatabase: " + Sql_conn.Con.State.ToString());
                     return;
                 }
-                Sql.Insert(Core.Database.Sql.Builder.Append("CREATE TABLE IF NOT EXISTS enhancedbansystem ( `id` int(11) NOT NULL, `steamid` VARCHAR(17),`name` VARCHAR(25),`ip` VARCHAR(15),`reason` VARCHAR(25),`source` VARCHAR(25), `game` VARCHAR(25) , `platform` VARCHAR(25), `server` VARCHAR(25), `limit` int(11) );"), Sql_conn);
+                Sql.Insert(Core.Database.Sql.Builder.Append("CREATE TABLE IF NOT EXISTS enhancedbansystem ( `id` int(11) NOT NULL, `steamid` VARCHAR(17),`name` VARCHAR(25),`ip` VARCHAR(15),`reason` VARCHAR(25),`source` VARCHAR(25), `game` VARCHAR(25) , `platform` VARCHAR(25), `server` VARCHAR(25), `expire` int(11) );"), Sql_conn);
 
                /* if (MySQL_Cache)
                 {
@@ -710,7 +965,7 @@ namespace Oxide.Plugins
                         foreach (var entry in list)
                         {
                             if (cachedBans.ContainsKey((int)entry["id"])) continue;
-                            var bd = new BanData((int)entry["id"], (string)entry["source"], (string)entry["steamid"], (string)entry["name"], (string)entry["ip"], (string)entry["reason"], (string)entry["limit"]);
+                            var bd = new BanData((int)entry["id"], (string)entry["source"], (string)entry["steamid"], (string)entry["name"], (string)entry["ip"], (string)entry["reason"], (string)entry["expire"]);
                             cachedBans.Add(bd.id, bd);
                         }
                     });
@@ -726,13 +981,13 @@ namespace Oxide.Plugins
         {
             try
             {
-                Sql.Insert(Core.Database.Sql.Builder.Append(string.Format("INSERT IGNORE INTO playerdatabase ( `id`, `steamid`,`name`,`ip`,`reason`,`source`,`game`,`platform`, `server`, `limit` ) VALUES ( @0, @1, @2, @3, @4, @5, @6, @7, @8, @9 )", bandata.id, bandata.steamid, bandata.name, bandata.ip, bandata.reason, bandata.source, bandata.game, bandata.platform, bandata.server, (int)bandata.limit)), Sql_conn);
+                Sql.Insert(Core.Database.Sql.Builder.Append("INSERT IGNORE INTO playerdatabase ( `id`, `steamid`,`name`,`ip`,`reason`,`source`,`game`,`platform`, `server`, `expire` ) VALUES ( @0, @1, @2, @3, @4, @5, @6, @7, @8, @9 )", bandata.id, bandata.steamid, bandata.name, bandata.ip, bandata.reason, bandata.source, bandata.game, bandata.platform, bandata.server, (int)bandata.expire), Sql_conn);
             }
             catch (Exception e)
             {
                 return e.Message;
             }
-            return string.Format("Successfully added {0} to the MySQL banlist", bandata.ToString());
+            return string.Format("MySQL: Successfully added {0} to the banlist", bandata.ToString());
         }
 
         string MySQL_ExecuteBan(object source, BanData bandata)
@@ -778,6 +1033,77 @@ namespace Oxide.Plugins
             return string.Empty;
         }
 
+        string MySQL_ExecuteUnban(object source, string steamid, string name, string ip)
+        {
+            int i = 0;
+            List<int> unbanList = new List<int>();
+            if (ip != string.Empty)
+            {
+                Sql.Query(Core.Database.Sql.Builder.Append("SELECT * from enhancedbansystem WHERE `ip` == @0 ", ip), Sql_conn, list =>
+                {
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            unbanList.Add((int)entry["id"]);
+                            i++;
+                        }
+
+                    }
+                });
+            }
+            else if (steamid != string.Empty)
+            {
+                Sql.Query(Core.Database.Sql.Builder.Append("SELECT * from enhancedbansystem WHERE `steamid` == @0", steamid), Sql_conn, list =>
+                {
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            unbanList.Add((int)entry["id"]);
+                            i++;
+                        }
+                    }
+                });
+            }
+            else
+            {
+                Sql.Query(Core.Database.Sql.Builder.Append("SELECT * from enhancedbansystem WHERE `name` LIKE @0", "%" + name + "%"), Sql_conn, list =>
+                {
+                    List<Dictionary<string, object>> f = new List<Dictionary<string, object>>();
+                    if (list != null)
+                    {
+                        foreach (var entry in list)
+                        {
+                            f.Add(entry);
+                            unbanList.Add((int)entry["id"]);
+                            i++;
+                        }
+                    }
+                    if (unbanList.Count > 1)
+                    {
+                        string ret = "MySQL: Multiple bans found:";
+                        foreach (var e in f)
+                        {
+                            ret += string.Format("{0} - {1} - {2}\n\r", (string)e["steamid"], (string)e["name"], (string)e["reason"]);
+                        }
+                        if (source is IPlayer) ((IPlayer)source).Reply(ret);
+                        else Interface.Oxide.LogInfo(ret);
+                        return;
+                    }
+                });
+            }
+            foreach (var id in unbanList)
+            {
+                Sql.Insert(Core.Database.Sql.Builder.Append("DELETE from enhancedbansystem WHERE `id` = @0", id), Sql_conn);
+            }
+            var returnstring = string.Format("MySQL: {0} bans were removed");
+            if (source is IPlayer) ((IPlayer)source).Reply(returnstring);
+            else Interface.Oxide.LogInfo(returnstring);
+
+            return string.Empty;
+        }
+
         ////////////////////////////////////////////////////////////
         // Native
         ////////////////////////////////////////////////////////////
@@ -790,8 +1116,8 @@ namespace Oxide.Plugins
 
             if(iplayer.IsBanned) return "Native: player is already banned";
 
-            iplayer.Ban(bandata.reason, TimeSpan.Parse((LogTime() - bandata.limit).ToString()));
-            return string.Format("Successfully added {0} to the Native banlist", bandata.steamid);
+            iplayer.Ban(bandata.reason, TimeSpan.Parse((LogTime() - bandata.expire).ToString()));
+            return string.Format("Native: Successfully added {0} to the banlist", bandata.steamid);
         }
 
         string Native_ExecuteUnban(string steamid, string name)
@@ -820,12 +1146,22 @@ namespace Oxide.Plugins
             {
                 return "Native: Coulnd't find this player";
             }
-            if(!b.IsBanned)
+            if(!b.IsBanned) 
             {
                 return "Native: This player isn't banned";
             }
             b.Unban();
             return string.Format("Native: {0} - {1} was successfully unbanned", b.Id, b.Name);
+        }
+
+        bool Native_IsBanned(string steamid)
+        {
+            var b = players.GetPlayer(steamid);
+            if (b == null)
+            {
+                return false;
+            }
+            return b.IsBanned;
         }
 
 
@@ -874,6 +1210,63 @@ namespace Oxide.Plugins
         ////////////////////////////////////////////////////////////
         // IsBanned
         ////////////////////////////////////////////////////////////
+
+        bool isBanned_NonDelayed(string name, string steamid, string ip, bool update, out BanData bandata)
+        {
+            bool denied = false;
+            bandata = null;
+            if (!denied && BanSystemHasFlag(banSystem, BanSystem.Native))
+            {
+                if (Native_IsBanned(steamid))
+                {
+                    if (Log_Denied)
+                        Interface.Oxide.LogInfo(string.Format("Native: {0} - {1} - {2} was rejected from the server", steamid, name, ip));
+                    denied = true;
+                }
+            }
+            if (!denied && BanSystemHasFlag(banSystem, BanSystem.PlayerDatabase))
+            {
+                if(PlayerDatabase_IsBanned(steamid, ip, out bandata))
+                {
+                    if (Log_Denied)
+                        Interface.Oxide.LogInfo(string.Format("PlayerDatabase: {0} - {1} - {2} was rejected from the server", steamid, name, ip));
+                    denied = true;
+                }
+            }
+            if (!denied && BanSystemHasFlag(banSystem, BanSystem.Files))
+            {
+                if (Files_IsBanned(steamid, ip, out bandata))
+                {
+                    if (Log_Denied)
+                        Interface.Oxide.LogInfo(string.Format("Files: {0} - {1} - {2} was rejected from the server", steamid, name, ip));
+                    denied = true;
+                }
+            }
+            if(update && denied)
+            {
+                if(bandata != null && (bandata.ip != ip || bandata.steamid != steamid))
+                    ExecuteBan("EBS", steamid, name, ip, BanEvadeReason, bandata.expire == 0.0 ? 0.0 : bandata.expire - LogTime());
+                else if(bandata == null)
+                    ExecuteBan("EBS", steamid, name, ip, BanEvadeReason, 0.0);
+            }
+            return bandata != null;
+        }
+
+        void isBanned_Delayed(string name, string steamid, string ip, bool update)
+        {
+            if (BanSystemHasFlag(banSystem, BanSystem.SQLite))
+            {
+                SQLite_IsBanned(name, steamid, ip, update);
+            }
+            if (BanSystemHasFlag(banSystem, BanSystem.MySQL))
+            {
+                MySQL_IsBanned(name, steamid, ip, update);
+            }
+            if (BanSystemHasFlag(banSystem, BanSystem.WebAPI))
+            {
+                WebAPI_IsBanned(name, steamid, ip, update);
+            }
+        }
 
         bool isBannedMatchedPlayer(string steamid, string ip, out BanData bandata)
         {
@@ -939,34 +1332,31 @@ namespace Oxide.Plugins
 
             var bandata = new BanData(source, userID, name, ip, reason, duration);
 
-            if(banSystem.HasFlag(BanSystem.PlayerDatabase))
+            if(BanSystemHasFlag(banSystem,BanSystem.PlayerDatabase))
             {
                 returnstring += ExecuteBan_PlayerDatabase(bandata);
             }
-            if(banSystem.HasFlag(BanSystem.Files))
+            if(BanSystemHasFlag(banSystem,BanSystem.Files))
             {
                 returnstring += ExecuteBan_Files(bandata);
             }
-            if(banSystem.HasFlag(BanSystem.MySQL))
+            if(BanSystemHasFlag(banSystem,BanSystem.MySQL))
             {
                 returnstring += MySQL_ExecuteBan(source, bandata);
             }
-            if(banSystem.HasFlag(BanSystem.SQLite))
+            if(BanSystemHasFlag(banSystem,BanSystem.SQLite))
             {
                 returnstring += SQLite_ExecuteBan(source, bandata);
             }
-            if(banSystem.HasFlag(BanSystem.WebAPI))
+            if(BanSystemHasFlag(banSystem,BanSystem.WebAPI))
             {
                 returnstring += ExecuteBan_WebAPI(source, bandata);
             }
-            if (banSystem.HasFlag(BanSystem.Native))
+            if (BanSystemHasFlag(banSystem,BanSystem.Native) && duration == 0.0)
             {
                 returnstring += ExecuteBan_Native(bandata);
             }
-
-            if(!HasDelayedAnswer() && !banSystem.HasFlag(BanSystem.Native) && !cachedBans.ContainsKey(bandata.id))
-                cachedBans.Add(bandata.id, bandata);
-
+            
             if (Ban_Broadcast && name != string.Empty)
                 server.Broadcast(string.Format(GetMsg("{0} was {2} banned from the server ({1})"), name, reason, duration == 0.0 ? GetMsg("permanently") : GetMsg("temporarily")));
 
@@ -989,27 +1379,27 @@ namespace Oxide.Plugins
             List<BanData> unbanList = new List<BanData>();
             List<BanData> unbanList2 = new List<BanData>();
 
-            if (banSystem.HasFlag(BanSystem.PlayerDatabase))
+            if (BanSystemHasFlag(banSystem,BanSystem.PlayerDatabase))
             {
                 returnstring += PlayerDatabase_ExecuteUnban(steamid, name, ip, out unbanList);
             }
-            if (banSystem.HasFlag(BanSystem.Files))
+            if (BanSystemHasFlag(banSystem,BanSystem.Files))
             {
                 returnstring += Files_ExecuteUnban(steamid, name, ip, out unbanList2);
             }
-            if (banSystem.HasFlag(BanSystem.MySQL))
+            if (BanSystemHasFlag(banSystem,BanSystem.MySQL))
             {
                 returnstring += MySQL_ExecuteUnban(source, steamid, name, ip);
             }
-            if (banSystem.HasFlag(BanSystem.SQLite))
+            if (BanSystemHasFlag(banSystem,BanSystem.SQLite))
             {
                 returnstring += SQLite_ExecuteUnban(source, steamid, name, ip);
             }
-            if (banSystem.HasFlag(BanSystem.WebAPI))
+            if (BanSystemHasFlag(banSystem,BanSystem.WebAPI))
             {
                 returnstring += WebAPI_ExecuteUnban(source, steamid, name, ip);
             }
-            if (banSystem.HasFlag(BanSystem.Native))
+            if (BanSystemHasFlag(banSystem,BanSystem.Native))
             {
                 returnstring += Native_ExecuteUnban(steamid, name);
             }
