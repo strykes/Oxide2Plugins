@@ -8,10 +8,12 @@ When navigate to the sides, the parachute will be on the side, to give a bit mor
 
 **Commands:**
 Chat: `/parachute`
+
 Console: `parachute`
 
 **Permissions:**
 Either be an admin, or have oxide's permission: `parachute.allowed` 
+
 
 **Configuration:**
 You may change the cooldown options freely
