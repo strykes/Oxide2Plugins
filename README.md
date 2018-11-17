@@ -7,13 +7,11 @@ A new way to smoothly glide down with a parachute, fully customisable (speed of 
 When navigate to the sides, the parachute will be on the side, to give a bit more reality to it.
 
 **Commands:**
-
-Chat: `/parachute`
-
-Console: `parachute`
+Chat: /parachute
+Console: parachute
 
 **Permissions:**
-Either be an admin, or have oxide's permission: `parachute.allowed` 
+Either be an admin, or have oxide's permission: parachute.allowed
 
 
 **Configuration:**
@@ -46,16 +44,16 @@ The Parachute option might be tricky to use, so be aware before editing it.
 *As i don't have much time to code, my plugins are always welcomed to be improved by others, and may be taken over if you have updates/improvements to do*
 
 I kept from the Chute plugin
-`void ExternalAddPlayerChute(BasePlayer player)`
+void ExternalAddPlayerChute(BasePlayer player)
 
-`TryDeployParachuteOnPlayer(BasePlayer player)`
-It will try to add a parachute to the player on his position, but will check if the player is already mounting / on the ground / cooldown blocked
+bool TryDeployParachuteOnPlayer(BasePlayer player)
+*It will try to add a parachute to the player on his position, but will check if the player is already mounting / on the ground / cooldown blocked*
 
-`DeployParachuteOnPlayer(BasePlayer player)`
- It will add a parachute to the player on his position and will ignore all checks
+bool DeployParachuteOnPlayer(BasePlayer player)
+* It will add a parachute to the player on his position and will ignore all checks*
 
-`DeployParachuteOnPosition(BasePlayer player, Vector3 position)`
- It will teleport the player to the designated position and add a parachute to the player
+bool DeployParachuteOnPosition(BasePlayer player, Vector3 position)
+* It will teleport the player to the designated position and add a parachute to the player*
 
-`DeployParachuteOnPositionAndRotation(BasePlayer player, Vector3 position, Vector3 rotation)`
-It will teleport the player to the designated position, set his rotation angle and add a parachute to the player
+bool DeployParachuteOnPositionAndRotation(BasePlayer player, Vector3 position, Vector3 rotation)
+*It will teleport the player to the designated position, set his rotation angle and add a parachute to the player*
