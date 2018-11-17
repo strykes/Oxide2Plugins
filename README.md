@@ -7,6 +7,7 @@ A new way to smoothly glide down with a parachute, fully customisable (speed of 
 When navigate to the sides, the parachute will be on the side, to give a bit more reality to it.
 
 **Commands:**
+
 Chat: `/parachute`
 
 Console: `parachute`
