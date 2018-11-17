@@ -1,523 +1,751 @@
-using System.Collections.Generic;
+using Facepunch;
+using Oxide.Core;
+using Oxide.Game.Rust.Cui;
 using System;
+using System.Collections.Generic;
 using System.Reflection;
-
 using UnityEngine;
+using System.Linq;
 
 namespace Oxide.Plugins
 {
-    [Info("Build", "Reneb & NoGrod", "1.1.1", ResourceId = 715)]
-    class Build : RustPlugin
+    [Info("Build", "Reneb & NoGrod", "2.0.82")]
+    public class Build : RustPlugin
     {
-        class BuildPlayer : MonoBehaviour
+        #region UI
+        public class UI
         {
-            public BasePlayer player;
-            public InputState input;
-            public string currentPrefab;
-            public string currentType;
-            public float currentHealth;
-            public Quaternion currentRotate;
-            public BuildingGrade.Enum currentGrade;
-            public bool ispressed;
-            public float lastTickPress;
-            public float currentHeightAdjustment;
-            public string selection;
-
-            void Awake()
+            static public CuiElementContainer CreateElementContainer(string parent, string panelName, string color, string aMin, string aMax, bool useCursor)
             {
-                input = serverinput.GetValue(GetComponent<BasePlayer>()) as InputState;
-                player = GetComponent<BasePlayer>();
-                enabled = true;
-                ispressed = false;
-            }
-
-            void Update()
-            {
-                if (input.WasJustPressed(BUTTON.FIRE_SECONDARY) && !ispressed)
+                var NewElement = new CuiElementContainer()
                 {
-                    lastTickPress = Time.realtimeSinceStartup;
-                    ispressed = true;
-                    DoAction(this);
-                }
-                else if (input.IsDown(BUTTON.FIRE_SECONDARY))
-                {
-                    if ((Time.realtimeSinceStartup - lastTickPress) > timeForMultiple)
                     {
-                        DoAction(this);
+                        new CuiPanel
+                        {
+                            Image = {Color = color},
+                            RectTransform = {AnchorMin = aMin, AnchorMax = aMax},
+                            CursorEnabled = useCursor
+                        },
+                        new CuiElement().Parent = parent,
+                        panelName
                     }
-                }
-                else
+                };
+                return NewElement;
+            }
+            static public void CreatePanel(ref CuiElementContainer container, string panel, string color, string aMin, string aMax, bool cursor = false)
+            {
+                container.Add(new CuiPanel
                 {
-                    ispressed = false;
-                }
+                    Image = { Color = color },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
+                    CursorEnabled = cursor
+                },
+                panel);
             }
-
-            public void LoadMsgGui(string Msg)
+            static public void CreateImage(ref CuiElementContainer container, string panel, string url, string name, string aMin, string aMax, bool cursor = false)
             {
-                if (!useGui) return;
-                Game.Rust.Cui.CuiHelper.DestroyUi(player, "BuildMsg");
-                //Game.Rust.Cui.CuiHelper.AddUi(player, json.Replace("{msg}", Msg));
-                CommunityEntity.ServerInstance.ClientRPCEx(new Network.SendInfo { connection = player.net.connection }, null, "AddUI", new Facepunch.ObjectList(json.Replace("{msg}", Msg)));
+                container.Add(new CuiElement
+                {
+                    Name = name,
+                    Parent = panel,
+                    Components =
+                    {
+                        new CuiRawImageComponent
+                        {
+                            Url = url
+                        },
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = aMin,
+                            AnchorMax = aMax
+                        }
+                    }
+                });
             }
-
-            public void DestroyGui()
+            static public void CreateLabel(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, TextAnchor align = TextAnchor.MiddleCenter)
             {
-                Game.Rust.Cui.CuiHelper.DestroyUi(player, "BuildMsg");
+                container.Add(new CuiLabel
+                {
+                    Text = { Color = color, FontSize = size, Align = align, Text = text },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax }
+                },
+                panel);
+
+            }
+            static public void CreateButton(ref CuiElementContainer container, string panel, string color, string text, int size, string aMin, string aMax, string command, TextAnchor align = TextAnchor.MiddleCenter)
+            {
+                container.Add(new CuiButton
+                {
+                    Button = { Color = color, Command = command, FadeIn = 1.0f },
+                    RectTransform = { AnchorMin = aMin, AnchorMax = aMax },
+                    Text = { Text = text, FontSize = size, Align = align }
+                },
+                panel);
             }
         }
+        #endregion
 
-        enum SocketType
+        bool permBuildForAll = false;
+        
+        private static float mdist = 9999f;
+
+        private static int generalColl = LayerMask.GetMask("Construction", "Deployable", "Default", "Prevent Building", "Deployed", "Resource", "Terrain", "Water", "World","Tree");
+        private static int constructionColl = UnityEngine.LayerMask.GetMask(new string[] { "Construction", "Deployable", "Prevent Building", "Deployed" });
+
+        private string green = "0 1 0 0.5"; 
+        private string red = "1 0 0 0.5"; 
+        private string gray = "0.5 0.5 0.5 0.5";
+        private string permBuild = "build.perm";
+
+        private static Vector3 newPos = new Vector3(0f, 0f, 0f);
+        private static Quaternion newRot = new Quaternion(0f, 0f, 0f, 0f);
+        private static Quaternion defaultQuaternion = Quaternion.Euler(0f, 45f, 0f);
+        private static BuildingConstruction sourcebuild = null;
+        private static BuildingConstruction targetbuild = null;
+        private static Dictionary<string, BuildingConstruction> buildings = new Dictionary<string, BuildingConstruction>();
+        private static Dictionary<Building, string> BuildingToPrefab = new Dictionary<Building, string>();
+        private static Dictionary<string, uint> deployables = new Dictionary<string, uint>();
+        private static List<string> resourcesList = new List<string>();
+        private static List<object> houseList = new List<object>();
+        private static List<Vector3> checkFrom = new List<Vector3>();
+
+        private Dictionary<ulong, PlayerBuild> playerBuild = new Dictionary<ulong, PlayerBuild>();
+        private Dictionary<ulong, bool> buildToggled = new Dictionary<ulong, bool>();
+
+        private enum Placement
+        {
+            Auto,
+            Up,
+            Force
+        }
+
+        private enum PlayerBuildType
+        {
+            Build,
+            Deploy,
+            Spawn,
+            Grade,
+            Heal,
+            Rotate,
+            Erase,
+            None
+        }
+
+        private enum Building
+        {
+            Foundation,
+            FoundationTriangle,
+            FoundationSteps,
+            Floor,
+            FloorTriangle,
+            FloorFrame,
+            Wall,
+            WallDoorway,
+            WallWindow,
+            WallFrame,
+            WallHalf,
+            WallLow,
+            StairsLShaped,
+            StairsUShaped,
+            Roof
+        }
+
+        private enum Selection
+        {
+            Select,
+            All
+        }
+
+        private enum SocketType
         {
             Wall,
             Floor,
-            Bar,
-            Block,
+            Steps,
             FloorTriangle,
-            Support,
-            Door
+            Block,
+            Roof
         }
 
-        private static FieldInfo serverinput;
-        private static Dictionary<string, string> deployedToItem;
-        private Dictionary<string, string> nameToBlockPrefab;
-        private static Dictionary<string, SocketType> nameToSockets;
-        private static Dictionary<SocketType, object> TypeToType;
-        private static List<string> resourcesList;
-        private static Dictionary<string, string> animalList;
-
-        public static string json = @"[
-            {
-                ""name"": ""BuildMsg"",
-                ""parent"": ""HUD/Overlay"",
-                ""components"":
-                [
-                    {
-                         ""type"":""UnityEngine.UI.Image"",
-                         ""color"":""0.1 0.1 0.1 0.7"",
-                    },
-                    {
-                        ""type"":""RectTransform"",
-                        ""anchormin"": ""{xmin} {ymin}"",
-                        ""anchormax"": ""{xmax} {ymax}""
-                    }
-                ]
-            },
-            {
-                ""parent"": ""BuildMsg"",
-                ""components"":
-                [
-                    {
-                        ""type"":""UnityEngine.UI.Text"",
-                        ""text"":""{msg}"",
-                        ""fontSize"":15,
-                        ""align"": ""MiddleCenter"",
-                    },
-                    {
-                        ""type"":""RectTransform"",
-                        ""anchormin"": ""0 0.1"",
-                        ""anchormax"": ""1 0.8""
-                    }
-                ]
-            }
-        ]
-        ";
-
-        /// CACHED VARIABLES
-        ///
-
-        private static Quaternion currentRot;
-        private static Vector3 closestHitpoint;
-        private static object closestEnt;
-        private static Quaternion newRot;
-        private string buildType;
-        private string prefabName;
-        private static int defaultGrade;
-        private static float defaultHealth;
-        private static Vector3 newPos;
-        private static float distance;
-        private static Dictionary<SocketType, object> sourceSockets;
-        private static SocketType targetsocket;
-        private static SocketType sourcesocket;
-        private static Dictionary<Vector3, Quaternion> newsockets;
-        private static Vector3 VectorUP;
-        private static float heightAdjustment;
-        private static BasePlayer currentplayer;
-        private static Collider currentCollider;
-        private static BaseNetworkable currentBaseNet;
-        private static List<object> houseList;
-        private static List<Vector3> checkFrom;
-        private static Item newItem;
-
-        private static Quaternion defaultQuaternion = new Quaternion(0f, 0f, 0f, 1f);
-
-        public static float timeForMultiple;
-        private static int levelRequired;
-        private static bool Changed = false;
-
-        private static bool useGui;
-        private string xmin;
-        private string ymin;
-        private string xmax;
-        private string ymax;
-
-        private object GetConfig(string menu, string datavalue, object defaultValue)
+        bool hasAuth(BasePlayer player)
         {
-            var data = Config[menu] as Dictionary<string, object>;
-            if (data == null)
-            {
-                data = new Dictionary<string, object>();
-                Config[menu] = data;
-                Changed = true;
-            }
-            object value;
-            if (!data.TryGetValue(datavalue, out value))
-            {
-                value = defaultValue;
-                data[datavalue] = value;
-                Changed = true;
-            }
-            return value;
-        }
-        private void LoadVariables()
-        {
-            timeForMultiple = Convert.ToSingle(GetConfig("Config", "Pressed time before multiple spawns (seconds)", 1f));
-            levelRequired = Convert.ToInt32(GetConfig("Config", "authLevel Required (1 moderator, 2 admin)", 2));
-
-            useGui = Convert.ToBoolean(GetConfig("GUI", "activated", true));
-            xmin = Convert.ToString(GetConfig("GUI", "x min", "0.020"));
-            xmax = Convert.ToString(GetConfig("GUI", "x max", "0.980"));
-            ymin = Convert.ToString(GetConfig("GUI", "y min", "0.95"));
-            ymax = Convert.ToString(GetConfig("GUI", "y max", "0.99"));
-
-            if (Changed)
-            {
-                SaveConfig();
-                Changed = false;
-            }
-        }
-        protected override void LoadDefaultConfig()
-        {
-            Puts("Build: Creating a new config file");
-            Config.Clear();
-            LoadVariables();
+            return (permBuildForAll || (permission.UserHasPermission(player.userID.ToString(), permBuild)));
         }
 
-        /////////////////////////////////////////////////////
-        ///  OXIDE HOOKS
-        /////////////////////////////////////////////////////
-
-        /////////////////////////////////////////////////////
-        ///  Loaded()
-        ///  When the plugin is loaded by Oxide
-        /////////////////////////////////////////////////////
-
-        void Loaded()
-        {
-            serverinput = typeof(BasePlayer).GetField("serverInput", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-            deployedToItem = new Dictionary<string, string>();
-            LoadVariables();
-            nameToBlockPrefab = new Dictionary<string, string>();
-            VectorUP = new Vector3(0f, 1f, 0f);
-            if (!permission.PermissionExists("builder")) permission.RegisterPermission("builder", this);
-            json = json.Replace("{xmin}", xmin).Replace("{xmax}", xmax).Replace("{ymin}", ymin).Replace("{ymax}", ymax);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  Unload()
-        ///  When the plugin is unloaded by Oxide
-        /////////////////////////////////////////////////////
-        void Unload()
-        {
-            var objects = UnityEngine.Object.FindObjectsOfType<BuildPlayer>();
-            if (objects != null)
-                foreach (var gameObj in objects)
-                    UnityEngine.Object.Destroy(gameObj);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  Loaded()
-        ///  When the server has been initialized and all plugins loaded
-        /////////////////////////////////////////////////////
         void OnServerInitialized()
         {
-            InitializeBlocks();
-            InitializeSockets();
-            InitializeDeployables();
-            InitializeAnimals();
-            NextTick(InitializeResources);
-        }
+            permission.RegisterPermission(permBuild, this);
 
-        /////////////////////////////////////////////////////
-        /// Get all animals in an easy list to convert from shortname to full prefabname
-        /////////////////////////////////////////////////////
-        void InitializeAnimals()
-        {
-            animalList = new Dictionary<string, string>();
-            foreach (var str in GameManifest.Get().pooledStrings)
+            BuildingToPrefab = new Dictionary<Building, string>
             {
-                if (str.str.Contains("autospawn/animals"))
+                {Building.Foundation, "assets/prefabs/building core/foundation/foundation.prefab" },
+                {Building.Floor, "assets/prefabs/building core/floor/floor.prefab" },
+                {Building.FloorFrame, "assets/prefabs/building core/floor.frame/floor.frame.prefab" },
+                {Building.FoundationSteps, "assets/prefabs/building core/foundation.steps/foundation.steps.prefab" },
+                {Building.Wall,"assets/prefabs/building core/wall/wall.prefab" },
+                {Building.WallDoorway,"assets/prefabs/building core/wall.doorway/wall.doorway.prefab" },
+                {Building.WallFrame,"assets/prefabs/building core/wall.frame/wall.frame.prefab" },
+                {Building.WallHalf,"assets/prefabs/building core/wall.half/wall.half.prefab" },
+                {Building.WallLow,"assets/prefabs/building core/wall.low/wall.low.prefab" },
+                {Building.WallWindow,"assets/prefabs/building core/wall.window/wall.window.prefab" },
+                {Building.FoundationTriangle,"assets/prefabs/building core/foundation.triangle/foundation.triangle.prefab"},
+                {Building.FloorTriangle,"assets/prefabs/building core/floor.triangle/floor.triangle.prefab" },
+                {Building.StairsLShaped,"assets/prefabs/building core/stairs.l/block.stair.lshape.prefab" },
+                {Building.Roof,"assets/prefabs/building core/roof/roof.prefab" },
+                {Building.StairsUShaped,"assets/prefabs/building core/stairs.u/block.stair.ushape.prefab" }
+            };
+
+            buildings.Clear();
+
+            var foundationSockets = new BuildingSocket(SocketType.Floor);
+            foundationSockets.AddTargetSock(SocketType.Floor, new Vector3(0, 0, -3f), new Quaternion(0, 1f, 0, 0));
+            foundationSockets.AddTargetSock(SocketType.Floor, new Vector3(-3f, 0, 0), new Quaternion(0, 0f, 0, 1f));
+            foundationSockets.AddTargetSock(SocketType.Floor, new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
+            foundationSockets.AddTargetSock(SocketType.Floor, new Vector3(3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+
+            foundationSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
+            foundationSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(0f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
+            foundationSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+
+            foundationSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, 1.5f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.Wall, new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
+            foundationSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.Wall, new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+
+            foundationSockets.AddTargetSock(SocketType.Roof, new Vector3(0f, 0f, 3f), new Quaternion(0f, 1f, 0f, 0f));
+            foundationSockets.AddTargetSock(SocketType.Roof, new Vector3(-3f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.Roof, new Vector3(0f, 0f, -3f), new Quaternion(0f, 0f, 0f, 1f));
+            foundationSockets.AddTargetSock(SocketType.Roof, new Vector3(3f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+
+            foundationSockets.AddTargetSock(SocketType.Block, new Vector3(0f, 0.1f, 0f), new Quaternion(0f, 1f, 0f, 0f));
+             
+            foundationSockets.AddTargetSock(SocketType.Steps, new Vector3(0f, 0f, 1.5f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.Steps, new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
+            foundationSockets.AddTargetSock(SocketType.Steps, new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            foundationSockets.AddTargetSock(SocketType.Steps, new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+
+            buildings.Add("assets/prefabs/building core/foundation/foundation.prefab", new BuildingConstruction("assets/prefabs/building core/foundation/foundation.prefab", foundationSockets, Building.Foundation));
+            buildings.Add("assets/prefabs/building core/floor/floor.prefab", new BuildingConstruction("assets/prefabs/building core/floor/floor.prefab", foundationSockets, Building.Floor));
+            buildings.Add("assets/prefabs/building core/floor.frame/floor.frame.prefab", new BuildingConstruction("assets/prefabs/building core/floor.frame/floor.frame.prefab", foundationSockets, Building.FloorFrame));
+
+            var wallSockets = new BuildingSocket(SocketType.Wall);
+            wallSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, -3f), new Quaternion(0f, 0f, 0f, 1f));
+            wallSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
+
+            wallSockets.AddTargetSock(SocketType.Floor, new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
+            wallSockets.AddTargetSock(SocketType.Floor, new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+
+            wallSockets.AddTargetSock(SocketType.Roof, new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
+            wallSockets.AddTargetSock(SocketType.Roof, new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+
+
+            buildings.Add("assets/prefabs/building core/wall/wall.prefab", new BuildingConstruction("assets/prefabs/building core/wall/wall.prefab", wallSockets, Building.Wall));
+            buildings.Add("assets/prefabs/building core/wall.doorway/wall.doorway.prefab", new BuildingConstruction("assets/prefabs/building core/wall.doorway/wall.doorway.prefab", wallSockets, Building.Wall));
+            buildings.Add("assets/prefabs/building core/wall.frame/wall.frame.prefab", new BuildingConstruction("assets/prefabs/building core/wall.frame/wall.frame.prefab", wallSockets, Building.WallFrame));
+            buildings.Add("assets/prefabs/building core/wall.half/wall.half.prefab", new BuildingConstruction("assets/prefabs/building core/wall.half/wall.half.prefab", wallSockets, Building.WallHalf));
+            buildings.Add("assets/prefabs/building core/wall.low/wall.low.prefab", new BuildingConstruction("assets/prefabs/building core/wall.low/wall.low.prefab", wallSockets, Building.WallLow));
+            buildings.Add("assets/prefabs/building core/wall.window/wall.window.prefab", new BuildingConstruction("assets/prefabs/building core/wall.window/wall.window.prefab", wallSockets, Building.WallWindow));
+
+            var stepsSockets = new BuildingSocket(SocketType.Steps);
+
+            stepsSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+            stepsSockets.AddTargetSock(SocketType.Wall, new Vector3(3f, 1.5f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+
+            stepsSockets.AddTargetSock(SocketType.Floor, new Vector3(4.5f, 1.5f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
+            stepsSockets.AddTargetSock(SocketType.Floor, new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            buildings.Add("assets/prefabs/building core/foundation.steps/foundation.steps.prefab", new BuildingConstruction("assets/prefabs/building core/foundation.steps/foundation.steps.prefab", stepsSockets, Building.FoundationSteps));
+
+            var trianglesSockets = new BuildingSocket(SocketType.FloorTriangle);
+            trianglesSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0.0000001629207f));
+            trianglesSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
+            trianglesSockets.AddTargetSock(SocketType.FloorTriangle, new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
+
+            trianglesSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
+            trianglesSockets.AddTargetSock(SocketType.Wall, new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
+            trianglesSockets.AddTargetSock(SocketType.Wall, new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
+
+            trianglesSockets.AddTargetSock(SocketType.Roof, new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0f, 0f, 1f));
+            trianglesSockets.AddTargetSock(SocketType.Roof, new Vector3(-2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.8660254f, 0f, 0.5f));
+            trianglesSockets.AddTargetSock(SocketType.Roof, new Vector3(2.0490381f, 0f, 2.0490381f), new Quaternion(0f, -0.8660254f, 0f, 0.5f));
+
+            trianglesSockets.AddTargetSock(SocketType.Floor, new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
+            trianglesSockets.AddTargetSock(SocketType.Floor, new Vector3(-2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, -0.8660254f));
+            trianglesSockets.AddTargetSock(SocketType.Floor, new Vector3(2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, 0.8660254f));
+
+            buildings.Add("assets/prefabs/building core/floor.triangle/floor.triangle.prefab", new BuildingConstruction("assets/prefabs/building core/floor.triangle/floor.triangle.prefab", trianglesSockets, Building.FloorTriangle));
+            buildings.Add("assets/prefabs/building core/foundation.triangle/foundation.triangle.prefab", new BuildingConstruction("assets/prefabs/building core/foundation.triangle/foundation.triangle.prefab", trianglesSockets, Building.FoundationTriangle));
+
+            buildings.Add("assets/prefabs/building core/stairs.l/block.stair.lshape.prefab", new BuildingConstruction("assets/prefabs/building core/stairs.l/block.stair.lshape.prefab", new BuildingSocket(SocketType.Block), Building.StairsLShaped));
+            buildings.Add("assets/prefabs/building core/stairs.u/block.stair.ushape.prefab", new BuildingConstruction("assets/prefabs/building core/stairs.u/block.stair.ushape.prefab", new BuildingSocket(SocketType.Block), Building.StairsUShaped));
+
+            var roofSockets = new BuildingSocket(SocketType.Roof);
+            roofSockets.AddTargetSock(SocketType.Roof, new Vector3(0f, 3f, -3f), new Quaternion(0f, 0f, 0f, 1f));
+            roofSockets.AddTargetSock(SocketType.Roof, new Vector3(-3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+            roofSockets.AddTargetSock(SocketType.Roof, new Vector3(3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
+
+            roofSockets.AddTargetSock(SocketType.Wall, new Vector3(0f, 3f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+
+            roofSockets.AddTargetSock(SocketType.Floor, new Vector3(0f, 3f, -3f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+            roofSockets.AddTargetSock(SocketType.Floor, new Vector3(0f, 0f, 3f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
+
+            buildings.Add("assets/prefabs/building core/roof/roof.prefab", new BuildingConstruction("assets/prefabs/building core/roof/roof.prefab", roofSockets, Building.Roof));
+
+            foreach (var d in GetAllPrefabs<Construction>())
+            {
+                if (d.deployable != null && d.isServer)
                 {
-                    var animalPrefab = str.str.Substring(41);
-                    animalList.Add(animalPrefab.Remove(animalPrefab.Length - 7), str.str);
+                    string name = d.hierachyName.Replace("_deployed", "").Replace(".deployed", "");
+                    if(!deployables.ContainsKey(name))
+                        deployables.Add(name, d.prefabID);
                 }
             }
-        }
+            deployables = deployables.OrderBy(w => w.Key).ToDictionary(t => t.Key, t => t.Value);
 
-        /////////////////////////////////////////////////////
-        /// Get all resources in an easy list to convert from ID to full prefabname
-        /////////////////////////////////////////////////////
-        void InitializeResources()
-        {
-            resourcesList = new List<string>();
-            var filesField = typeof(FileSystem_AssetBundles).GetField("files", BindingFlags.Instance | BindingFlags.NonPublic);
-            var files = (Dictionary<string, AssetBundle>)filesField.GetValue(FileSystem.iface);
+            resourcesList.Clear();
+
+            var bundlesField = typeof(AssetBundleBackend).GetField("bundles", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+            var filesField = typeof(AssetBundleBackend).GetField("files", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+            var manifestField = typeof(AssetBundleBackend).GetField("manifest", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            
+            var manifest = manifestField.GetValue(FileSystem.Backend) as AssetBundleManifest;
+            var bundles = bundlesField.GetValue(FileSystem.Backend) as Dictionary<string, AssetBundle>;
+            
+            var files = (Dictionary<string, AssetBundle>) filesField.GetValue(FileSystem.Backend);
             foreach (var str in files.Keys)
             {
-                if ((str.StartsWith("assets/content/") || str.StartsWith("assets/bundled/")) && str.EndsWith(".prefab"))
+                if (str.EndsWith(".prefab"))
                 {
+                    if (str.Contains(".worldmodel.")
+                    || str.Contains("/fx/")
+                    || str.Contains("/effects/")
+                    || str.Contains("/build/skins/")
+                    || str.Contains("/_unimplemented/")
+                    || str.Contains("/ui/")
+                    || str.Contains("/sound/")
+                    || str.Contains("/footsteps/")
+                    || str.Contains("/sounds/")
+                    || str.Contains("/world/")
+                    || str.Contains("/env/")
+                    || str.Contains("/clothing/")
+                    || str.Contains("/skins/")
+                    || str.Contains("/decor/")
+                    || str.Contains("/monument/")
+                    || str.Contains("/projectiles/")
+                    || str.Contains("/meat_")
+                    || str.EndsWith(".skin.prefab")
+                    || str.EndsWith(".viewmodel.prefab") 
+                    || str.EndsWith("_test.prefab")
+                    || str.EndsWith("_collision.prefab")
+                    || str.EndsWith("_ragdoll.prefab")
+                    || str.EndsWith("_skin.prefab")
+                    || str.Contains("localization")
+                    || str.Contains("/skin/")
+                    || str.Contains("/materials/")
+                    || str.Contains("/system/")
+                    || str.Contains("/physicmaterials/")
+                    || str.Contains("/image effects/")
+                    || str.Contains("/icons/")
+                    || str.Contains("/system/")
+                    || str.Contains("/server/")
+                    || str.Contains("/clutter/"))
+                        continue;
+
                     var gmobj = GameManager.server.FindPrefab(str);
 
-                    if (gmobj?.GetComponent<BaseEntity>() != null)
+                    if (gmobj?.GetComponent<BaseEntity>() != null && !resourcesList.Contains(str))
+                    {
                         resourcesList.Add(str);
+                    }
                 }
             }
         }
 
-        /////////////////////////////////////////////////////
-        /// Get all deployables in an easy list to convert from shortname to fullname
-        /////////////////////////////////////////////////////
-        void InitializeDeployables()
+        void OnPlayerInput(BasePlayer player, InputState state)
         {
-            var allItemsDef = ItemManager.itemList;
-            foreach (var itemDef in allItemsDef)
+            if(state.WasJustPressed(BUTTON.FIRE_THIRD))
             {
-                if (itemDef.GetComponent<ItemModDeployable>() != null)
+                if (hasAuth(player))
                 {
-                    deployedToItem.Add(itemDef.displayName.english.ToLower(), itemDef.shortname);
+                    if (!buildToggled.ContainsKey(player.userID))
+                    {
+                        if (!playerBuild.ContainsKey(player.userID))
+                        {
+                            playerBuild.Add(player.userID, new PlayerBuild(player));
+                        }
+                        BuildMenu_Toggle(player);
+                        buildToggled.Add(player.userID, true);
+                    }
+                    else
+                    {
+                        BuildMenu_UnToggle(player);
+                        buildToggled.Remove(player.userID);
+                    }
+                }
+            }
+            else if(playerBuild.ContainsKey(player.userID) && state.IsDown(BUTTON.FIRE_SECONDARY))
+            {
+                PlayerBuild pB = playerBuild[player.userID];
+                if (!state.WasJustPressed(BUTTON.FIRE_SECONDARY))
+                {
+                    if((Time.realtimeSinceStartup - pB.lastClick) < 0.5f)
+                    {
+                        return;
+                    }
+                }
+                pB.lastClick = Time.realtimeSinceStartup;
+
+                pB.Execute();
+            }
+        }
+
+        #region BuildMenu
+        void BuildMenu_Toggle(BasePlayer player)
+        {
+            PlayerBuild pB = playerBuild[player.userID];
+
+            BuildMenu_UnToggle(player);
+
+            CuiElementContainer page_container = UI.CreateElementContainer("Overlay", "BuildMenuContainer", "0.1 0.1 0.1 0.8", "0.1 0.3", "0.9 0.5", true);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Build ? green : gray, "Build", 16, "0.01 0.05", "0.11 0.5", "build.select build", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Deploy ? green : gray, "Deploy", 16, "0.12 0.05", "0.22 0.5", "build.select deploy", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Spawn ? green : gray, "Spawn", 16, "0.23 0.05", "0.33 0.5", "build.select spawn", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Grade ? green : gray, "Grade", 16, "0.34 0.05", "0.44 0.5", "build.select grade", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Rotate ? green : gray, "Rotate", 16, "0.45 0.05", "0.55 0.5", "build.select rotate", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Heal ? green : gray, "Heal", 16, "0.56 0.05", "0.66 0.5", "build.select heal", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.Erase ? green : gray, "Erase", 16, "0.67 0.05", "0.77 0.5", "build.select erase", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.buildType == PlayerBuildType.None ? green : gray, "None", 16, "0.78 0.05", "0.88 0.5", "build.select none", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", red, "Undo", 16, "0.89 0.05", "0.99 0.5", "build.select undo", TextAnchor.MiddleCenter);
+
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.crosshair ? green : gray, "Crosshair", 10, "0.78 0.80", "0.99 0.99", "build.select crosshair", TextAnchor.MiddleCenter);
+            UI.CreateButton(ref page_container, "BuildMenuContainer", pB.player.modelState.flying ? green : gray, "Noclip", 10, "0.78 0.60", "0.99 0.79", "build.select noclip", TextAnchor.MiddleCenter);
+
+            CuiHelper.AddUi(player, page_container);
+
+            BuildMenu_Sub(player);
+        }
+
+        void BuildMenu_UnToggle(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, "BuildMenuContainer");
+            CuiHelper.DestroyUi(player, "BuildMenuContainerSub");
+        }
+
+        void BuildMenu_Sub(BasePlayer player)
+        {
+            PlayerBuild pB = playerBuild[player.userID];
+
+            if (pB.buildType == PlayerBuildType.None || pB.buildType == PlayerBuildType.Erase) return;
+
+            string sizeFrom = (pB.buildType == PlayerBuildType.Grade) || (pB.buildType == PlayerBuildType.Heal) || (pB.buildType == PlayerBuildType.Rotate) ? "0.1 0.20" : "0.1 0.05";
+            string sizeTo = "0.9 0.30";
+            CuiElementContainer page_container = UI.CreateElementContainer("Overlay", "BuildMenuContainerSub", "0.1 0.1 0.1 0.8", sizeFrom, sizeTo, true);
+
+            if ((pB.buildType == PlayerBuildType.Grade) || (pB.buildType == PlayerBuildType.Heal) || (pB.buildType == PlayerBuildType.Rotate))
+            {
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.select == Selection.Select ? green : gray, "Select", 16, "0.01 0.50", "0.20 0.95", "build.select select select", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.select == Selection.All ? green : gray, "All", 16, "0.21 0.50", "0.40 0.95", "build.select select all", TextAnchor.MiddleCenter);
+            }
+
+            if ((pB.buildType == PlayerBuildType.Build) || (pB.buildType == PlayerBuildType.Spawn) || (pB.buildType == PlayerBuildType.Deploy))
+            {
+                UI.CreateLabel(ref page_container, "BuildMenuContainerSub", gray, "Height:", 12, "0.31 0.90", "0.40 0.99", TextAnchor.MiddleCenter);
+
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "-3", 12, "0.41 0.90", "0.45 0.99", "build.select height minus 3", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "-1.5", 12, "0.45 0.90", "0.49 0.99", "build.select height minus 1.5", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "0", 12, "0.49 0.90", "0.53 0.99", "build.select height reset", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "+1.5", 12, "0.53 0.90", "0.57 0.99", "build.select height plus 1.5", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "+3", 12, "0.57 0.90", "0.61 0.99", "build.select height plus 3", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "----", 9, "0.62 0.92", "0.65 0.97", "build.select height minus 10", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "---", 9, "0.65 0.92", "0.68 0.97", "build.select height minus 1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "--", 9, "0.68 0.92", "0.71 0.97", "build.select height minus 0.1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "-", 9, "0.71 0.92", "0.74 0.97", "build.select height minus 0.01", TextAnchor.MiddleCenter);
+                UI.CreateLabel(ref page_container, "BuildMenuContainerSub", gray, pB.height.ToString(), 12, "0.75 0.90", "0.80 0.99", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "+", 9, "0.81 0.92", "0.84 0.97", "build.select height plus 0.01", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "++", 9, "0.84 0.92", "0.87 0.97", "build.select height plus 0.1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "+++", 9, "0.87 0.92", "0.90 0.97", "build.select height plus 1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "++++", 9, "0.90 0.92", "0.93 0.97", "build.select height plus 10", TextAnchor.MiddleCenter);
+            }
+
+            if (pB.buildType == PlayerBuildType.Build)
+            {
+                UI.CreateLabel(ref page_container, "BuildMenuContainerSub", gray, "Placement:", 16, "0.01 0.80", "0.10 0.99", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.placement == Placement.Auto ? green : gray, "Auto", 16, "0.11 0.80", "0.15 0.99", "build.select placement auto", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.placement == Placement.Force ? green : gray, "Force", 16, "0.16 0.80", "0.20 0.99", "build.select placement force", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.placement == Placement.Up ? green : gray, "Up", 16, "0.21 0.80", "0.25 0.99", "build.select placement up", TextAnchor.MiddleCenter);
+
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Twigs ? green : gray, "Twig", 16, "0.01 0.60", "0.20 0.79", "build.select grade 0", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Wood ? green : gray, "Wood", 16, "0.21 0.60", "0.40 0.79", "build.select grade 1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Stone ? green : gray, "Stone", 16, "0.41 0.60", "0.60 0.79", "build.select grade 2", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Metal ? green : gray, "Metal", 16, "0.61 0.60", "0.80 0.79", "build.select grade 3", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.TopTier ? green : gray, "TopTier", 16, "0.81 0.60", "0.99 0.79", "build.select grade 4", TextAnchor.MiddleCenter);
+
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.Foundation ? green : gray, "Foundation", 12, "0.01 0.05", "0.0753 0.5", "build.select build foundation", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.FoundationTriangle ? green : gray, "Foundation Triangle", 12, "0.0753 0.05", "0.1406 0.5", "build.select build foundation.triangle", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.FoundationSteps ? green : gray, "Foundation Steps", 12, "0.1406 0.05", "0.206 0.5", "build.select build foundation.steps", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.Floor ? green : gray, "Floor", 12, "0.206 0.05", "0.271 0.5", "build.select build floor", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.FloorTriangle ? green : gray, "Floor Triangle", 12, "0.271 0.05", "0.337 0.5", "build.select build floor.triangle", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.FloorFrame ? green : gray, "Floor Frame", 12, "0.337 0.05", "0.402 0.5", "build.select build floor.frame", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.Wall ? green : gray, "Wall", 12, "0.402 0.05", "0.467 0.5", "build.select build wall", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.WallDoorway ? green : gray, "Wall Doorway", 12, "0.467 0.05", "0.533 0.5", "build.select build wall.doorway", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.WallWindow ? green : gray, "Wall Window", 12, "0.533 0.05", "0.598 0.5", "build.select build wall.window", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.WallFrame ? green : gray, "Wall Frame", 12, "0.598 0.05", "0.663 0.5", "build.select build wall.frame", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.WallHalf ? green : gray, "Wall Half", 12, "0.663 0.05", "0.729 0.5", "build.select build wall.half", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.WallLow ? green : gray, "Wall Low", 12, "0.729 0.05", "0.794 0.5", "build.select build wall.low", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.StairsLShaped ? green : gray, "Stairs L Shapred", 12, "0.794 0.05", "0.859 0.5", "build.select build stairs.l.shaped", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.StairsUShaped ? green : gray, "Stairs U Shapred", 12, "0.859 0.05", "0.925 0.5", "build.select build stairs.u.shaped", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.constructionBuild == Building.Roof ? green : gray, "Roof", 12, "0.925 0.05", "0.99 0.5", "build.select build roof", TextAnchor.MiddleCenter);
+
+            }
+            else if (pB.buildType == PlayerBuildType.Deploy)
+            {
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "<<", 12, "0.01 0.01", "0.50 0.10", "build.select deploy page previous", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, ">>", 12, "0.5 0.01", "0.99 0.10", "build.select deploy page next", TextAnchor.MiddleCenter);
+
+                int startid = pB.deploypage * 80;
+
+                float px = 0f;
+                float py = 0.9f;
+                int i = 0;
+                foreach (KeyValuePair<string, uint> deployable in deployables)
+                {
+                    if (i >= startid)
+                    {
+                        UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.currentConstruction != null ? pB.currentConstruction.prefabID == deployable.Value ? green : gray : gray, deployable.Key, 12, string.Format("{0} {1}", px.ToString(), (py - 0.09f).ToString()), string.Format("{0} {1}", (px + 0.1f).ToString(), py.ToString()), "build.select deploy select " + deployable.Value.ToString(), TextAnchor.MiddleCenter);
+                        px += 0.1f;
+                        if (px > 0.91f)
+                        {
+                            py -= 0.1f;
+                            px = 0f;
+                            if (py < 0.19f)
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    i++;
+                }
+            }
+            else if (pB.buildType == PlayerBuildType.Grade)
+            {
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Twigs ? green : gray, "Twig", 16, "0.01 0.05", "0.20 0.49", "build.select grade 0", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Wood ? green : gray, "Wood", 16, "0.21 0.05", "0.40 0.49", "build.select grade 1", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Stone ? green : gray, "Stone", 16, "0.41 0.05", "0.60 0.49", "build.select grade 2", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.Metal ? green : gray, "Metal", 16, "0.61 0.05", "0.80 0.49", "build.select grade 3", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.grade == BuildingGrade.Enum.TopTier ? green : gray, "TopTier", 16, "0.81 0.05", "0.99 0.49", "build.select grade 4", TextAnchor.MiddleCenter);
+            }
+            else if (pB.buildType == PlayerBuildType.Spawn)
+            {
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, "<<", 12, "0.01 0.01", "0.50 0.10", "build.select spawn page previous", TextAnchor.MiddleCenter);
+                UI.CreateButton(ref page_container, "BuildMenuContainerSub", gray, ">>", 12, "0.5 0.01", "0.99 0.10", "build.select spawn page next", TextAnchor.MiddleCenter);
+
+                int startid = pB.spawnpage * 40;
+
+                float px = 0f;
+                float py = 0.9f;
+                int i = 0;
+                foreach (string r in resourcesList)
+                {
+                    if (i >= startid)
+                    {
+                        UI.CreateButton(ref page_container, "BuildMenuContainerSub", pB.currentSpawn != string.Empty ? pB.currentSpawn == r ? green : gray : gray,  r.Replace("assets/", "").Replace("prefabs/", "").Replace("bundled/", "").Replace("content/", ""), 9, string.Format("{0} {1}", px.ToString(), (py - 0.09f).ToString()), string.Format("{0} {1}", (px + 0.2f).ToString(), py.ToString()), "build.select spawn select " + r.ToString(), TextAnchor.MiddleCenter);
+                        px += 0.2f;
+                        if (px > 0.91f)
+                        {
+                            py -= 0.1f;
+                            px = 0f;
+                            if (py < 0.19f)
+                            {
+                                break;
+                            }
+                        }
+                    }
+
+                    i++;
+                }
+            }
+            CuiHelper.AddUi(player, page_container);
+        }
+
+        void BuildGUI_Refresh(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, "BuildTop");
+
+            PlayerBuild pB = playerBuild[player.userID];
+
+            if (pB.buildType == PlayerBuildType.None) return;
+
+            CuiElementContainer page_container = UI.CreateElementContainer("Overlay", "BuildTop", "0.1 0.1 0.1 0.8", "0.2 0.95", "0.8 1", false);
+            string text = string.Empty;
+
+            text = string.Format("{0}", pB.buildType == PlayerBuildType.Rotate ? "Rotate: " + pB.select.ToString() : pB.buildType == PlayerBuildType.Heal ? "Heal: " + pB.select.ToString() : pB.buildType == PlayerBuildType.Grade ? string.Format("Grade: {0} - {1}", pB.select.ToString(), pB.grade.ToString()) : pB.buildType == PlayerBuildType.Spawn ? string.Format("Spawn: {0} - Height: {1}", pB.currentSpawn, pB.height.ToString()) : pB.buildType == PlayerBuildType.Build ? string.Format("Build: {0} - {1} - Height: {2}", pB.placement.ToString(), pB.constructionBuild, pB.height.ToString()) : pB.buildType == PlayerBuildType.Deploy ? string.Format("Deploy: {0} - Height: {1}", pB.currentConstruction == null ? string.Empty : pB.currentConstruction.ToString(), pB.height.ToString()) : pB.buildType == PlayerBuildType.Erase ? "Erasing" : "Error");
+
+            UI.CreateLabel(ref page_container, "BuildTop", "1 1 1 1", text, 16, "0 0", "1 1", TextAnchor.MiddleCenter);
+            CuiHelper.AddUi(player, page_container);
+        }
+        #endregion
+
+        class BuildLog
+        {
+            public GameObject go;
+            public PlayerBuildType e;
+            public string svalue1;
+            public float fvalue1;
+            public int ivalue1;
+            public Vector3 vvalue1;
+            public Quaternion qvalue1;
+
+            public BuildLog(GameObject go, PlayerBuildType e) { this.go = go; this.e = e; }
+            public BuildLog(GameObject go, PlayerBuildType e, float value1) { this.go = go; this.e = e; this.fvalue1 = value1; }
+            public BuildLog(GameObject go, PlayerBuildType e, int value1) { this.go = go; this.e = e; this.ivalue1 = value1; }
+            public BuildLog(GameObject go, PlayerBuildType e, Vector3 value1) { this.go = go; this.e = e; this.vvalue1 = value1; }
+            public BuildLog(GameObject go, PlayerBuildType e, Quaternion value1) { this.go = go; this.e = e; this.qvalue1 = value1; }
+            public BuildLog(string value1, PlayerBuildType e, Vector3 value2, Quaternion value3, int value4 = 0) { this.svalue1 = value1; this.e = e;  this.vvalue1 = value2; this.qvalue1 = value3; this.ivalue1 = value4; }
+        }
+
+        class PlayerBuild
+        {
+            public bool crosshair = false;
+            public int spawnpage = 0;
+            public int deploypage = 0;
+            public float height = 0f;
+            public float lastClick = Time.realtimeSinceStartup;
+            public string currentSpawn = string.Empty;
+            public object closestEnt = null;
+            public Vector3 closestHitpoint = new Vector3();
+            public Quaternion currentRot = new Quaternion();
+            public Quaternion currentRotate = Quaternion.Euler(0f, 45f, 0f);
+            public Quaternion rotate = Quaternion.Euler(0f, 0f, 0f);
+
+            public BasePlayer player;
+            public BaseNetworkable currentBaseNet = null;
+            public Collider currentCollider = null;
+            public Construction currentConstruction;
+
+            public Building constructionBuild = Building.Foundation;
+            public BuildingGrade.Enum grade = BuildingGrade.Enum.Twigs;
+            public Selection select = Selection.Select;
+            public Placement placement = Placement.Auto;
+            public PlayerBuildType buildType = PlayerBuildType.None;
+
+            public List<List<BuildLog>> logs = new List<List<BuildLog>>();
+
+            public PlayerBuild(BasePlayer player)
+            {
+                this.player = player;
+            }
+
+            public void Execute()
+            {
+                if (!TryGetPlayerView(player, out currentRot))
+                    return;
+
+                if (!TryGetClosestRayPoint(player.transform.position, currentRot, out closestEnt, out closestHitpoint))
+                    return;
+
+                currentCollider = closestEnt as Collider;
+
+                if (buildType == PlayerBuildType.Erase)
+                {
+                    logs.Add(new List<BuildLog>() { new BuildLog(currentCollider.GetComponentInParent<BaseNetworkable>().PrefabName, PlayerBuildType.Erase, currentCollider.transform.position, currentCollider.transform.rotation, currentCollider.GetComponentInParent<BuildingBlock>() != null ? (int)(currentCollider.GetComponentInParent<BuildingBlock>().grade) : 0 ) });
+                    currentBaseNet = currentCollider.GetComponentInParent<BaseNetworkable>();
+                    currentBaseNet?.Kill(BaseNetworkable.DestroyMode.Gib);
+                }
+                else if(buildType == PlayerBuildType.Build)
+                {
+                    DoBuild(this, player, currentCollider, placement);
+                }
+                else if (buildType == PlayerBuildType.Deploy)
+                {
+                    DoDeploy(this, player, currentCollider);
+                }
+                else if (buildType == PlayerBuildType.Grade)
+                {
+                    DoGrade(this, player, currentCollider);
+                }
+                else if (buildType == PlayerBuildType.Heal)
+                {
+                    DoHeal(this, player, currentCollider);
+                }
+                else if (buildType == PlayerBuildType.Rotate)
+                {
+                    DoRotation(this, player, currentCollider);
+                }
+                else if (buildType == PlayerBuildType.Spawn)
+                {
+                    DoSpawn(this, player, currentCollider);
                 }
             }
         }
 
-        /////////////////////////////////////////////////////
-        /// Create New sockets that wont match Rusts, this is exaustive
-        /// But at least we can add new sockets later on
-        /////////////////////////////////////////////////////
-        void InitializeSockets()
+        class VectorQuaternion
         {
-            // PrefabName to SocketType
-            nameToSockets = new Dictionary<string, SocketType>();
+            public Vector3 vector3;
+            public Quaternion quaternion;
 
-            // Get all possible sockets from the SocketType
-            TypeToType = new Dictionary<SocketType, object>();
-
-
-            // Sockets that can connect on a Floor / Foundation type
-            var FloorType = new Dictionary<SocketType, object>();
-
-            // Floor to Floor sockets
-            var FloortoFloor = new Dictionary<Vector3, Quaternion>();
-            FloortoFloor.Add(new Vector3(0f, 0f, -3f), new Quaternion(0f, 1f, 0f, 0f));
-
-            //FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoFloor.Add(new Vector3(-3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoFloor.Add(new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
-            //FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-            FloortoFloor.Add(new Vector3(3f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Floor to FloorTriangle sockets
-            var FloortoFT = new Dictionary<Vector3, Quaternion>();
-            FloortoFT.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
-            FloortoFT.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoFT.Add(new Vector3(0f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoFT.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-
-            // Floor to Wall sockets
-            var FloortoWall = new Dictionary<Vector3, Quaternion>();
-            FloortoWall.Add(new Vector3(0f, 0f, 1.5f), new Quaternion(0f, -0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(-1.5f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-            FloortoWall.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-            FloortoWall.Add(new Vector3(1.5f, 0f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Floor to Support (Pillar) sockets
-            var FloortoSupport = new Dictionary<Vector3, Quaternion>();
-            FloortoSupport.Add(new Vector3(1.5f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoSupport.Add(new Vector3(-1.5f, 0f, 1.5f), new Quaternion(0f, 0f, 0f, 1f));
-            FloortoSupport.Add(new Vector3(1.5f, 0f, -1.5f), new Quaternion(0f, 0.0f, 0f, 1f));
-            FloortoSupport.Add(new Vector3(-1.5f, 0f, -1.5f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Floor to Blocks sockets
-            var FloorToBlock = new Dictionary<Vector3, Quaternion>();
-            FloorToBlock.Add(new Vector3(0f, 0.1f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-
-            // Adding all informations from the Floor type into the main table
-            FloorType.Add(SocketType.Block, FloorToBlock);
-            FloorType.Add(SocketType.Support, FloortoSupport);
-            FloorType.Add(SocketType.Wall, FloortoWall);
-            FloorType.Add(SocketType.Floor, FloortoFloor);
-            FloorType.Add(SocketType.FloorTriangle, FloortoFT);
-            TypeToType.Add(SocketType.Floor, FloorType);
-
-            // Sockets that can connect on a Wall type
-            var WallType = new Dictionary<SocketType, object>();
-
-            // Wall to Wall sockets
-            var WallToWall = new Dictionary<Vector3, Quaternion>();
-            WallToWall.Add(new Vector3(0f, 0f, -3f), new Quaternion(0f, 1f, 0f, 0f));
-            WallToWall.Add(new Vector3(0f, 0f, 3f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // Wall to Wall Floor sockets
-            var WallToFloor = new Dictionary<Vector3, Quaternion>();
-            WallToFloor.Add(new Vector3(1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, -0.7071068f));
-            WallToFloor.Add(new Vector3(-1.5f, 3f, 0f), new Quaternion(0f, 0.7071068f, 0f, 0.7071068f));
-
-            // Wall to Door sockets
-            var WallToDoor = new Dictionary<Vector3, Quaternion>();
-            WallToDoor.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-
-            var WallToBar = new Dictionary<Vector3, Quaternion>();
-            WallToBar.Add(new Vector3(0f, 1f, 0f), new Quaternion(0f, 1f, 0f, 0f));
-
-            // Adding all informations from the Wall type into the main table
-            // Note that you can't add blocks or supports on a wall
-            WallType.Add(SocketType.Floor, WallToFloor);
-            WallType.Add(SocketType.Wall, WallToWall);
-            WallType.Add(SocketType.Door, WallToDoor);
-            WallType.Add(SocketType.Bar, WallToBar);
-            TypeToType.Add(SocketType.Wall, WallType);
-
-            // Sockets that can connect on a Block type
-            var BlockType = new Dictionary<SocketType, object>();
-
-            // Block to Block sockets
-            var BlockToBlock = new Dictionary<Vector3, Quaternion>();
-            BlockToBlock.Add(new Vector3(0f, 1.5f, 0f), new Quaternion(0f, 0f, 0f, 1f));
-
-            // For safety reasons i didn't put pillars or walls here
-            // If needed it could easily be added
-            BlockType.Add(SocketType.Block, BlockToBlock);
-            TypeToType.Add(SocketType.Block, BlockType);
-
-            // Sockets that can connect on a Floor/Foundation Triangles  type
-            var FloorTriangleType = new Dictionary<SocketType, object>();
-
-            // Floor Triangles to Floor Triangles type
-            var FTtoFT = new Dictionary<Vector3, Quaternion>();
-            FTtoFT.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 1f, 0f, 0.0000001629207f));
-            FTtoFT.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.4999998f, 0f, -0.8660255f));
-            FTtoFT.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, 0.5000001f, 0f, 0.8660254f));
-            FloorTriangleType.Add(SocketType.FloorTriangle, FTtoFT);
-
-            // Floor Triangles to Wall type
-            var FTtoWall = new Dictionary<Vector3, Quaternion>();
-            FTtoWall.Add(new Vector3(0f, 0f, 0f), new Quaternion(0f, 0.7f, 0f, 0.7000001629207f));
-            FTtoWall.Add(new Vector3(-0.75f, 0f, 1.299038f), new Quaternion(0f, 0.96593f, 0f, -0.25882f));
-            FTtoWall.Add(new Vector3(0.75f, 0f, 1.299038f), new Quaternion(0f, -0.25882f, 0f, 0.96593f));
-            FloorTriangleType.Add(SocketType.Wall, FTtoWall);
-
-            // Floor Triangles to Floor type is a big fail, need to work on that still
-            var FTtoFloor = new Dictionary<Vector3, Quaternion>();
-            FTtoFloor.Add(new Vector3(0f, 0f, -1.5f), new Quaternion(0f, 1f, 0f, 0f));
-            FTtoFloor.Add(new Vector3(-2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, -0.8660254f));
-            FTtoFloor.Add(new Vector3(2.0490381f, 0f, 2.0490381f), new Quaternion(0f, 0.5f, 0f, 0.8660254f));
-            FloorTriangleType.Add(SocketType.Floor, FTtoFloor);
-             
-
-            // So at the moment only Floor and Foundation triangles can connect to easy other.
-            TypeToType.Add(SocketType.FloorTriangle, FloorTriangleType);
-
-            nameToSockets.Add("assets/bundled/prefabs/build/foundation.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/foundation.triangle.prefab", SocketType.FloorTriangle);
-            nameToSockets.Add("assets/bundled/prefabs/build/floor.triangle.prefab", SocketType.FloorTriangle);
-            nameToSockets.Add("assets/bundled/prefabs/build/roof.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/floor.prefab", SocketType.Floor);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.doorway.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.window.bars.prefab", SocketType.Bar);
-            nameToSockets.Add("assets/bundled/prefabs/build/wall.low.prefab", SocketType.Wall);
-            nameToSockets.Add("assets/bundled/prefabs/build/pillar.prefab", SocketType.Support);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.halfheight.slanted.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.stair.lshape.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/block.stair.ushape.prefab", SocketType.Block);
-            nameToSockets.Add("assets/bundled/prefabs/build/door.hinged.prefab", SocketType.Door);
-
-            // Foundation steps are fucked up, i need to look how this works more
-            //nameToSockets.Add("assets/bundled/prefabs/build/foundation.steps.prefab", SocketType.Floor);
-        }
-
-        /////////////////////////////////////////////////////
-        /// Get all blocknames from shortname to full prefabname
-        /////////////////////////////////////////////////////
-        //private FieldInfo socks = typeof(Construction).GetField("allSockets", (BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic));
-        void InitializeBlocks()
-        {
-            var constructions = PrefabAttribute.server.GetAll<Construction>();
-            foreach (var construction in constructions)
+            public VectorQuaternion(Vector3 vector3, Quaternion quaternion)
             {
-                //Debug.Log(construction.info.name.english.ToString());
-                /* if (construction.info.name.english.ToString().Contains("Triangle"))
-                     {
-                         Socket_Base[] socketArray = (Socket_Base[])socks.GetValue(construction);
-                     Debug.Log(socketArray.ToString());
-                         foreach (Socket_Base socket in socketArray)
-                         {
-                             //Puts(string.Format("{0} {1} {2} {3}", socket.name, socket.type.ToString(), socket.position.ToString(), socket.rotation.w.ToString()));
-                             Puts(string.Format("{0} - {1} {2} {3} {4} - {5} {6} {7}", socket.socketName, socket.rotation.x.ToString(), socket.rotation.y.ToString(), socket.rotation.z.ToString(), socket.rotation.w.ToString(), socket.position.x.ToString(), socket.position.y.ToString(), socket.position.z.ToString()));
-                         }
-                         Puts("================");
-                     }*/
-                //Debug.Log(construction.hierachyName + " " + construction.fullName);
-                nameToBlockPrefab.Add(construction.hierachyName, construction.fullName);
+                this.vector3 = vector3;
+                this.quaternion = quaternion;
             }
         }
 
-        /////////////////////////////////////////////////////
-        ///  GENERAL FUNCTIONS
-        /////////////////////////////////////////////////////
-        /////////////////////////////////////////////////////
-        ///  hasAccess( BasePlayer player )
-        ///  Checks if the player has access to this command
-        /////////////////////////////////////////////////////
-        bool hasAccess(BasePlayer player)
+        class BuildingSocket
         {
-            if (player.net.connection.authLevel >= levelRequired) return true;
-            if (permission.UserHasPermission(player.userID.ToString(), "builder")) return true;
+            public SocketType sock;
 
-            SendReply(player, "You are not allowed to use this command");
-            return false;
+            public Dictionary<SocketType, List<VectorQuaternion>> sockets = new Dictionary<SocketType, List<VectorQuaternion>>();
+
+            public BuildingSocket(SocketType sock)
+            {
+                this.sock = sock;
+            }
+
+            public void AddTargetSock(SocketType s, Vector3 v, Quaternion q)
+            {
+                if (!sockets.ContainsKey(s))
+                {
+                    sockets.Add(s, new List<VectorQuaternion>());
+                }
+                sockets[s].Add(new VectorQuaternion(v, q));
+            }
         }
 
-        /////////////////////////////////////////////////////
-        ///  TryGetPlayerView( BasePlayer player, out Quaternion viewAngle )
-        ///  Get the angle on which the player is looking at
-        ///  Notice that this is very usefull for spectating modes as the default player.transform.rotation doesn't work in this case.
-        /////////////////////////////////////////////////////
-        static bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
+        class BuildingConstruction
         {
-            viewAngle = new Quaternion(0f, 0f, 0f, 0f);
-            var input = serverinput.GetValue(player) as InputState;
-            if (input?.current == null)
+            public string prefab;
+            public BuildingSocket socket;
+            public Building build;
+            public BuildingConstruction(string prefab, BuildingSocket socket, Building build)
+            {
+                this.prefab = prefab;
+                this.socket = socket;
+                this.build = build;
+            }
+        }
+
+        private static bool TryGetPlayerView(BasePlayer player, out Quaternion viewAngle)
+        {
+            viewAngle = Quaternion.identity;
+
+            if (player.serverInput.current == null)
                 return false;
 
-            viewAngle = Quaternion.Euler(input.current.aimAngles);
+            viewAngle = Quaternion.Euler(player.serverInput.current.aimAngles);
+
             return true;
         }
-
-        /////////////////////////////////////////////////////
-        ///  TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
-        ///  Get the closest entity that the player is looking at
-        /////////////////////////////////////////////////////
-        static bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
+        private static bool TryGetClosestRayPoint(Vector3 sourcePos, Quaternion sourceDir, out object closestEnt, out Vector3 closestHitpoint)
         {
+            float closestdist = 999999f;
+
             Vector3 sourceEye = sourcePos + new Vector3(0f, 1.5f, 0f);
             Ray ray = new Ray(sourceEye, sourceDir * Vector3.forward);
-
-            var hits = Physics.RaycastAll(ray);
-            float closestdist = 999999f;
+            
             closestHitpoint = sourcePos;
             closestEnt = false;
-            foreach (var hit in hits)
+
+            foreach (var hit in Physics.RaycastAll(ray, mdist, generalColl))
             {
                 if (hit.collider.GetComponentInParent<TriggerBase>() == null)
                 {
@@ -529,913 +757,609 @@ namespace Oxide.Plugins
                     }
                 }
             }
+
             if (closestEnt is bool)
                 return false;
+
             return true;
         }
 
-        /////////////////////////////////////////////////////
-        ///  SpawnDeployable()
-        ///  Function to spawn a deployable
-        /////////////////////////////////////////////////////
-        private static void SpawnDeployable(string prefab, Vector3 pos, Quaternion angles, BasePlayer player)
+        private static void DoHeal(PlayerBuild buildplayer, BasePlayer player, Collider baseentity)
         {
-            newItem = ItemManager.CreateByName(prefab, 1);
-            if (newItem?.info.GetComponent<ItemModDeployable>() == null)
-            {
+            BaseCombatEntity ent = baseentity.GetComponentInParent<BaseCombatEntity>();
+
+            if (ent == null)
                 return;
-            }
-            var deployable = newItem.info.GetComponent<ItemModDeployable>().entityPrefab.resourcePath;
-            if (deployable == null)
+
+            List<BuildLog> bl = new List<BuildLog>();
+            bl.Add(new BuildLog(baseentity.gameObject, PlayerBuildType.Heal,ent.health));
+
+            ent.health = ent.MaxHealth();
+
+            if (buildplayer.select == Selection.All)
             {
-                return;
+                if (GetAllBaseEntities<BaseCombatEntity>(baseentity.GetComponentInParent<BaseEntity>()))
+                {
+                    foreach (BaseCombatEntity fent in houseList)
+                    {
+                        bl.Add(new BuildLog(fent.gameObject, PlayerBuildType.Heal,fent.health));
+                        fent.health = fent.MaxHealth();
+                    }
+                }
             }
-            var newBaseEntity = GameManager.server.CreateEntity(deployable, pos, angles, true);
-            if (newBaseEntity == null)
-            {
-                return;
-            }
-            newBaseEntity.SendMessage("SetDeployedBy", player, UnityEngine.SendMessageOptions.DontRequireReceiver);
-            newBaseEntity.SendMessage("InitializeItem", newItem, UnityEngine.SendMessageOptions.DontRequireReceiver);
-            newBaseEntity.Spawn(true);
+
+            buildplayer.logs.Add(bl);
         }
 
-        /////////////////////////////////////////////////////
-        ///  SpawnStructure()
-        ///  Function to spawn a block structure
-        /////////////////////////////////////////////////////
-        private static void SpawnStructure(string prefabname, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade, float health)
+        static bool GetAllBaseEntities<T>(BaseEntity initialEntity)
         {
-            GameObject prefab = GameManager.server.FindPrefab(prefabname);
-            if (prefab == null)
+            try
             {
-                return;
+                houseList = new List<object>();
+                checkFrom = new List<Vector3>();
+
+                houseList.Add(initialEntity);
+                checkFrom.Add(initialEntity.transform.position);
+
+                int current = 0;
+
+
+                while (true)
+                {
+                    current++;
+
+                    if (current > checkFrom.Count)
+                        break;
+
+                    List<BaseEntity> list = Pool.GetList<BaseEntity>();
+
+                    Vis.Entities<BaseEntity>(checkFrom[current - 1], 3f, list, constructionColl);
+
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        BaseEntity hit = list[i];
+
+                        var fent = hit.GetComponentInParent<T>();
+
+                        if (fent != null && !(houseList.Contains(hit)))
+                        {
+                            houseList.Add(hit);
+                            checkFrom.Add(hit.transform.position);
+                        }
+                    }
+                }
+                checkFrom.Clear();
+                return true;
             }
-            var build = UnityEngine.Object.Instantiate(prefab);
-            BuildingBlock block = build?.GetComponent<BuildingBlock>();
-            if (block == null) return;
-            block.transform.position = pos;
-            block.transform.rotation = angles;
-            block.gameObject.SetActive(true);
-            block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
-            block.Spawn(true);
-            block.SetGrade(grade);
-            if (health <= 0f)
-                block.health = block.MaxHealth();
+            catch(Exception e)
+            {
+                Interface.Oxide.LogError(e.Message);
+                Interface.Oxide.LogError(e.StackTrace);
+                return false;
+            }
+        }
+
+        private static void DoSpawn(PlayerBuild buildplayer, BasePlayer player, Collider baseentity)
+        {
+            newPos = buildplayer.closestHitpoint + (Vector3.up * buildplayer.height);
+            newRot = buildplayer.currentRot;
+            newRot.x = 0f;
+            newRot.z = 0f;
+            newRot = newRot * new Quaternion(0f, 0.7071068f, 0f, 0.7071068f);
+            SpawnEntity(buildplayer, buildplayer.currentSpawn, newPos, newRot);
+        }
+        
+        private static void DoBuild(PlayerBuild buildplayer, BasePlayer player, Collider baseentity, Placement placement)
+        {
+            uint bid = 0u;
+            if(placement == Placement.Force)
+            {
+                newPos = buildplayer.closestHitpoint + (Vector3.up * buildplayer.height);
+                newRot = buildplayer.currentRot;
+                newRot.x = 0f;
+                newRot.z = 0f;
+            }
             else
-                block.health = health;
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  SpawnDeployable()
-        ///  Function to spawn a resource (tree, barrel, ores)
-        /////////////////////////////////////////////////////
-        private static void SpawnResource(string prefab, Vector3 pos, Quaternion angles)
-        {
-            BaseEntity entity = GameManager.server.CreateEntity(prefab, pos, angles, true);
-            entity?.Spawn(true);
-        }
-
-        private static void SpawnAnimal(string prefab, Vector3 pos, Quaternion angles)
-        {
-            var createdPrefab = GameManager.server.CreateEntity(prefab, pos, angles, true);
-            BaseEntity entity = createdPrefab?.GetComponent<BaseEntity>();
-            entity?.Spawn(true);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  isColliding()
-        ///  Check if you already placed the structure
-        /////////////////////////////////////////////////////
-        private static bool isColliding(string name, Vector3 position, float radius)
-        {
-            var colliders = Physics.OverlapSphere(position, radius);
-            foreach (var collider in colliders)
             {
-                var block = collider.GetComponentInParent<BuildingBlock>();
-                if (block != null && block.blockDefinition.fullName == name && Vector3.Distance(collider.transform.position, position) < 0.6f)
+                var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+
+                if (fbuildingblock == null)
+                {
+                    return;
+                }
+
+                if(placement == Placement.Up)
+                {
+                    newPos = fbuildingblock.transform.position + (Vector3.up * buildplayer.height);
+                    newRot = fbuildingblock.transform.rotation;
+                }
+                else
+                {
+                    float distance = 999999f;
+                    newPos = new Vector3(0f, 0f, 0f);
+                    newRot = new Quaternion(0f, 0f, 0f, 0f);
+                    if (buildings.ContainsKey(fbuildingblock.blockDefinition.fullName))
+                    {
+                        sourcebuild = buildings[fbuildingblock.blockDefinition.fullName];
+                        targetbuild = buildings[BuildingToPrefab[buildplayer.constructionBuild]];
+                        if (sourcebuild.socket.sockets.ContainsKey(targetbuild.socket.sock))
+                        {
+                            foreach (VectorQuaternion vq in sourcebuild.socket.sockets[targetbuild.socket.sock])
+                            {
+                                var currentrelativepos = (fbuildingblock.transform.rotation * vq.vector3) + fbuildingblock.transform.position;
+                                if (Vector3.Distance(currentrelativepos, buildplayer.closestHitpoint) < distance)
+                                {
+                                    distance = Vector3.Distance(currentrelativepos, buildplayer.closestHitpoint);
+                                    newPos = currentrelativepos + (Vector3.up * buildplayer.height);
+                                    newRot = (fbuildingblock.transform.rotation * vq.quaternion);
+                                }
+                            }
+                        }
+                    }
+                    if (newPos.x == 0f)
+                        return;
+
+                }
+
+                if (IsColliding(BuildingToPrefab[buildplayer.constructionBuild], newPos, 1f))
+                    return;
+
+                bid = fbuildingblock.buildingID;
+            }
+            
+            SpawnStructure(buildplayer, BuildingToPrefab[buildplayer.constructionBuild], newPos, newRot, buildplayer.grade, 0f, bid);
+        }
+
+        private static bool IsColliding(string prefabname, Vector3 position, float radius)
+        {
+            List<BaseEntity> ents = new List<BaseEntity>();
+            Vis.Entities<BaseEntity>(position, radius, ents);
+
+            foreach (BaseEntity ent in ents)
+            {
+                if (ent.PrefabName == prefabname && ent.transform.position == position)
                     return true;
             }
             return false;
         }
 
-        /////////////////////////////////////////////////////
-        ///  SetGrade(BuildingBlock block, BuildingGrade.Enum level)
-        ///  Change grade level of a block
-        /////////////////////////////////////////////////////
+        private static GameObject SpawnPrefab(string prefabname, Vector3 pos, Quaternion angles, bool active)
+        {
+            GameObject prefab = GameManager.server.CreatePrefab(prefabname, pos, angles, active);
+
+            if (prefab == null)
+                return null;
+
+            prefab.transform.position = pos;
+            prefab.transform.rotation = angles;
+            prefab.gameObject.SetActive(active);
+
+            return prefab;
+        }
+
+        private static void SpawnStructure(PlayerBuild bp, string prefabname, Vector3 pos, Quaternion angles, BuildingGrade.Enum grade, float health, uint buildingID = 0)
+        {
+            GameObject prefab = SpawnPrefab(prefabname, pos, angles, true);
+
+            if (prefab == null)
+                return;
+
+            BuildingBlock block = prefab.GetComponent<BuildingBlock>();
+
+            if (block == null)
+                return;
+
+            block.blockDefinition = PrefabAttribute.server.Find<Construction>(block.prefabID);
+
+            if (buildingID > 0) 
+                block.AttachToBuilding(buildingID);
+
+            block.SetGrade(grade);
+            block.Spawn();
+
+            if (health <= 0f)
+                block.health = block.MaxHealth();
+            else
+                block.health = health;
+
+            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+            bp.logs.Add(new List<BuildLog>() { new BuildLog(prefab, PlayerBuildType.Build) });
+        }
+
+        private static void SpawnEntity(PlayerBuild bp, string prefabname, Vector3 pos, Quaternion angles)
+        {
+            GameObject prefab = SpawnPrefab(prefabname, pos, angles, true);
+
+            if (prefab == null)
+                return;
+
+            BaseEntity entity = prefab?.GetComponent<BaseEntity>();
+            entity?.Spawn();
+
+            bp.logs.Add(new List<BuildLog>() { new BuildLog(prefab, PlayerBuildType.Spawn) });
+        }
+
+        private static void DoDeploy(PlayerBuild buildplayer, BasePlayer player, Collider baseentity)
+        {
+            Quaternion rotationOffSet = buildplayer.currentRot;
+            rotationOffSet.x = 0f;
+            rotationOffSet.z = 0f;
+            rotationOffSet = rotationOffSet * new Quaternion(0f, 1f, 0f, 0f);
+
+            GameObject go = SpawnPrefab(buildplayer.currentConstruction.fullName, buildplayer.currentConstruction.socketHandle ? Vector3.zero : (buildplayer.closestHitpoint + (Vector3.up * buildplayer.height)), buildplayer.currentConstruction.socketHandle ? Quaternion.identity : rotationOffSet, false);
+            
+            BaseEntity ent = go.ToBaseEntity();
+            BaseEntity sent = baseentity.GetComponentInParent<BaseEntity>();
+
+            if (buildplayer.currentConstruction.socketHandle)
+                ent.SetParent(sent, (uint)buildplayer.currentConstruction.deployable.slot);
+
+            if ((buildplayer.currentConstruction.deployable.setSocketParent && (sent != null)) && (ent != null))
+            {
+                ent.SetParent(sent, (uint)0);
+                ent.transform.position = sent.transform.InverseTransformPoint(ent.transform.position);
+            }
+
+            DecayEntity entity2 = ent as DecayEntity;
+            if (entity2 != null)
+            {
+                entity2.AttachToBuilding(sent as DecayEntity);
+            }
+            ent.Spawn(); 
+            go.AwakeFromInstantiate();
+
+            buildplayer.logs.Add(new List<BuildLog>() { new BuildLog(go, PlayerBuildType.Deploy) });
+        }
+
+        private static void DoGrade(PlayerBuild buildplayer, BasePlayer player, Collider baseentity)
+        {
+            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+
+            if (fbuildingblock == null)
+                return;
+
+            List<BuildLog> bl = new List<BuildLog>();
+            bl.Add(new BuildLog(baseentity.gameObject, PlayerBuildType.Grade, (int)fbuildingblock.grade));
+
+            SetGrade(fbuildingblock, buildplayer.grade);
+
+            if (buildplayer.select == Selection.All)
+            {
+                if (GetAllBaseEntities<BuildingBlock>(baseentity.GetComponentInParent<BaseEntity>()))
+                {
+                    foreach (BuildingBlock fent in houseList)
+                    {
+                        bl.Add(new BuildLog(fent.gameObject, PlayerBuildType.Grade, (int)fent.grade));
+                        SetGrade(fent, buildplayer.grade);
+                    }
+                }
+            }
+
+            buildplayer.logs.Add(bl);
+        }
         private static void SetGrade(BuildingBlock block, BuildingGrade.Enum level)
         {
             block.SetGrade(level);
             block.health = block.MaxHealth();
             block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
         }
-
-        /////////////////////////////////////////////////////
-        ///  SetHealth(BuildingBlock block)
-        ///  Set max health for a block
-        /////////////////////////////////////////////////////
-        private static void SetHealth(BuildingBlock block)
+        
+        private static void DoRotation(PlayerBuild buildplayer, BasePlayer player, Collider baseentity)
         {
-            block.health = block.MaxHealth();
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
+            BuildingBlock buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
+            buildplayer.logs.Add(new List<BuildLog>() { new BuildLog(baseentity.gameObject, PlayerBuildType.Rotate, baseentity.GetComponentInParent<BaseEntity>().transform.localRotation) });
+
+            SetRotation(baseentity.GetComponentInParent<BaseEntity>(), baseentity.GetComponentInParent<BaseEntity>().transform.localRotation * ( buildplayer.currentRotate != defaultQuaternion ? buildplayer.currentRotate : buildingblock != null ? buildingblock.blockDefinition.rotationAmount != Vector3.zero ? Quaternion.Euler(buildingblock.blockDefinition.rotationAmount) : buildplayer.currentRotate : buildplayer.currentRotate));
         }
 
-        /////////////////////////////////////////////////////
-        ///  DoAction(BuildPlayer buildplayer)
-        ///  Called from the BuildPlayer, will handle all different building types
-        /////////////////////////////////////////////////////
-        private static void DoAction(BuildPlayer buildplayer)
+        private static void SetRotation(BaseEntity baseentity, Quaternion rotation)
         {
-            currentplayer = buildplayer.player;
-            if (!TryGetPlayerView(currentplayer, out currentRot))
+            baseentity.transform.localRotation = rotation;
+
+            BuildingBlock buildingblock = baseentity.GetComponent<BuildingBlock>();
+            if (buildingblock != null && buildingblock.blockDefinition != null)
             {
+                buildingblock.RefreshEntityLinks();
+                buildingblock.UpdateSurroundingEntities();
+                buildingblock.SendNetworkUpdateImmediate(false);
+                buildingblock.ClientRPC(null, "RefreshSkin");
+            }
+            else
+            {
+                baseentity.SendNetworkUpdateImmediate(false);
+                baseentity.ClientRPC(null, "RefreshSkin");
+            }
+        }
+
+
+        [ConsoleCommand("build.select")]
+        private void cmdBuildSelect(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
+            if (player == null)
+            {
+                arg.ReplyWith("Only a player can use this command.");
                 return;
             }
-            if (!TryGetClosestRayPoint(currentplayer.transform.position, currentRot, out closestEnt, out closestHitpoint))
+             
+            if (!hasAuth(player))
             {
+                arg.ReplyWith("You are not allowed to use this command.");
                 return;
             }
-            currentCollider = closestEnt as Collider;
-            if (currentCollider == null)
+
+            PlayerBuild pB = playerBuild[player.userID];
+
+            switch (arg.Args[0])
             {
-                return;
-            }
-            switch (buildplayer.currentType)
-            {
-                case "building":
-                    DoBuild(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "buildup":
-                    DoBuildUp(buildplayer, currentplayer, currentCollider);
+                case "build":
+                    if (arg.Args.Length > 1)
+                    {
+                        Building targetBuilding = Building.Foundation;
+                        switch(arg.Args[1])
+                        {
+                            case "foundation":
+                                targetBuilding = Building.Foundation;
+                                break;
+                            case "foundation.triangle":
+                                targetBuilding = Building.FoundationTriangle;
+                                break;
+                            case "foundation.steps":
+                                targetBuilding = Building.FoundationSteps;
+                                break;
+                            case "floor":
+                                targetBuilding = Building.Floor;
+                                break;
+                            case "floor.triangle":
+                                targetBuilding = Building.FloorTriangle;
+                                break;
+                            case "floor.frame":
+                                targetBuilding = Building.FloorFrame;
+                                break;
+                            case "wall":
+                                targetBuilding = Building.Wall;
+                                break;
+                            case "wall.doorway":
+                                targetBuilding = Building.WallDoorway;
+                                break;
+                            case "wall.window":
+                                targetBuilding = Building.WallWindow;
+                                break;
+                            case "wall.frame":
+                                targetBuilding = Building.WallFrame;
+                                break;
+                            case "wall.half":
+                                targetBuilding = Building.WallHalf;
+                                break;
+                            case "wall.low":
+                                targetBuilding = Building.WallLow;
+                                break;
+                            case "stairs.l.shaped":
+                                targetBuilding = Building.StairsLShaped;
+                                break;
+                            case "stairs.u.shaped":
+                                targetBuilding = Building.StairsUShaped;
+                                break;
+                            case "roof":
+                                targetBuilding = Building.Roof;
+                                break;
+                        }
+                        pB.constructionBuild = targetBuilding;
+                    }
+                    else
+                    {
+                        pB.buildType = PlayerBuildType.Build;
+                    }
                     break;
                 case "deploy":
-                    DoDeploy(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "plant":
-                case "animal":
-                    DoPlant(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "grade":
-                    DoGrade(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "heal":
-                    DoHeal(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "erase":
-                    DoErase(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "rotate":
-                    DoRotation(buildplayer, currentplayer, currentCollider);
-                    break;
-                case "spawning":
-                    DoSpawn(buildplayer, currentplayer, currentCollider);
-                    break;
-                default:
-                    return;
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoErase(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Erase function
-        /////////////////////////////////////////////////////
-        private static void DoErase(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            currentBaseNet = baseentity.GetComponentInParent<BaseNetworkable>();
-            currentBaseNet?.Kill(BaseNetworkable.DestroyMode.Gib);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoPlant(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Spawn Trees, Barrels, Animals, Resources
-        /////////////////////////////////////////////////////
-        private static void DoPlant(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnAnimal(buildplayer.currentPrefab, newPos, newRot);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoDeploy(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Deploy Deployables
-        /////////////////////////////////////////////////////
-        private static void DoDeploy(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnDeployable(buildplayer.currentPrefab, newPos, newRot, currentplayer);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoGrade(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Set building grade
-        /////////////////////////////////////////////////////
-        private static void DoGrade(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            SetGrade(fbuildingblock, buildplayer.currentGrade);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(fbuildingblock);
-            checkFrom.Add(fbuildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    if (hit.GetComponentInParent<BuildingBlock>() != null)
+                    if(arg.Args.Length > 1)
                     {
-                        fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                        if (!(houseList.Contains(fbuildingblock)))
+                        if(arg.Args[1] == "page")
                         {
-                            houseList.Add(fbuildingblock);
-                            checkFrom.Add(fbuildingblock.transform.position);
-                            SetGrade(fbuildingblock, buildplayer.currentGrade);
-                        }
-                    }
-                }
-            }
-        }
-
-        static void DoRotation(BuildingBlock block, Quaternion defaultRotation)
-        {
-            if (block.blockDefinition == null) return;
-            var transform = block.transform;
-            if (defaultRotation == defaultQuaternion)
-                transform.localRotation *= Quaternion.Euler(block.blockDefinition.rotationAmount);
-            else
-                transform.localRotation *= defaultRotation;
-            block.ClientRPC(null, "UpdateConditionalModels", new object[0]);
-            block.SendNetworkUpdate(BasePlayer.NetworkQueue.Update);
-        }
-
-        private static void DoRotation(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (buildingblock == null)
-            {
-                return;
-            }
-            DoRotation(buildingblock, buildplayer.currentRotate);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(buildingblock);
-            checkFrom.Add(buildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    var fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                    if (fbuildingblock != null && !(houseList.Contains(fbuildingblock)))
-                    {
-                        houseList.Add(fbuildingblock);
-                        checkFrom.Add(fbuildingblock.transform.position);
-                        DoRotation(fbuildingblock, buildplayer.currentRotate);
-                    }
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoHeal(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Set max health to building
-        /////////////////////////////////////////////////////
-        private static void DoHeal(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var buildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (buildingblock == null)
-            {
-                return;
-            }
-            SetHealth(buildingblock);
-            if (buildplayer.selection == "select")
-            {
-                return;
-            }
-
-            houseList = new List<object>();
-            checkFrom = new List<Vector3>();
-            houseList.Add(buildingblock);
-            checkFrom.Add(buildingblock.transform.position);
-
-            int current = 0;
-            while (true)
-            {
-                current++;
-                if (current > checkFrom.Count)
-                    break;
-                var hits = Physics.OverlapSphere(checkFrom[current - 1], 3.1f);
-                foreach (var hit in hits)
-                {
-                    var fbuildingblock = hit.GetComponentInParent<BuildingBlock>();
-                    if (fbuildingblock != null && !(houseList.Contains(fbuildingblock)))
-                    {
-                        houseList.Add(fbuildingblock);
-                        checkFrom.Add(fbuildingblock.transform.position);
-                        SetHealth(fbuildingblock);
-                    }
-                }
-            }
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoSpawn(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Raw spawning building elements, no AI here
-        /////////////////////////////////////////////////////
-        private static void DoSpawn(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            newPos = closestHitpoint + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = currentRot;
-            newRot.x = 0f;
-            newRot.z = 0f;
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoBuildUp(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Raw buildup, you can build anything on top of each other, exept the position, there is no AI
-        /////////////////////////////////////////////////////
-        private static void DoBuildUp(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            newPos = fbuildingblock.transform.position + (VectorUP * buildplayer.currentHeightAdjustment);
-            newRot = fbuildingblock.transform.rotation;
-            if (isColliding(buildplayer.currentPrefab, newPos, 1f))
-            {
-                return;
-            }
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
-        }
-
-        /////////////////////////////////////////////////////
-        ///  DoBuild(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        ///  Fully AIed Build :) see the InitializeSockets for more informations
-        /////////////////////////////////////////////////////
-        private static void DoBuild(BuildPlayer buildplayer, BasePlayer player, Collider baseentity)
-        {
-            var fbuildingblock = baseentity.GetComponentInParent<BuildingBlock>();
-            if (fbuildingblock == null)
-            {
-                return;
-            }
-            distance = 999999f;
-            Vector3 newPos = new Vector3(0f, 0f, 0f);
-            newRot = new Quaternion(0f, 0f, 0f, 0f);
-            //  Checks if this building has a socket hooked to it self
-            //  If not ... well it won't be able to be built via AI
-            if (nameToSockets.ContainsKey(fbuildingblock.blockDefinition.fullName))
-            {
-                sourcesocket = nameToSockets[fbuildingblock.blockDefinition.fullName];
-                // Gets all Sockets that can be connected to the source building
-                if (TypeToType.ContainsKey(sourcesocket))
-                {
-                    sourceSockets = (Dictionary<SocketType, object>)TypeToType[sourcesocket];
-                    targetsocket = nameToSockets[buildplayer.currentPrefab];
-                    // Checks if the newly built structure can be connected to the source building
-                    if (sourceSockets.ContainsKey(targetsocket))
-                    {
-                        newsockets = (Dictionary<Vector3, Quaternion>)sourceSockets[targetsocket];
-                        // Get all the sockets that can be hooked to the source building via the new structure element
-                        foreach (KeyValuePair<Vector3, Quaternion> pair in newsockets)
-                        {
-                            var currentrelativepos = (fbuildingblock.transform.rotation * pair.Key) + fbuildingblock.transform.position;
-                            if (Vector3.Distance(currentrelativepos, closestHitpoint) < distance)
+                            if(arg.Args[2] == "previous")
                             {
-                                // Get the socket that is the closest to where the player is aiming at
-                                distance = Vector3.Distance(currentrelativepos, closestHitpoint);
-                                newPos = currentrelativepos + (VectorUP * buildplayer.currentHeightAdjustment);
-                                newRot = (fbuildingblock.transform.rotation * pair.Value);
+                                pB.deploypage -= 1;
+                                if (pB.deploypage < 0) pB.deploypage = 0;
+                            }
+                            else
+                            {
+                                pB.deploypage += 1;
+                                if(pB.deploypage*80 > deployables.Count)
+                                {
+                                    pB.deploypage -= 1;
+                                }
                             }
                         }
+                        else if (arg.Args[1] == "select")
+                        {
+                            pB.currentConstruction = PrefabAttribute.server.Find<Construction>(uint.Parse(arg.Args[2]));
+                        }
                     }
-                }
-            }
-            if (newPos.x == 0f)
-                return;
-            // Checks if the element has already been built to prevent multiple structure elements on one spot
-            if (isColliding(buildplayer.currentPrefab, newPos, 1f))
-                return;
+                    else
+                        pB.buildType = PlayerBuildType.Deploy;
+                    break;
+                case "spawn":
+                    if (arg.Args.Length > 1)
+                    {
+                        if (arg.Args[1] == "page")
+                        {
+                            if (arg.Args[2] == "previous")
+                            {
+                                pB.spawnpage -= 1;
+                                if (pB.spawnpage < 0) pB.spawnpage = 0;
+                            }
+                            else
+                            {
+                                pB.spawnpage += 1;
+                                if (pB.spawnpage * 40 > resourcesList.Count)
+                                {
+                                    pB.spawnpage -= 1;
+                                }
+                            }
+                        }
+                        else if (arg.Args[1] == "select")
+                        {
+                            pB.currentSpawn = String.Join(" ", arg.Args.Skip(2));
+                        }
+                    }
+                    else
+                        pB.buildType = PlayerBuildType.Spawn;
+                    break;
+                case "grade":
+                    if (arg.Args.Length > 1)
+                    {
+                        pB.grade = (BuildingGrade.Enum)int.Parse(arg.Args[1]);
+                    }
+                    else
+                    {
+                        pB.buildType = PlayerBuildType.Grade;
+                    }
+                    break;
+                case "heal":
+                    pB.buildType = PlayerBuildType.Heal;
+                    break;
+                case "select":
+                    if (arg.Args[1] == "all")
+                    {
+                        pB.select = Selection.All;
+                    }
+                    else
+                    {
+                        pB.select = Selection.Select;
+                    }
+                    break;
+                case "height":
+                    if (arg.Args[1] == "reset")
+                    {
+                        pB.height = 0f;
+                    }
+                    else
+                    {
+                        float dif = float.Parse(arg.Args[2]);
+                        if (arg.Args[1] == "plus")
+                        {
+                            pB.height += dif;
+                        }
+                        else if (arg.Args[1] == "minus")
+                        {
+                            pB.height -= dif;
+                        }
+                    }
 
-            SpawnStructure(buildplayer.currentPrefab, newPos, newRot, buildplayer.currentGrade, buildplayer.currentHealth);
+                    break;
+                case "noclip":
+                    pB.player.SendConsoleCommand("noclip", new object[] { });
+                    break;
+                case "crosshair":
+                    pB.crosshair = !pB.crosshair;
+                    if(pB.crosshair)
+                    {
+                        CuiElementContainer crosshair_container = UI.CreateElementContainer("Overlay", "BuildCrosshair", "0.1 0.1 0.1 1", "0.499 0.499", "0.501 0.501", false);
+                        CuiHelper.AddUi(player, crosshair_container);
+                    }
+                    else
+                    {
+                        CuiHelper.DestroyUi(player, "BuildCrosshair");
+                    }
+
+                    break;
+                case "rotate":
+                    pB.buildType = PlayerBuildType.Rotate;
+                    break;
+                case "erase":
+                    pB.buildType = PlayerBuildType.Erase;
+                    break;
+                case "placement":
+                    pB.placement = arg.Args[1] == "force" ? Placement.Force : arg.Args[1] == "up" ? Placement.Up : Placement.Auto;
+                    break;
+                case "undo":
+                    if(pB.logs.Count == 0)
+                    {
+                        return;
+                    }
+                    List<BuildLog> logs = pB.logs[pB.logs.Count - 1];
+                    for(int i = 0; i < logs.Count; i++)
+                    {
+                        try
+                        {
+                            BuildLog log = logs[i];
+                            if (log.e == PlayerBuildType.Build || log.e == PlayerBuildType.Deploy || log.e == PlayerBuildType.Spawn)
+                            {
+                                log.go?.GetComponentInParent<BaseNetworkable>()?.Kill(BaseNetworkable.DestroyMode.Gib);
+                            }
+                            else if (log.e == PlayerBuildType.Rotate)
+                            {
+                                if (log.go?.ToBaseEntity() != null)
+                                    SetRotation(log.go?.ToBaseEntity(), log.qvalue1);
+                            }
+                            else if (log.e == PlayerBuildType.Grade)
+                            {
+                                BuildingBlock bblock = log.go?.ToBaseEntity()?.GetComponent<BuildingBlock>();
+                                if (bblock != null)
+                                    SetGrade(bblock, (BuildingGrade.Enum)log.ivalue1);
+                            }
+                            else if (log.e == PlayerBuildType.Heal)
+                            {
+                                BaseCombatEntity bcentity = log.go?.ToBaseEntity()?.GetComponent<BaseCombatEntity>();
+                                if (bcentity != null)
+                                    bcentity.health = log.fvalue1;
+                            }
+                            else if(log.e == PlayerBuildType.Erase)
+                            {
+                                GameObject prefab = SpawnPrefab(log.svalue1, log.vvalue1, log.qvalue1, true);
+                                BaseEntity ent = prefab?.GetComponent<BaseEntity>();
+                                ent.Spawn();
+
+                                BuildingBlock block = ent?.GetComponent<BuildingBlock>();
+                                if (block != null)
+                                {
+                                    block.SetGrade((BuildingGrade.Enum)log.ivalue1);
+                                }
+
+                                BaseCombatEntity bcentity = ent?.GetComponent<BaseCombatEntity>();
+                                if(bcentity != null)
+                                {
+                                    bcentity.health = bcentity.MaxHealth();
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            Interface.Oxide.LogWarning(e.Message);
+                            Interface.Oxide.LogWarning(e.StackTrace);
+                        }
+                    }
+                    pB.logs.RemoveAt(pB.logs.Count - 1);
+                    break;
+                case "none":
+                    pB.buildType = PlayerBuildType.None;
+                    break;
+            }
+            BuildMenu_Toggle(player);
+            BuildGUI_Refresh(player);
         }
 
-        /////////////////////////////////////////////////////
-        ///  TryGetBuildingPlans(string arg, out string buildType, out string prefabName)
-        ///  Checks if the argument of every commands are valid or not
-        /////////////////////////////////////////////////////
-        bool TryGetBuildingPlans(string arg, out string buildType, out string prefabName)
+        private T[] GetAllPrefabs<T>()
         {
-            prefabName = "";
-            buildType = "";
-            int intbuilding;
-            if (nameToBlockPrefab.ContainsKey(arg))
+            var prefabs = PrefabAttribute.server.prefabs;
+            if (prefabs == null || prefabs.Any() == false)
             {
-                prefabName = nameToBlockPrefab[arg];
-                buildType = "building";
-                return true;
+                return new T[0];
             }
-            else if (deployedToItem.ContainsKey(arg.ToLower()))
+
+            var results = new List<T>();
+            foreach (var prefab in prefabs.Values)
             {
-                prefabName = deployedToItem[arg.ToLower()];
-                buildType = "deploy";
-                return true;
-            }
-            else if (deployedToItem.ContainsValue(arg.ToLower()))
-            {
-                prefabName = arg.ToLower();
-                buildType = "deploy";
-                return true;
-            }
-            else if (animalList.ContainsKey(arg.ToLower()))
-            {
-                prefabName = animalList[arg.ToLower()];
-                buildType = "animal";
-                return true;
-            }
-            else if (int.TryParse(arg, out intbuilding))
-            {
-                if (intbuilding <= resourcesList.Count)
+                var arrayCache = prefab.Find<T>();
+                if (arrayCache == null || !arrayCache.Any())
                 {
-                    prefabName = resourcesList[intbuilding];
-                    buildType = "plant";
-                    return true;
+                    continue;
                 }
+
+                results.AddRange(arrayCache);
             }
-            return false;
-        }
 
-        /////////////////////////////////////////////////////
-        ///  GetGrade(int lvl)
-        ///  Convert grade number written by the players into the BuildingGrade.Enum used by rust
-        /////////////////////////////////////////////////////
-        BuildingGrade.Enum GetGrade(int lvl)
-        {
-            switch (lvl)
-            {
-                case 0:
-                    return BuildingGrade.Enum.Twigs;
-                case 1:
-                    return BuildingGrade.Enum.Wood;
-                case 2:
-                    return BuildingGrade.Enum.Stone;
-                case 3:
-                    return BuildingGrade.Enum.Metal;
-            }
-            return BuildingGrade.Enum.TopTier;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  hasNoArguments(BasePlayer player, string[] args)
-        ///  Action when no arguments were written in the commands
-        /////////////////////////////////////////////////////
-        bool hasNoArguments(BasePlayer player, string[] args)
-        {
-            if (args == null || args.Length == 0)
-            {
-                var buildPlayer = player.GetComponent<BuildPlayer>();
-                if (buildPlayer != null)
-                {
-                    buildPlayer.DestroyGui();
-                    UnityEngine.Object.Destroy(buildPlayer);
-                    SendReply(player, "Build Tool Deactivated");
-                }
-                else
-                    SendReply(player, "For more informations say: /buildhelp");
-                return true;
-            }
-            return false;
-        }
-
-        /////////////////////////////////////////////////////
-        ///  GetBuildPlayer(BasePlayer player)
-        ///  Create or Get the BuildPlayer from a player, where all informations of current action is stored
-        /////////////////////////////////////////////////////
-        BuildPlayer GetBuildPlayer(BasePlayer player)
-        {
-            return player.GetComponent<BuildPlayer>() ?? player.gameObject.AddComponent<BuildPlayer>();
-        }
-
-        /////////////////////////////////////////////////////
-        ///  CHAT COMMANDS
-        /////////////////////////////////////////////////////
-        [ChatCommand("build")]
-        void cmdChatBuild(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            if (buildType != "building")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 0f;
-
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
-            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool AIBuild: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("spawn")]
-        void cmdChatSpawn(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            if (buildType == "building") buildType = "spawning";
-            else
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 0f;
-
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
-            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool RawSpawning: {0} - HeightAdjustment: {1} - Grade: {2} - Health: {3}", args[0], heightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("deploy")]
-        void cmdChatDeploy(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp deployables");
-                return;
-            }
-            if (buildType != "deploy")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp deployables");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Deploying: {0} - Height Adjustment: {1}", buildplayer.currentPrefab, buildplayer.currentHeightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("erase")]
-        void cmdChatErase(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-            if (buildplayer.currentType != null && buildplayer.currentType == "erase")
-            {
-                buildplayer.DestroyGui();
-                UnityEngine.Object.Destroy(buildplayer);
-                SendReply(player, "Building Tool: Remove Deactivated");
-            }
-            else
-            {
-                buildplayer.currentType = "erase";
-                SendReply(player, "Building Tool: Remove Activated");
-
-                var msg = "Building Tool: Remove Activated";
-                buildplayer.LoadMsgGui(msg);
-                SendReply(player, msg);
-
-            }
-        }
-
-        [ChatCommand("plant")]
-        void cmdChatPlant(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp resources");
-                return;
-            }
-            if (buildType != "plant")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp resources");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Planting: {0} - HeightAdjustment: {1}", prefabName, buildplayer.currentHeightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("animal")]
-        void cmdChatAnimal(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp animals");
-                return;
-            }
-            if (buildType != "animal")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp animals");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            heightAdjustment = 0f;
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool Spawning Animals: {0} - HeightAdjustment: {1}", prefabName, heightAdjustment.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildup")]
-        void cmdChatBuildup(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-
-            if (!TryGetBuildingPlans(args[0], out buildType, out prefabName))
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            if (buildType != "building")
-            {
-                SendReply(player, "Invalid Argument 1: For more informations say: /buildhelp buildings");
-                return;
-            }
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildType = "buildup";
-            buildplayer.currentPrefab = prefabName;
-            buildplayer.currentType = buildType;
-            defaultGrade = 0;
-            defaultHealth = -1f;
-            heightAdjustment = 3f;
-
-            if (args.Length > 1) float.TryParse(args[1], out heightAdjustment);
-            if (args.Length > 2) int.TryParse(args[2], out defaultGrade);
-            if (args.Length > 3) float.TryParse(args[3], out defaultHealth);
-
-
-            buildplayer.currentHealth = defaultHealth;
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-            buildplayer.currentHeightAdjustment = heightAdjustment;
-
-            var msg = string.Format("Building Tool BuildUP: {0} - Height: {1} - Grade: {2} - Health: {3}", args[0], buildplayer.currentHeightAdjustment.ToString(), buildplayer.currentGrade.ToString(), buildplayer.currentHealth.ToString());
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildgrade")]
-        void cmdChatBuilGrade(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-            defaultGrade = 0;
-            buildplayer.selection = "select";
-            buildplayer.currentType = "grade";
-            int.TryParse(args[0], out defaultGrade);
-            if (args.Length > 1)
-                if (args[1] == "all")
-                    buildplayer.selection = "all";
-            buildplayer.currentGrade = GetGrade(defaultGrade);
-
-            var msg = string.Format("Building Tool SetGrade: {0} - for {1}", buildplayer.currentGrade.ToString(), buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildheal")]
-        void cmdChatBuilHeal(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (hasNoArguments(player, args)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildplayer.currentType = "heal";
-            buildplayer.selection = "select";
-            if (args.Length > 0)
-                if (args[0] == "all")
-                    buildplayer.selection = "all";
-
-            var msg = string.Format("Building Tool Heal for: {0}", buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildrotate")]
-        void cmdChatBuilRotate(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            BuildPlayer buildplayer = GetBuildPlayer(player);
-
-            buildplayer.currentType = "rotate";
-            buildplayer.selection = "select";
-            float rotate = 0f;
-
-            if (args.Length > 0) float.TryParse(args[0], out rotate);
-            if (args.Length > 1)
-                if (args[1] == "all")
-                    buildplayer.selection = "all";
-            buildplayer.currentRotate = Quaternion.Euler(0f, rotate, 0f);
-
-            var msg = string.Format("Building Tool Rotation for: {0}", buildplayer.selection);
-            buildplayer.LoadMsgGui(msg);
-            SendReply(player, msg);
-        }
-
-        [ChatCommand("buildhelp")]
-        void cmdChatBuildhelp(BasePlayer player, string command, string[] args)
-        {
-            if (!hasAccess(player)) return;
-            if (args == null || args.Length == 0)
-            {
-                SendReply(player, "======== Buildings ========");
-                SendReply(player, "/buildhelp buildings");
-                SendReply(player, "/buildhelp grades");
-                SendReply(player, "/buildhelp heal");
-                SendReply(player, "======== Deployables ========");
-                SendReply(player, "/buildhelp deployables");
-                SendReply(player, "======== Resources (Trees, Ores, Barrels) ========");
-                SendReply(player, "/buildhelp resources");
-                SendReply(player, "======== Animals ========");
-                SendReply(player, "/buildhelp animals");
-                SendReply(player, "======== Erase ========");
-                SendReply(player, "/buildhelp erase");
-                return;
-            }
-            if (args[0].ToLower() == "buildings")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/build StructureName Optional:HeightAdjust(can be negative, 0 default) Optional:Grade Optional:Health");
-                SendReply(player, "/buildup StructureName Optional:HeightAdjust(can be negative, 3 default) Optional:Grave Optional:Health");
-                SendReply(player, "/buildrotate");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/build foundation => build a Twigs Foundation");
-                SendReply(player, "/build foundation 0 2 => build a Stone Foundation");
-                SendReply(player, "/build wall 0 3 1 => build a Metal Wall with 1 health");
-                SendReply(player, "======== List ========");
-                SendReply(player, "/build foundation - /build foundation.triangle - /build foundation.steps(not avaible)");
-                SendReply(player, "/build block.halfheight - /build block.halfheight.slanted (stairs)");
-                SendReply(player, "/build wall - /build wall.low - /build wall.doorway - /build wall.window");
-                SendReply(player, "/build floor - /build floor.triangle - /build roof");
-            }
-            else if (args[0].ToLower() == "grades")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/buildgrade GradeLevel Optional:all => default is only the selected block");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/buildgrade 0 => set grade 0 for the select block");
-                SendReply(player, "/buildgrade 2 all => set grade 2 (Stone) for the entire building");
-            }
-            else if (args[0].ToLower() == "heal")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/buildheal Optional:all => default is only the selected block");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/buildheal all => will heal your entire structure");
-            }
-            else if (args[0].ToLower() == "deployables")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/deploy \"Deployable Name\" Optional:HeightAdjust(can be negative, 0 default)");
-                SendReply(player, "======== Usage ========");
-                SendReply(player, "/deploy \"Tool Cupboard\" => build a Tool Cupboard");
-            }
-            else if (args[0].ToLower() == "resources")
-            {
-                int i = 0;
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/plant \"Resource ID\"");
-                SendReply(player, "Please check in your console to see the full list");
-                SendEchoConsole(player.net.connection, "======== Plant List ========");
-                foreach (string resource in resourcesList)
-                {
-                    SendEchoConsole(player.net.connection, string.Format("{0} - {1}", i, resource));
-                    i++;
-                }
-            }
-            else if (args[0].ToLower() == "animals")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/animal \"Name\"");
-                SendReply(player, "======== List ========");
-                foreach (KeyValuePair<string, string> pair in animalList)
-                {
-                    SendReply(player, string.Format("{0}", pair.Key));
-                }
-            }
-            else if (args[0].ToLower() == "erase")
-            {
-                SendReply(player, "======== Commands ========");
-                SendReply(player, "/erase => Erase where you are looking at, there is NO all option here to prevent fails :p");
-            }
-        }
-
-        void SendEchoConsole(Network.Connection cn, string msg)
-        {
-            if (Network.Net.sv.IsConnected())
-            {
-                Network.Net.sv.write.Start();
-                Network.Net.sv.write.PacketID(Network.Message.Type.ConsoleMessage);
-                Network.Net.sv.write.String(msg);
-                Network.Net.sv.write.Send(new Network.SendInfo(cn));
-            }
+            return results.ToArray();
         }
     }
 }
