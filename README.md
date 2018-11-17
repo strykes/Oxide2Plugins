@@ -6,6 +6,10 @@ Thanks to @k1lly0u to point me in the right direction while i was strungling
 A new way to smoothly glide down with a parachute, fully customisable (speed of parachute, fall speed, etc)
 When navigate to the sides, the parachute will be on the side, to give a bit more reality to it.
 
+**Commands:**
+Chat: `/parachute`
+Console: `parachute`
+
 **Permissions:**
 Either be an admin, or have oxide's permission: `parachute.allowed` 
 
